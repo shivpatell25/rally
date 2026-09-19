@@ -1,8 +1,8 @@
 # Rally
 
-Rally is a sports-first Android TV app. It combines ESPN schedules and live data with the user's Stalker/Ministra IPTV subscription and configured Stremio addons, then presents matching streams in a cinematic, remote-first interface.
+![Rally wordmark](Rally_Brand_Kit/02_Wordmark/rally_wordmark_color_transparent_2048.png)
 
-The app keeps its backdrop-led home screen and vertical game cards while using an Apple TV+-inspired visual system: restrained focus motion, dark gradients, glass-like controls, large editorial artwork, and consistent typography.
+Rally is a sports-first Android TV app. It combines ESPN schedules and live data with the user's Stalker/Ministra IPTV subscription and configured Stremio addons, then presents matching streams in a cinematic, remote-first interface.
 
 ## Features
 
