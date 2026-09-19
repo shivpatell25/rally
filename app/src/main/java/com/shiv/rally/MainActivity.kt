@@ -52,6 +52,7 @@ import com.shiv.rally.presentation.common.RallyChromeFocus
 import com.shiv.rally.presentation.common.RallyScoreSaverHost
 import com.shiv.rally.presentation.highlights.HighlightsScreen
 import com.shiv.rally.presentation.watchlist.WatchlistScreen
+import com.shiv.rally.presentation.onboarding.OnboardingScreen
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -108,7 +109,7 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     activeNavController = navController
                     val navigationGate = remember { TvActionGate(350L) }
-                    val startDest = if (preferencesManager.hasCredentials()) "home" else "settings"
+                    val startDest = if (preferencesManager.hasCredentials()) "home" else "onboarding"
                     val backStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = backStackEntry?.destination?.route.orEmpty()
                     val ambientContextKey = backStackEntry?.arguments?.getString("league")
@@ -125,7 +126,8 @@ class MainActivity : ComponentActivity() {
                     val baseDensity = LocalDensity.current
                     val chromeFocus = remember { RallyChromeFocus() }
                     val contentFocusRequester = remember(currentRoute) { FocusRequester() }
-                    val showChrome = !currentRoute.startsWith("player/") && !currentRoute.startsWith("multiview")
+                    val showChrome = currentRoute != "onboarding" &&
+                        !currentRoute.startsWith("player/") && !currentRoute.startsWith("multiview")
                     val selectedDestination = when {
                         currentRoute == "home" || currentRoute.startsWith("event/") -> RallyDestination.HOME
                         currentRoute == "iptv" -> RallyDestination.LIVE
@@ -169,6 +171,16 @@ class MainActivity : ComponentActivity() {
                             }
                             Box(Modifier.weight(1f)) {
                     NavHost(navController = navController, startDestination = startDest) {
+                        composable("onboarding") {
+                            OnboardingScreen(
+                                onContinue = {
+                                    navController.navigate("settings") {
+                                        popUpTo("onboarding") { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            )
+                        }
                         composable("settings") {
                             SettingsScreen(
                                 onSaved = {

@@ -26,6 +26,16 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
 
     init {
         migrateLegacyPreferences(context)
+        migrateSettingsSchema()
+    }
+
+    private fun migrateSettingsSchema() {
+        val current = sharedPreferences.getInt("_rally_settings_schema", 0)
+        if (current < 1) {
+            // Versioned independently from the Room database so preference changes
+            // remain safe across sideloaded beta upgrades.
+            sharedPreferences.edit().putInt("_rally_settings_schema", 1).apply()
+        }
     }
 
     private fun migrateLegacyPreferences(context: Context) {
@@ -386,6 +396,62 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
     var channelCacheIdentity: String
         get() = sharedPreferences.getString("channel_cache_identity", "").orEmpty()
         set(value) = sharedPreferences.edit().putString("channel_cache_identity", value).apply()
+
+    /**
+     * Portable personalization backup. Provider addresses, MAC addresses, serials,
+     * device IDs, auth tokens and stream-health history are deliberately excluded.
+     */
+    fun exportPersonalization(): String = org.json.JSONObject().apply {
+        put("schema", 1)
+        put("createdAt", System.currentTimeMillis())
+        put("enabledLeagues", org.json.JSONArray(enabledLeagues.toList().sorted()))
+        put("favoriteSports", org.json.JSONArray(favoriteSports.toList().sorted()))
+        put("favoriteTeams", org.json.JSONArray(favoriteTeams.toList().sorted()))
+        put("sportsOrder", org.json.JSONArray(sportsOrder))
+        put("favoritePlayerIds", org.json.JSONArray(favoritePlayerIds.toList().sorted()))
+        put("liveGameAlertsEnabled", liveGameAlertsEnabled)
+        put("redZoneAlertsEnabled", redZoneAlertsEnabled)
+        put("lowLatencyMode", lowLatencyMode)
+        put("audioNormalizationEnabled", audioNormalizationEnabled)
+        put("adaptiveQualityEnabled", adaptiveQualityEnabled)
+        put("reducedMotion", reducedMotion)
+        put("highContrastFocus", highContrastFocus)
+        put("largeText", largeText)
+        put("spokenScoreSummaries", spokenScoreSummaries)
+        put("scoreSaverEnabled", scoreSaverEnabled)
+    }.toString(2)
+
+    fun importPersonalization(raw: String): Result<Unit> = runCatching {
+        val json = org.json.JSONObject(raw)
+        require(json.optInt("schema", -1) == 1) { "Unsupported Rally settings backup." }
+        fun stringSet(key: String): Set<String> = buildSet {
+            val array = json.optJSONArray(key) ?: return@buildSet
+            for (index in 0 until array.length()) {
+                array.optString(index).trim().takeIf(String::isNotEmpty)?.let(::add)
+            }
+        }
+        fun stringList(key: String): List<String> = buildList {
+            val array = json.optJSONArray(key) ?: return@buildList
+            for (index in 0 until array.length()) {
+                array.optString(index).trim().takeIf(String::isNotEmpty)?.let(::add)
+            }
+        }
+        enabledLeagues = stringSet("enabledLeagues")
+        favoriteSports = stringSet("favoriteSports")
+        favoriteTeams = stringSet("favoriteTeams")
+        stringList("sportsOrder").takeIf { it.isNotEmpty() }?.let { sportsOrder = it }
+        favoritePlayerIds = stringSet("favoritePlayerIds")
+        liveGameAlertsEnabled = json.optBoolean("liveGameAlertsEnabled", liveGameAlertsEnabled)
+        redZoneAlertsEnabled = json.optBoolean("redZoneAlertsEnabled", redZoneAlertsEnabled)
+        lowLatencyMode = json.optBoolean("lowLatencyMode", lowLatencyMode)
+        audioNormalizationEnabled = json.optBoolean("audioNormalizationEnabled", audioNormalizationEnabled)
+        adaptiveQualityEnabled = json.optBoolean("adaptiveQualityEnabled", adaptiveQualityEnabled)
+        reducedMotion = json.optBoolean("reducedMotion", reducedMotion)
+        highContrastFocus = json.optBoolean("highContrastFocus", highContrastFocus)
+        largeText = json.optBoolean("largeText", largeText)
+        spokenScoreSummaries = json.optBoolean("spokenScoreSummaries", spokenScoreSummaries)
+        scoreSaverEnabled = json.optBoolean("scoreSaverEnabled", scoreSaverEnabled)
+    }
     
     fun clearCredentials() {
         sharedPreferences.edit().clear().apply()

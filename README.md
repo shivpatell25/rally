@@ -12,6 +12,7 @@ Rally is a sports-first Android TV app. It combines ESPN schedules and live data
 - Searchable IPTV channel browser
 - Local caching for channels, manifests, streams, and sports data
 - D-pad navigation designed for Android TV and Google TV
+- Signed in-app update checks backed by GitHub Releases and Android's system installer
 
 ## Architecture
 
@@ -40,7 +41,7 @@ For the shrunk and obfuscated release package:
 ./gradlew assembleRelease
 ```
 
-The release artifact is unsigned. Configure a private release keystore before distribution; the project intentionally does not sign release builds with the debug key.
+Release signing is configured through the `RALLY_KEYSTORE_PATH`, `RALLY_KEYSTORE_PASSWORD`, `RALLY_KEY_ALIAS`, and `RALLY_KEY_PASSWORD` environment variables. Private signing material is never stored in Git. See [RELEASE.md](RELEASE.md) for the GitHub Releases process.
 
 ## Setup
 
@@ -63,3 +64,5 @@ The application is tuned for memory-constrained TV devices:
 ## Data and privacy
 
 The app does not ship IPTV credentials. Tokens are not written to logs, release HTTP logging is disabled, and request headers from third-party stream addons are allowlisted before playback. Users are responsible for using subscriptions and addons they are authorized to access.
+
+See the full [privacy policy](PRIVACY.md) and [content/provider disclosure](CONTENT_SOURCES.md).

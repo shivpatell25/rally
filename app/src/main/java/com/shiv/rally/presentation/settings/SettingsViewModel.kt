@@ -1,9 +1,13 @@
 package com.shiv.rally.presentation.settings
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shiv.rally.data.local.PreferencesManager
 import com.shiv.rally.data.local.PortalUrlNormalizer
+import com.shiv.rally.BuildConfig
+import com.shiv.rally.data.update.RallyUpdateManager
+import com.shiv.rally.data.update.RallyUpdateState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +22,8 @@ class SettingsViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager,
     private val iptvRepository: com.shiv.rally.domain.repository.IptvRepository,
     private val preflightProbe: com.shiv.rally.data.remote.network.StreamPreflightProbe,
-    private val diagnosticsStore: com.shiv.rally.data.local.RallyDiagnostics
+    private val diagnosticsStore: com.shiv.rally.data.local.RallyDiagnostics,
+    private val updateManager: RallyUpdateManager
 ) : ViewModel() {
 
     private val _portalUrl = MutableStateFlow(preferencesManager.portalUrl)
@@ -79,6 +84,12 @@ class SettingsViewModel @Inject constructor(
 
     private val _configurationError = MutableStateFlow<String?>(null)
     val configurationError: StateFlow<String?> = _configurationError.asStateFlow()
+
+    private val _supportMessage = MutableStateFlow<String?>(null)
+    val supportMessage: StateFlow<String?> = _supportMessage.asStateFlow()
+
+    private val _updateState = MutableStateFlow<RallyUpdateState>(RallyUpdateState.Idle)
+    val updateState: StateFlow<RallyUpdateState> = _updateState.asStateFlow()
     
     fun updatePortalUrl(url: String) {
         _portalUrl.value = url
@@ -233,6 +244,74 @@ class SettingsViewModel @Inject constructor(
     fun clearLocalDiagnostics() {
         diagnosticsStore.clear()
         _providerDiagnostics.value = _providerDiagnostics.value.copy(lastLocalIssue = null)
+        _supportMessage.value = "Local diagnostics cleared."
+    }
+
+    fun exportDiagnostics(): String = diagnosticsStore.exportReport(
+        appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        deviceSummary = "${Build.MANUFACTURER} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · API ${Build.VERSION.SDK_INT}"
+    )
+
+    fun exportPreferences(): String = preferencesManager.exportPersonalization()
+
+    fun importPreferences(raw: String) {
+        preferencesManager.importPersonalization(raw)
+            .onSuccess {
+                refreshPersonalization()
+                _supportMessage.value = "Preferences restored. Provider sign-in was not changed."
+            }
+            .onFailure {
+                _supportMessage.value = it.message ?: "This Rally backup could not be imported."
+            }
+    }
+
+    fun reportExportResult(label: String, succeeded: Boolean) {
+        _supportMessage.value = if (succeeded) "$label saved." else "$label could not be saved."
+    }
+
+    fun checkForUpdates() {
+        if (_updateState.value is RallyUpdateState.Checking || _updateState.value is RallyUpdateState.Downloading) return
+        _updateState.value = RallyUpdateState.Checking
+        viewModelScope.launch(Dispatchers.IO) {
+            _updateState.value = updateManager.check()
+        }
+    }
+
+    fun downloadUpdate() {
+        val release = (_updateState.value as? RallyUpdateState.Available)?.release ?: return
+        _updateState.value = RallyUpdateState.Downloading(release, 0)
+        viewModelScope.launch(Dispatchers.IO) {
+            _updateState.value = updateManager.download(release) { progress ->
+                _updateState.value = RallyUpdateState.Downloading(release, progress)
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val current = _updateState.value
+        val ready = when (current) {
+            is RallyUpdateState.Ready -> current.release to current.file
+            is RallyUpdateState.PermissionRequired -> current.release to current.file
+            else -> return
+        }
+        _updateState.value = updateManager.install(ready.first, ready.second)
+    }
+
+    private fun refreshPersonalization() {
+        _enabledLeagues.value = preferencesManager.enabledLeagues
+        _favoriteSports.value = preferencesManager.favoriteSports
+        _favoriteTeams.value = preferencesManager.favoriteTeams
+        _sportsOrder.value = preferencesManager.sportsOrder
+        _liveGameAlertsEnabled.value = preferencesManager.liveGameAlertsEnabled
+        _redZoneAlertsEnabled.value = preferencesManager.redZoneAlertsEnabled
+        _lowLatencyMode.value = preferencesManager.lowLatencyMode
+        _audioNormalizationEnabled.value = preferencesManager.audioNormalizationEnabled
+        _adaptiveQualityEnabled.value = preferencesManager.adaptiveQualityEnabled
+        _reducedMotion.value = preferencesManager.reducedMotion
+        _highContrastFocus.value = preferencesManager.highContrastFocus
+        _largeText.value = preferencesManager.largeText
+        _spokenScoreSummaries.value = preferencesManager.spokenScoreSummaries
+        _scoreSaverEnabled.value = preferencesManager.scoreSaverEnabled
     }
 
     fun saveConfiguration(): Boolean {

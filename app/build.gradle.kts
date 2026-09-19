@@ -24,8 +24,8 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0-beta1"
+        versionCode = 2
+        versionName = "1.0-beta2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

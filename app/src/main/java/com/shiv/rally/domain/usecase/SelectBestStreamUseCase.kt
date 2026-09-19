@@ -24,7 +24,8 @@ class SelectBestStreamUseCase @Inject constructor(
     private val stremioRepository: StremioRepository,
     private val matcherService: MatcherService,
     private val preferencesManager: com.shiv.rally.data.local.PreferencesManager? = null,
-    private val preflightProbe: com.shiv.rally.data.remote.network.StreamPreflightProbe? = null
+    private val preflightProbe: com.shiv.rally.data.remote.network.StreamPreflightProbe? = null,
+    private val diagnostics: com.shiv.rally.data.local.RallyDiagnostics? = null
 ) {
     private val guideSemaphore = Semaphore(4)
 
@@ -112,8 +113,18 @@ class SelectBestStreamUseCase @Inject constructor(
                 .thenByDescending { it.matchConfidence }
                 .thenBy { it.title }
         )
+        val primary = candidates.firstOrNull { it.exactGameMatch && it.preflightPassed != false }
+        diagnostics?.record(
+            kind = "Stream selection",
+            message = if (primary == null) {
+                "No verified source selected for ${event.name}"
+            } else {
+                "Selected ${primary.sourceKind.name.lowercase()} source for ${event.name}"
+            },
+            detail = buildStreamSelectionTrace(candidates, primary?.id)
+        )
         StreamSelection(
-            primary = candidates.firstOrNull { it.exactGameMatch && it.preflightPassed != false },
+            primary = primary,
             candidates = candidates,
             relevantChannels = relevant.map { item ->
                 val guide = guideByChannel[item.channel.id]
@@ -123,6 +134,26 @@ class SelectBestStreamUseCase @Inject constructor(
         )
     }
 }
+
+internal fun buildStreamSelectionTrace(candidates: List<StreamCandidate>, selectedId: String? = null): String =
+    if (candidates.isEmpty()) {
+        "No direct-playable candidates were returned."
+    } else {
+        candidates.take(8).mapIndexed { index, candidate ->
+            val quality = buildList {
+                candidate.quality.resolution?.let(::add)
+                candidate.quality.fps?.let(::add)
+                if (candidate.quality.isHdr) add("HDR")
+            }.joinToString(" · ").ifBlank { "quality unknown" }
+            val eligibility = when {
+                !candidate.exactGameMatch -> "rejected: game not verified"
+                candidate.preflightPassed == false -> "rejected: preflight failed"
+                candidate.id == selectedId -> "selected"
+                else -> "fallback"
+            }
+            "${index + 1}. ${candidate.sourceKind.name.lowercase()} · $quality · $eligibility · ${candidate.matchEvidence}"
+        }.joinToString("\n")
+    }
 
 internal fun textMatchesEvent(text: String, event: SportEvent): Boolean {
     if (text.isBlank()) return false

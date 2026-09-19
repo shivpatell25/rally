@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Releases and installation
+    url: https://github.com/shivpatell25/rally/releases
+    about: Download the latest signed Rally Android TV build.

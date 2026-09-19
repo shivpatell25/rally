@@ -16,6 +16,12 @@ data class RallyDiagnosticEntry(
     val timestampMs: Long = System.currentTimeMillis()
 )
 
+internal fun sanitizeDiagnosticText(value: String): String = value
+    .replace(Regex("https?://[^\\s]+", RegexOption.IGNORE_CASE), "[redacted-url]")
+    .replace(Regex("(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", RegexOption.IGNORE_CASE), "[redacted-mac]")
+    .replace(Regex("(?i)(token|authorization|password|credential)(\\s*[:=]\\s*)[^\\s,;]+"), "\$1\$2[redacted]")
+    .replace(Regex("(?i)bearer\\s+[^\\s,;]+"), "Bearer [redacted]")
+
 /** Local-only diagnostics. No account, stream URL, token, or device identifier is uploaded. */
 @Singleton
 class RallyDiagnostics @Inject constructor(@ApplicationContext context: Context) {
@@ -24,7 +30,11 @@ class RallyDiagnostics @Inject constructor(@ApplicationContext context: Context)
     @Synchronized
     fun record(kind: String, message: String, detail: String? = null) {
         val entries = read().takeLast(19).toMutableList()
-        entries += RallyDiagnosticEntry(kind, message.take(240), detail?.take(1_500))
+        entries += RallyDiagnosticEntry(
+            kind = sanitizeDiagnosticText(kind).take(60),
+            message = sanitizeDiagnosticText(message).take(240),
+            detail = detail?.let(::sanitizeDiagnosticText)?.take(1_500)
+        )
         val array = JSONArray()
         entries.forEach { entry ->
             array.put(JSONObject().apply {
@@ -63,6 +73,24 @@ class RallyDiagnostics @Inject constructor(@ApplicationContext context: Context)
 
     @Synchronized
     fun clear() = runCatching { file.delete() }.let { Unit }
+
+    fun exportReport(appVersion: String, deviceSummary: String): String = buildString {
+        appendLine("Rally support report")
+        appendLine("App: ${sanitizeDiagnosticText(appVersion)}")
+        appendLine("Device: ${sanitizeDiagnosticText(deviceSummary)}")
+        appendLine("Generated: ${java.time.Instant.now()}")
+        appendLine("Privacy: stream URLs, credentials, tokens, MAC addresses and device identifiers are redacted.")
+        appendLine()
+        val entries = read()
+        if (entries.isEmpty()) {
+            appendLine("No local issues have been recorded.")
+        } else {
+            entries.forEach { entry ->
+                appendLine("[${java.time.Instant.ofEpochMilli(entry.timestampMs)}] ${entry.kind}: ${entry.message}")
+                entry.detail?.let { appendLine("  $it") }
+            }
+        }
+    }
 
     fun installCrashHandler() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()

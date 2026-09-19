@@ -34,8 +34,9 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.shiv.rally.presentation.theme.AppleTvTheme
 import com.shiv.rally.presentation.theme.LocalRallyAccessibility
+import com.shiv.rally.presentation.theme.RallyLayout
 
-private val skeletonShape = RoundedCornerShape(10.dp)
+private val skeletonShape = RallyLayout.CardCorner
 
 @Composable
 fun RallyDashboardSkeleton(modifier: Modifier = Modifier) {
@@ -48,7 +49,11 @@ fun RallyDashboardSkeleton(modifier: Modifier = Modifier) {
         label = "skeleton-alpha"
     )
     val alpha = if (reducedMotion) .5f else animatedAlpha
-    Column(modifier.fillMaxSize().padding(horizontal = 30.dp, vertical = 18.dp).alpha(alpha)) {
+    Column(
+        modifier.fillMaxSize()
+            .padding(horizontal = RallyLayout.SafeHorizontal, vertical = 18.dp)
+            .alpha(alpha)
+    ) {
         Box(Modifier.fillMaxWidth().height(235.dp).clip(skeletonShape).background(Color(0xFF15202C)).border(1.dp, AppleTvTheme.GlassBorder, skeletonShape))
         Spacer(Modifier.height(16.dp))
         Box(Modifier.width(130.dp).height(14.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF273442)))

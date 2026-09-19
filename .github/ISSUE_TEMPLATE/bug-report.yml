@@ -1,0 +1,52 @@
+name: Beta bug report
+description: Report a repeatable playback, navigation, data, or stability problem.
+title: "[Bug] "
+labels: [bug, beta]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Playback
+        - IPTV or EPG matching
+        - Stremio discovery
+        - Navigation or focus
+        - Game View or highlights
+        - Multi-View
+        - Performance
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: TV device and Android version
+      placeholder: Chromecast with Google TV 4K, Android 12
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Rally version
+      placeholder: 1.0-beta2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: Describe the exact remote inputs and screen sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Rally support report
+      description: Export this from Settings → Support. Review it before attaching; Rally redacts credentials and stream URLs automatically.

@@ -320,6 +320,11 @@ class PlayerViewModel @Inject constructor(
 
     fun reportPlaybackReady(streamUrl: String, startupMs: Long) {
         preferencesManager.recordStreamSuccess(streamUrl, startupMs.coerceAtLeast(0L))
+        diagnostics?.record(
+            kind = "Playback ready",
+            message = "Stream started in ${startupMs.coerceAtLeast(0L)} ms",
+            detail = "Recovery attempt ${(_uiState.value as? PlayerUiState.Success)?.recoveryAttempt ?: 0}"
+        )
         val current = _uiState.value as? PlayerUiState.Success ?: return
         if (current.streamUrl == streamUrl && current.recoveryStatus != null) {
             _uiState.value = current.copy(recoveryStatus = null, autoRecoveryExhausted = false)
@@ -328,6 +333,7 @@ class PlayerViewModel @Inject constructor(
 
     fun reportPlaybackStall(streamUrl: String) {
         preferencesManager.recordStreamStall(streamUrl)
+        diagnostics?.record("Playback stall", "Playback entered buffering after startup")
     }
 
     fun recoverFromPlaybackFailure(reason: String) {
@@ -339,7 +345,7 @@ class PlayerViewModel @Inject constructor(
         failedPlaybackTargets += activeChannelId
         recoveryJob = viewModelScope.launch(ioDispatcher) {
             val event = current.event
-            if (event == null || current.recoveryAttempt >= 2) {
+            if (event == null || current.recoveryAttempt >= 3) {
                 _uiState.value = current.copy(autoRecoveryExhausted = true, recoveryStatus = null, terminalPlaybackError = reason)
                 return@launch
             }
@@ -354,6 +360,11 @@ class PlayerViewModel @Inject constructor(
                 val latest = _uiState.value as? PlayerUiState.Success ?: current
                 _uiState.value = latest.copy(autoRecoveryExhausted = true, recoveryStatus = null, terminalPlaybackError = reason)
             } else {
+                diagnostics?.record(
+                    kind = "Playback recovery",
+                    message = "Switching to ${next.sourceKind.name.lowercase()} fallback",
+                    detail = "${next.quality.resolution ?: "Unknown quality"} · ${next.matchEvidence}"
+                )
                 loadStream(
                     channelTarget = next.playbackTarget,
                     overrideEvent = event,

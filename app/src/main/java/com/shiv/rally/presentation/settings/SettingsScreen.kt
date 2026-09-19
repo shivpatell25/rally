@@ -2,6 +2,11 @@
 
 package com.shiv.rally.presentation.settings
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -38,6 +43,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -51,8 +57,11 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
 import com.shiv.rally.R
+import com.shiv.rally.BuildConfig
+import com.shiv.rally.data.update.RallyUpdateState
 import com.shiv.rally.presentation.home.formatLeagueDisplayName
 import com.shiv.rally.presentation.theme.AppleTvTheme
+import com.shiv.rally.presentation.theme.RallyLayout
 import kotlinx.coroutines.delay
 
 private enum class SettingsSection(val title: String, val subtitle: String) {
@@ -60,12 +69,13 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     SPORTS("Sports", "Leagues and order"),
     TEAMS("Teams", "Favorite clubs"),
     ALERTS("Alerts", "Live notifications"),
-    VIEWING("Viewing", "Playback and access")
+    VIEWING("Viewing", "Playback and access"),
+    SUPPORT("Support", "About and diagnostics")
 }
 
-private val sectionShape = RoundedCornerShape(8.dp)
-private val panelShape = RoundedCornerShape(10.dp)
-private val pillShape = RoundedCornerShape(8.dp)
+private val sectionShape = RallyLayout.ControlCorner
+private val panelShape = RallyLayout.CardCorner
+private val pillShape = RallyLayout.ControlCorner
 
 @Composable
 private fun settingsFieldColors() = OutlinedTextFieldDefaults.colors(
@@ -107,6 +117,31 @@ fun SettingsScreen(
     val adaptiveQualityEnabled by viewModel.adaptiveQualityEnabled.collectAsStateWithLifecycle()
     val providerDiagnostics by viewModel.providerDiagnostics.collectAsStateWithLifecycle()
     val error by viewModel.configurationError.collectAsStateWithLifecycle()
+    val supportMessage by viewModel.supportMessage.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    val diagnosticsExport = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        val saved = uri != null && writeTextDocument(context, uri, viewModel.exportDiagnostics())
+        viewModel.reportExportResult("Support report", saved)
+    }
+    val preferencesExport = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val saved = uri != null && writeTextDocument(context, uri, viewModel.exportPreferences())
+        viewModel.reportExportResult("Preferences backup", saved)
+    }
+    val preferencesImport = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            val raw = readTextDocument(context, uri)
+            if (raw != null) viewModel.importPreferences(raw)
+            else viewModel.reportExportResult("Preferences backup", false)
+        }
+    }
 
     var section by remember { mutableStateOf(SettingsSection.SOURCES) }
     val fallbackFocus = remember { FocusRequester() }
@@ -219,6 +254,21 @@ fun SettingsScreen(
                     onToggleAudioNormalization = viewModel::toggleAudioNormalization,
                     onToggleAdaptiveQuality = viewModel::toggleAdaptiveQuality
                 )
+                SettingsSection.SUPPORT -> SupportSettings(
+                    diagnostics = providerDiagnostics,
+                    message = supportMessage,
+                    updateState = updateState,
+                    onRunDiagnostics = viewModel::runProviderDiagnostics,
+                    onExportDiagnostics = { diagnosticsExport.launch("rally-support-${BuildConfig.VERSION_NAME}.txt") },
+                    onClearDiagnostics = viewModel::clearLocalDiagnostics,
+                    onExportPreferences = { preferencesExport.launch("rally-preferences.json") },
+                    onImportPreferences = { preferencesImport.launch(arrayOf("application/json", "text/plain")) },
+                    onCheckForUpdates = viewModel::checkForUpdates,
+                    onDownloadUpdate = viewModel::downloadUpdate,
+                    onInstallUpdate = viewModel::installUpdate,
+                    onOpenPrivacy = { openExternalPage(context, "https://github.com/shivpatell25/rally/blob/main/PRIVACY.md") },
+                    onOpenReleases = { openExternalPage(context, "https://github.com/shivpatell25/rally/releases") }
+                )
             }
         }
     }
@@ -308,9 +358,134 @@ private fun AlertsSettings(
 }
 
 @Composable
+private fun SupportSettings(
+    diagnostics: ProviderDiagnosticsState,
+    message: String?,
+    updateState: RallyUpdateState,
+    onRunDiagnostics: () -> Unit,
+    onExportDiagnostics: () -> Unit,
+    onClearDiagnostics: () -> Unit,
+    onExportPreferences: () -> Unit,
+    onImportPreferences: () -> Unit,
+    onCheckForUpdates: () -> Unit,
+    onDownloadUpdate: () -> Unit,
+    onInstallUpdate: () -> Unit,
+    onOpenPrivacy: () -> Unit,
+    onOpenReleases: () -> Unit
+) {
+    SettingsPage("Support", "Private diagnostics, portable preferences, and release information.") {
+        SettingsPanel("Rally for Android TV", "Version ${BuildConfig.VERSION_NAME} · Build ${BuildConfig.VERSION_CODE}") {
+            Text(
+                "Sports, kept simple. Rally combines public sports data with sources you configure and control.",
+                color = AppleTvTheme.TextSecondary,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                SettingsButton("Release notes", onOpenReleases)
+                SettingsButton("Privacy policy", onOpenPrivacy)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        SettingsPanel("Software updates", "Signed releases from Rally's official GitHub repository") {
+            val updateCopy = when (updateState) {
+                RallyUpdateState.Idle -> "Check GitHub Releases for a newer signed build."
+                RallyUpdateState.Checking -> "Checking GitHub Releases…"
+                is RallyUpdateState.UpToDate -> "Rally ${updateState.version} is up to date."
+                is RallyUpdateState.Available -> "${updateState.release.title} is available · ${formatFileSize(updateState.release.assetSize)}"
+                is RallyUpdateState.Downloading -> "Downloading ${updateState.release.tag} · ${updateState.progress}%"
+                is RallyUpdateState.Ready -> "${updateState.release.tag} is downloaded and its Rally signature is verified."
+                is RallyUpdateState.PermissionRequired -> "Allow Rally to install unknown apps, then select Install update again."
+                is RallyUpdateState.Error -> updateState.message
+            }
+            Text(updateCopy, color = AppleTvTheme.TextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
+            if (updateState is RallyUpdateState.Available && updateState.release.notes.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    updateState.release.notes.lineSequence().take(3).joinToString(" "),
+                    color = AppleTvTheme.TextTertiary,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            when (updateState) {
+                is RallyUpdateState.Available -> SettingsButton("Download update", onDownloadUpdate, primary = true)
+                is RallyUpdateState.Ready, is RallyUpdateState.PermissionRequired -> SettingsButton("Install update", onInstallUpdate, primary = true)
+                is RallyUpdateState.Downloading -> SettingsButton("Downloading…", {}, enabled = false)
+                RallyUpdateState.Checking -> SettingsButton("Checking…", {}, enabled = false)
+                else -> SettingsButton("Check for updates", onCheckForUpdates, primary = true)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Rally never installs silently. Android's system installer always asks for confirmation.",
+                color = AppleTvTheme.TextTertiary,
+                fontSize = 9.5.sp
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        SettingsPanel("Support report", "Stored locally and scrubbed before export") {
+            Text(
+                "The report includes app, device, playback recovery, and source-ranking events. Stream URLs, credentials, tokens, MAC addresses, and device IDs are redacted.",
+                color = AppleTvTheme.TextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                SettingsButton(if (diagnostics.running) "Checking…" else "Run checks", onRunDiagnostics, enabled = !diagnostics.running)
+                SettingsButton("Export report", onExportDiagnostics, primary = true)
+                SettingsButton("Clear report", onClearDiagnostics, danger = true)
+            }
+            diagnostics.lastLocalIssue?.let {
+                Spacer(Modifier.height(10.dp))
+                DiagnosticSettingRow("Most recent issue", it)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        SettingsPanel("Preferences backup", "Moves personalization without copying provider credentials") {
+            Text(
+                "Backups include sports order, favorites, alerts, playback preferences, and accessibility settings. IPTV credentials and addon addresses stay on this TV.",
+                color = AppleTvTheme.TextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                SettingsButton("Export preferences", onExportPreferences, primary = true)
+                SettingsButton("Import preferences", onImportPreferences)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        SettingsPanel("Content and providers", "Rally does not include or sell television service") {
+            Text(
+                "Schedules and statistics come from public sports feeds. IPTV portals and Stremio addons are optional user-configured services. Use only sources and subscriptions you are authorized to access.",
+                color = AppleTvTheme.TextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+        }
+
+        message?.let {
+            Spacer(Modifier.height(14.dp))
+            Text(it, color = Color(0xFF6FCFFE), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
 private fun SettingsPage(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 46.dp, vertical = 30.dp).verticalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxSize()
+            .padding(horizontal = RallyLayout.SafeHorizontal, vertical = RallyLayout.SafeVertical)
+            .verticalScroll(rememberScrollState())
     ) {
         Text(title, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp)
         Spacer(Modifier.height(4.dp))
@@ -530,7 +705,7 @@ private fun TeamsSettings(
 
 @Composable
 private fun SettingsPanel(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(panelShape).background(AppleTvTheme.Slate).border(1.dp, Color(0x20F5F7FA), panelShape).padding(18.dp)) {
+    Column(Modifier.fillMaxWidth().clip(panelShape).background(AppleTvTheme.Slate).border(1.dp, Color(0x20F5F7FA), panelShape).padding(RallyLayout.PanelPadding)) {
         Text(title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
         Text(subtitle, color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
         Spacer(Modifier.height(15.dp))
@@ -612,6 +787,30 @@ private fun addonDisplayName(url: String): String = when {
     url.contains("highfly", true) -> "Highfly Sports"
     url.contains("nuvio", true) -> "Nuvio Live Sports"
     else -> "Custom Addon"
+}
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
+    bytes >= 1024L -> "${bytes / 1024L} KB"
+    else -> "$bytes bytes"
+}
+
+private fun writeTextDocument(context: Context, uri: Uri, value: String): Boolean = runCatching {
+    context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(value) }
+        ?: error("Unable to open the selected file")
+}.isSuccess
+
+private fun readTextDocument(context: Context, uri: Uri): String? = runCatching {
+    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        ?: error("Unable to open the selected file")
+}.getOrNull()
+
+private fun openExternalPage(context: Context, url: String) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
 }
 
 private fun teamCatalogs(): List<Pair<String, List<String>>> = listOf(

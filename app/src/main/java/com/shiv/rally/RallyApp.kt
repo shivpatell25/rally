@@ -23,6 +23,11 @@ class RallyApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         diagnostics.installCrashHandler()
+        diagnostics.record(
+            kind = "App session",
+            message = "Rally ${BuildConfig.VERSION_NAME} started",
+            detail = "Android ${android.os.Build.VERSION.RELEASE} · API ${android.os.Build.VERSION.SDK_INT}"
+        )
     }
 
     override fun newImageLoader(): ImageLoader = imageLoader
@@ -30,6 +35,7 @@ class RallyApp : Application(), ImageLoaderFactory {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            diagnostics.record("Memory pressure", "Released image and channel caches", "Trim level $level")
             imageLoader.memoryCache?.clear()
             iptvRepository.clearMemoryCache()
         }
@@ -37,6 +43,7 @@ class RallyApp : Application(), ImageLoaderFactory {
 
     override fun onLowMemory() {
         super.onLowMemory()
+        diagnostics.record("Memory pressure", "System reported low memory; caches released")
         imageLoader.memoryCache?.clear()
         iptvRepository.clearMemoryCache()
     }

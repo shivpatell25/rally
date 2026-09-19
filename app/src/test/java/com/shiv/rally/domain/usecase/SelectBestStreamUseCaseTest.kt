@@ -8,6 +8,8 @@ import com.shiv.rally.domain.model.MatchResult
 import com.shiv.rally.domain.model.RelevantChannel
 import com.shiv.rally.domain.model.SportEvent
 import com.shiv.rally.domain.model.StreamSourceKind
+import com.shiv.rally.domain.model.StreamCandidate
+import com.shiv.rally.domain.model.StreamQualityInfo
 import com.shiv.rally.domain.model.StremioStreamOption
 import com.shiv.rally.domain.model.Team
 import com.shiv.rally.domain.repository.IptvRepository
@@ -110,6 +112,34 @@ class SelectBestStreamUseCaseTest {
     fun `event matching accepts team nicknames and abbreviations`() {
         assertTrue(textMatchesEvent("BAL Ravens vs KC Chiefs", event))
         assertFalse(textMatchesEvent("Bills vs Dolphins", event))
+    }
+
+    @Test
+    fun `selection trace explains selected and rejected candidates without targets`() {
+        val selected = StreamCandidate(
+            id = "stremio:selected",
+            playbackTarget = "https://secret.example/live.m3u8",
+            title = "Official game feed",
+            sourceKind = StreamSourceKind.STREMIO,
+            quality = StreamQualityInfo(resolution = "1080p", fps = "60 fps", is60Fps = true),
+            qualityRank = 530,
+            exactGameMatch = true,
+            matchConfidence = .98f,
+            matchEvidence = "Exact event match"
+        )
+        val rejected = selected.copy(
+            id = "iptv:wrong",
+            playbackTarget = "44",
+            sourceKind = StreamSourceKind.IPTV,
+            exactGameMatch = false,
+            matchEvidence = "Different program"
+        )
+
+        val trace = buildStreamSelectionTrace(listOf(selected, rejected), selected.id)
+
+        assertTrue(trace.contains("selected"))
+        assertTrue(trace.contains("rejected: game not verified"))
+        assertFalse(trace.contains("secret.example"))
     }
 
     private fun resolver(
