@@ -5,6 +5,17 @@ plugins {
     id("com.google.dagger.hilt.android")
 }
 
+val rallyKeystorePath = providers.environmentVariable("RALLY_KEYSTORE_PATH").orNull
+val rallyKeystorePassword = providers.environmentVariable("RALLY_KEYSTORE_PASSWORD").orNull
+val rallyKeyAlias = providers.environmentVariable("RALLY_KEY_ALIAS").orNull
+val rallyKeyPassword = providers.environmentVariable("RALLY_KEY_PASSWORD").orNull
+val hasReleaseSigning = listOf(
+    rallyKeystorePath,
+    rallyKeystorePassword,
+    rallyKeyAlias,
+    rallyKeyPassword
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "com.shiv.rally"
     compileSdk = 34
@@ -14,7 +25,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0-beta1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -22,8 +33,19 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(requireNotNull(rallyKeystorePath))
+                storePassword = rallyKeystorePassword
+                keyAlias = rallyKeyAlias
+                keyPassword = rallyKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

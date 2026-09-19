@@ -2,6 +2,10 @@
 .gradle/
 .idea/
 local.properties
+.signing/
+*.jks
+*.keystore
+keystore.properties
 
 # Build products
 **/build/
