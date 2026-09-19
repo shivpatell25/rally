@@ -1,8 +1,12 @@
 name: Signed Android Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub release tag to build and update
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,6 +17,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -35,6 +41,7 @@ jobs:
       - name: Name and publish APK
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk "rally-${GITHUB_REF_NAME}.apk"
-          gh release upload "$GITHUB_REF_NAME" "rally-${GITHUB_REF_NAME}.apk" --clobber
+          cp app/build/outputs/apk/release/app-release.apk "rally-${RELEASE_TAG}.apk"
+          gh release upload "$RELEASE_TAG" "rally-${RELEASE_TAG}.apk" --clobber

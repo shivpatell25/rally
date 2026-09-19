@@ -16,7 +16,7 @@ The keystore itself must also be kept in a separate encrypted backup. Every upda
 1. Increment `versionCode` and `versionName` in `app/build.gradle.kts`.
 2. Merge a green Android CI build to `main`.
 3. Create a GitHub prerelease and tag such as `v1.0-beta2`.
-4. The tag workflow builds, tests, signs, optimizes, and uploads `rally-v1.0-beta2.apk` to that release.
+4. Upload the locally verified signed APK, or manually run the signed-release workflow for that tag after configuring the repository secrets.
 5. Verify the APK signature and SHA-256 digest before announcing the release.
 
 Never commit a keystore, password, provider credential, local properties file, or APK.
