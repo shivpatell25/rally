@@ -1,4 +1,3 @@
-# Rally
 
 <img src="Rally_Brand_Kit/02_Wordmark/rally_wordmark_color_transparent_1024.png" alt="Rally wordmark" width="320">
 
