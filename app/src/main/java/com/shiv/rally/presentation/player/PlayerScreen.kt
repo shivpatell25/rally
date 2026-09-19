@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,6 +57,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -303,6 +307,7 @@ fun PlayerContent(
     onNavigateToMultiView: (channelId: String, eventId: String?, pairedEventId: String?) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var controlsVisible by remember(streamUrl) { mutableStateOf(event == null) }
     var gameViewVisible by remember(streamUrl) { mutableStateOf(event != null) }
     var gameViewOverlayVisible by remember(streamUrl) { mutableStateOf(event != null) }
@@ -316,6 +321,7 @@ fun PlayerContent(
     var diagnosticsVisible by remember { mutableStateOf(false) }
     var diagnosticsSnapshot by remember { mutableStateOf(PlaybackDiagnostics()) }
     var canRestart by remember(streamUrl) { mutableStateOf(false) }
+    var firstFrameRendered by remember(streamUrl) { mutableStateOf(false) }
     var interactionVersion by remember { mutableIntStateOf(0) }
     val rootFocus = remember { FocusRequester() }
     val controlFocus = remember { FocusRequester() }
@@ -395,6 +401,7 @@ fun PlayerContent(
     }
     val exoPlayer = playbackSession.player
     val trackSelector = playbackSession.trackSelector
+    val highlightsAreVisible by rememberUpdatedState(currentHighlightsVisible)
     val playbackStartedAt = remember(streamUrl) { android.os.SystemClock.elapsedRealtime() }
     var readyReported by remember(streamUrl) { mutableStateOf(false) }
     var stallReportedAt by remember(streamUrl) { mutableStateOf(0L) }
@@ -402,6 +409,25 @@ fun PlayerContent(
     var highlightsSessionStarted by remember(streamUrl) { mutableStateOf(false) }
     var liveWasPlayingBeforeHighlights by remember(streamUrl) { mutableStateOf(true) }
     var liveVolumeBeforeHighlights by remember(streamUrl) { mutableStateOf(1f) }
+
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        var resumeAfterForeground = false
+        val observer = LifecycleEventObserver { _, lifecycleEvent ->
+            when (lifecycleEvent) {
+                Lifecycle.Event.ON_STOP -> {
+                    resumeAfterForeground = exoPlayer.playWhenReady && !highlightsAreVisible
+                    exoPlayer.pause()
+                }
+                Lifecycle.Event.ON_START -> if (resumeAfterForeground && !highlightsAreVisible) {
+                    exoPlayer.playWhenReady = true
+                    resumeAfterForeground = false
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(currentHighlightsVisible, exoPlayer) {
         if (currentHighlightsVisible) {
@@ -464,6 +490,10 @@ fun PlayerContent(
                 }
             }
 
+            override fun onRenderedFirstFrame() {
+                firstFrameRendered = true
+            }
+
             override fun onTracksChanged(tracks: Tracks) {
                 tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO }?.let { group ->
                     (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { index ->
@@ -514,6 +544,7 @@ fun PlayerContent(
     LaunchedEffect(exoPlayer, streamUrl) {
         streamSpecs = VideoStreamSpecs()
         playbackError = null
+        firstFrameRendered = false
         if (streamUrl.isBlank()) {
             playbackError = "No playable URL was returned for this source."
         } else {
@@ -536,6 +567,31 @@ fun PlayerContent(
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
             }.onFailure { onPlaybackFailure(it.localizedMessage ?: "Unable to start playback.") }
+        }
+    }
+
+    LaunchedEffect(exoPlayer, streamUrl, currentHighlightsVisible) {
+        if (currentHighlightsVisible || streamUrl.isBlank()) return@LaunchedEffect
+        // Media3 can remain READY with audio while a hardware decoder or surface
+        // silently stops producing video. Detect that state and let the existing
+        // verified-source recovery path take over instead of leaving a black screen.
+        delay(8_000)
+        var lastRenderedFrames = exoPlayer.videoDecoderCounters?.renderedOutputBufferCount ?: 0
+        var stagnantSamples = 0
+        while (true) {
+            delay(4_000)
+            val renderedFrames = exoPlayer.videoDecoderCounters?.renderedOutputBufferCount ?: 0
+            val expectsVideo = exoPlayer.playWhenReady && exoPlayer.playbackState == Player.STATE_READY
+            if (expectsVideo) {
+                stagnantSamples = if (!firstFrameRendered || renderedFrames <= lastRenderedFrames) stagnantSamples + 1 else 0
+                if (stagnantSamples >= 2) {
+                    onPlaybackFailure("The video decoder stopped rendering. Trying another verified source.")
+                    break
+                }
+            } else {
+                stagnantSamples = 0
+            }
+            lastRenderedFrames = renderedFrames
         }
     }
 
@@ -1492,9 +1548,9 @@ private fun GameInformationPanel(
             }
             Spacer(Modifier.height(10.dp))
             if (selectedTab == 1) {
-                val tables = event.playerStatTables
-                    .distinctBy { it.teamId ?: it.teamAbbreviation }
-                    .take(2)
+                val tables = remember(event.playerStatTables) {
+                    event.playerTablesForDisplay(teamLimit = 2, rowLimit = 4)
+                }
                 if (tables.isNotEmpty()) {
                     Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(13.dp)) {
                         tables.forEach { table ->

@@ -70,6 +70,7 @@ import com.shiv.rally.domain.model.parseQualityFromChannelName
 import com.shiv.rally.domain.model.resolveMaxBroadcastQuality
 import com.shiv.rally.presentation.home.formatLeagueDisplayName
 import com.shiv.rally.presentation.home.formatTeamDisplayName
+import com.shiv.rally.presentation.player.playerTablesForDisplay
 import com.shiv.rally.presentation.home.getHeroColorBackdrop
 import com.shiv.rally.presentation.theme.AppleTvTheme
 import com.shiv.rally.presentation.theme.RallyBodyFont
@@ -631,7 +632,9 @@ private fun EventHighlightsPanel(event: SportEvent, onPlay: (String) -> Unit) {
 
 @Composable
 private fun PlayerTablePanel(event: SportEvent) {
-    val tables = event.playerStatTables.take(2)
+    val tables = remember(event.playerStatTables) {
+        event.playerTablesForDisplay(teamLimit = 2, rowLimit = 6)
+    }
     Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
         PanelHeader("PLAYER PERFORMANCE", "OFFICIAL BOX SCORE")
         Spacer(Modifier.height(9.dp))

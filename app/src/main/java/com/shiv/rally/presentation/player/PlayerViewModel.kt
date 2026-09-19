@@ -352,9 +352,8 @@ class PlayerViewModel @Inject constructor(
             val selection = runCatching {
                 selectBestStream(event, precomputedKnownChannels(current), current.stremioStreams)
             }.getOrNull()
-            val next = selection?.candidates?.firstOrNull { candidate ->
-                candidate.playbackTarget !in failedPlaybackTargets &&
-                    decodePlayerTarget(candidate.playbackTarget) !in failedPlaybackTargets
+            val next = selection?.candidates?.let { candidates ->
+                chooseRecoveryCandidate(candidates, failedPlaybackTargets)
             }
             if (next == null) {
                 val latest = _uiState.value as? PlayerUiState.Success ?: current
@@ -387,6 +386,21 @@ class PlayerViewModel @Inject constructor(
 internal fun decodePlayerTarget(value: String): String = runCatching {
     URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8.name())
 }.getOrDefault(value)
+
+internal fun chooseRecoveryCandidate(
+    candidates: List<StreamCandidate>,
+    failedTargets: Set<String>
+): StreamCandidate? {
+    val normalizedFailures = failedTargets.flatMap { target ->
+        listOf(target, decodePlayerTarget(target))
+    }.toSet()
+    return candidates.firstOrNull { candidate ->
+        candidate.exactGameMatch &&
+            candidate.preflightPassed != false &&
+            candidate.playbackTarget !in normalizedFailures &&
+            decodePlayerTarget(candidate.playbackTarget) !in normalizedFailures
+    }
+}
 
 internal fun inferEventForChannel(
     channel: IptvChannel,

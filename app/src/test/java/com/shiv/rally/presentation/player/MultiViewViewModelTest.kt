@@ -197,4 +197,23 @@ class MultiViewViewModelTest {
         viewModel.setLayoutMode(MultiViewLayoutMode.QUAD_GRID)
         assertEquals(MultiViewLayoutMode.QUAD_GRID, viewModel.uiState.value.layoutMode)
     }
+
+    @Test
+    fun retryKeepsTheSelectedSourceInsteadOfRunningAutoSelectionAgain() = runTest(testDispatcher) {
+        val viewModel = createViewModel(SavedStateHandle(mapOf("eventIds" to "event_1")))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val before = viewModel.uiState.value.slots.single()
+        assertEquals("chan_1", before.sourcePlaybackTarget)
+        assertEquals("iptv:chan_1", before.selectedSourceId)
+
+        viewModel.retrySlot(0)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val after = viewModel.uiState.value.slots.single()
+        assertEquals(before.sourcePlaybackTarget, after.sourcePlaybackTarget)
+        assertEquals(before.selectedSourceId, after.selectedSourceId)
+        assertEquals(before.playbackRevision + 1, after.playbackRevision)
+        assertEquals("http://fake.stream/chan_1.m3u8", after.streamUrl)
+    }
 }

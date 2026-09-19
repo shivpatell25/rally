@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -433,6 +437,7 @@ private fun MultiViewGrid(
         val slot = slots[index]
         MultiViewSlotItem(
             slot = slot,
+            slotIndex = index,
             slotCount = slots.size,
             isFocused = focusedIndex == index,
             isAudioActive = audioIndex == index,
@@ -499,6 +504,7 @@ private fun MultiViewGrid(
 @Composable
 private fun MultiViewSlotItem(
     slot: MultiViewSlot,
+    slotIndex: Int,
     slotCount: Int,
     isFocused: Boolean,
     isAudioActive: Boolean,
@@ -511,15 +517,16 @@ private fun MultiViewSlotItem(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var hasFocus by remember { mutableStateOf(false) }
-    var playbackError by remember(slot.slotId) { mutableStateOf<String?>(null) }
-    var resolution by remember(slot.slotId) { mutableStateOf<String?>(null) }
+    var playbackError by remember(slot.slotId, slot.playbackRevision) { mutableStateOf<String?>(null) }
+    var resolution by remember(slot.slotId, slot.playbackRevision) { mutableStateOf<String?>(null) }
     val safeHeaders = remember(slot.streamHeaders) { sanitizedStreamHeaders(slot.streamHeaders) }
     val isExternal = slot.channel == null
     val initialMaxHeight = if (slotCount <= 2) 720 else 480
     val initialMaxWidth = if (slotCount <= 2) 1280 else 854
     val initialMaxBitrate = if (slotCount <= 2) 2_500_000 else 1_200_000
-    val playbackSession = remember(context, slot.slotId, slot.streamUrl, safeHeaders, isExternal, macAddress, token) {
+    val playbackSession = remember(context, slot.slotId, slot.streamUrl, slot.playbackRevision, safeHeaders, isExternal, macAddress, token) {
         if (slot.streamUrl.isBlank()) null else {
             val sessionTrackSelector = DefaultTrackSelector(context).apply {
                 parameters = buildUponParameters()
@@ -570,6 +577,26 @@ private fun MultiViewSlotItem(
     }
     val exoPlayer = playbackSession?.player
     val trackSelector = playbackSession?.trackSelector
+    val currentPlayer by rememberUpdatedState(exoPlayer)
+
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        var resumeAfterForeground = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    resumeAfterForeground = currentPlayer?.playWhenReady == true
+                    currentPlayer?.pause()
+                }
+                Lifecycle.Event.ON_START -> if (resumeAfterForeground) {
+                    currentPlayer?.playWhenReady = true
+                    resumeAfterForeground = false
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(exoPlayer, isAudioActive, slotCount) {
         exoPlayer?.let { player ->
@@ -591,7 +618,7 @@ private fun MultiViewSlotItem(
         }
     }
 
-    DisposableEffect(exoPlayer, slot.streamUrl) {
+    DisposableEffect(exoPlayer) {
         if (exoPlayer == null) return@DisposableEffect onDispose { }
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
@@ -614,15 +641,22 @@ private fun MultiViewSlotItem(
             }
         }
         exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+            exoPlayer.release()
+        }
+    }
+
+    LaunchedEffect(exoPlayer, slot.streamUrl, slot.playbackRevision) {
+        if (exoPlayer == null || slot.streamUrl.isBlank()) return@LaunchedEffect
+        // Starting several hardware decoders on the same frame causes large CPU,
+        // allocator, and network spikes on low-end Android TV devices.
+        delay((slotIndex * 140L).coerceAtMost(420L))
         runCatching {
             exoPlayer.setMediaItem(MediaItem.fromUri(Uri.parse(slot.streamUrl)))
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
         }.onFailure { playbackError = it.localizedMessage ?: "Unable to start stream" }
-        onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
-        }
     }
 
     val activeError = slot.error ?: playbackError

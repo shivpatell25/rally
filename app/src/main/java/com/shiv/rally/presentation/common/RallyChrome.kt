@@ -32,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -283,6 +284,8 @@ fun RallyControlButton(
     enabled: Boolean = true
 ) {
     var focused by remember(label) { mutableStateOf(false) }
+    val currentOnClick by rememberUpdatedState(onClick)
+    val actionGate = remember { TvActionGate(450L) }
     val accessibility = LocalRallyAccessibility.current
     val foreground = if (primary) AppleTvTheme.DeepNavy else AppleTvTheme.OffWhite
     val surface = when {
@@ -306,7 +309,9 @@ fun RallyControlButton(
                 },
                 shape = AppleTvTheme.ButtonShape
             )
-            .clickable(enabled = enabled && !loading, onClick = onClick)
+            .clickable(enabled = enabled && !loading) {
+                if (actionGate.tryAcquire("activate")) currentOnClick()
+            }
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
