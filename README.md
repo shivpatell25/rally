@@ -65,6 +65,6 @@ The application is tuned for memory-constrained TV devices:
 
 The app does not ship IPTV credentials. Tokens are not written to logs, release HTTP logging is disabled, and request headers from third-party stream addons are allowlisted before playback. Users are responsible for using subscriptions and addons they are authorized to access.
 
-Credit to Jacob Halladay for testing .ipa on Apple tvOS
+Credit to Jacob Halladay for testing (alpha) .ipa on Apple tvOS
 
 See the full [privacy policy](PRIVACY.md) and [content/provider disclosure](CONTENT_SOURCES.md).
