@@ -152,7 +152,9 @@ object DataModule {
             .retryOnConnectionFailure(true)
             .build()
         return Retrofit.Builder()
-            .baseUrl("https://sports.highfly.dev/")
+            // Retrofit requires a base URL, but every Stremio request is supplied
+            // as a complete user-configured addon URL via @Url.
+            .baseUrl("https://rally.invalid/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

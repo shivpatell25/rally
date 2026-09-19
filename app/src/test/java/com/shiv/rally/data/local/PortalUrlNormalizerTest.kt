@@ -27,7 +27,10 @@ class PortalUrlNormalizerTest {
             "https://addon.example.com/manifest.json",
             PortalUrlNormalizer.normalizeAddon("addon.example.com")
         )
+        assertEquals(
+            "https://sports.example.to/manifest.json",
+            PortalUrlNormalizer.normalizeAddon("https://sports.example.to")
+        )
         assertNull(PortalUrlNormalizer.normalizeAddon("not a url"))
     }
 }
-

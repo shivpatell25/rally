@@ -1,7 +1,6 @@
 package com.shiv.rally.data.remote.stremio
 
 import retrofit2.http.GET
-import retrofit2.http.Path
 import retrofit2.http.Url
 
 interface StremioApi {
@@ -15,24 +14,6 @@ interface StremioApi {
     @GET
     suspend fun getStreamsByUrl(@Url streamUrl: String): StremioStreamResponse
 
-    @GET("catalog/{type}/{id}.json")
-    suspend fun getCatalog(
-        @Path("type") type: String,
-        @Path("id") id: String
-    ): StremioCatalogResponse
-
-    @GET("catalog/{type}/{id}/{extra}.json")
-    suspend fun getCatalogWithExtra(
-        @Path("type") type: String,
-        @Path("id") id: String,
-        @Path("extra") extra: String
-    ): StremioCatalogResponse
-
-    @GET("stream/{type}/{id}.json")
-    suspend fun getStreams(
-        @Path("type") type: String,
-        @Path("id") id: String
-    ): StremioStreamResponse
 }
 
 data class StremioManifest(
