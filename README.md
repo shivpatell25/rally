@@ -61,8 +61,10 @@ The application is tuned for memory-constrained TV devices:
 - Multi-View streams are capped at 720p, 30 fps, and 2.5 Mbps per slot
 - Release builds enable R8 code shrinking and resource shrinking
 
-## Data and privacy
+## Data and privacy and credits
 
 The app does not ship IPTV credentials. Tokens are not written to logs, release HTTP logging is disabled, and request headers from third-party stream addons are allowlisted before playback. Users are responsible for using subscriptions and addons they are authorized to access.
+
+Credit to Jacob Halladay for testing .ipa on Apple tvOS
 
 See the full [privacy policy](PRIVACY.md) and [content/provider disclosure](CONTENT_SOURCES.md).
