@@ -1,0 +1,175 @@
+SP(ATEL)ORTS CROSS-PLATFORM EXPANSION PLAN
+
+Goal
+----
+Expand the Android TV sports hub to iOS, Apple TV, macOS, and Windows without maintaining six unrelated implementations or losing the core sports, IPTV, Stremio, EPG, favorites, source-ranking, and Multi-View experiences.
+
+Product and content decisions first
+------------------------------------
+Before expanding platforms, define:
+
+- Which sports data provider powers schedules, standings, rosters, and alerts.
+- Which IPTV and Stremio sources users configure themselves.
+- What content the product has distribution rights to provide or aggregate.
+- Which features work without an account.
+- Whether alerts require a backend service.
+
+The content-rights, provider-credential, and platform-distribution requirements need to be reviewed for every target platform, especially Apple platforms.
+
+Recommended architecture
+------------------------
+Separate reusable product logic from platform-specific UI and playback:
+
+shared/
+  models
+  networking
+  favorites
+  EPG parsing
+  stream matching
+  source ranking
+  caching
+  alerts
+
+androidApp/
+  Android TV Compose UI
+  Media3/ExoPlayer playback
+  Android TV remote and focus behavior
+
+appleApp/
+  SwiftUI iOS and tvOS UI
+  AVPlayer playback
+  Siri Remote and Apple-platform focus behavior
+
+desktopApp/
+  macOS and Windows UI
+  Desktop playback integration
+
+Use Kotlin Multiplatform for the shared core. The existing domain models, repositories, Stremio logic, IPTV matching, EPG parsing, source ranking, favorites, and caching are strong candidates for extraction.
+
+Keep playback platform-specific
+-------------------------------
+Do not force one playback engine across every platform.
+
+- Android and Android TV: Media3/ExoPlayer.
+- iOS and tvOS: AVPlayer.
+- Windows and macOS: VLC, native playback, or another carefully tested desktop player.
+
+Stream-selection logic can be shared, but each platform must independently validate codecs, HDR, subtitles, DRM, network behavior, buffering, and fallback handling.
+
+Recommended rollout order
+-------------------------
+
+1. Finish and stabilize the Android TV implementation.
+2. Extract the shared Kotlin core while keeping Android tests passing.
+3. Add macOS and Windows using Compose Multiplatform.
+4. Build the iPhone and iPad UI in SwiftUI.
+5. Build the Apple TV app from the SwiftUI foundation, adapting it for Siri Remote navigation.
+6. Add platform-specific notification and background-refresh implementations.
+7. Establish a shared release and regression-testing pipeline.
+
+MacOS and Windows are useful early targets because they validate the shared architecture quickly. iOS and tvOS should follow after the stream and playback model is proven.
+
+What should be shared
+---------------------
+
+- Sports models and API clients.
+- Stremio catalog and stream parsing.
+- Stalker IPTV authentication and channel parsing.
+- EPG parsing and current/next-program matching.
+- Favorites and favorite-team migration.
+- Stream confidence, quality ranking, and automatic fallback logic.
+- Search indexing and result grouping.
+- Alert rules and event deduplication.
+- Cache policies and source-health history.
+- Tests for matching, ranking, EPG, favorites, and alerts.
+
+What should be adapted per platform
+------------------------------------
+
+- Android TV: D-pad focus, Media3, SurfaceView HDR playback, Android TV lifecycle.
+- Apple TV: Siri Remote focus, tvOS navigation, AVPlayer, Apple TV picture and audio behavior.
+- iPhone/iPad: touch gestures, portrait/landscape layouts, Picture in Picture, iOS notifications.
+- macOS: resizable windows, keyboard/mouse support, native menus, desktop playback.
+- Windows: keyboard/mouse/controller support, resizable windows, desktop playback, Microsoft Store packaging.
+
+Use one visual design system for colors, typography, spacing, card shapes, backdrops, game-card data, and navigation concepts. Adapt the interaction model so each platform feels native.
+
+Feature parity targets
+----------------------
+
+Every platform should eventually support:
+
+- Live and upcoming games.
+- Vertical game cards and sports backdrops where appropriate.
+- Favorite teams and personalized Up Next.
+- Favorite-only team pages.
+- League hubs, standings, schedules, roster data, injuries, and form.
+- EPG-aware IPTV channels with Now and Next information.
+- Unified search across games, teams, leagues, IPTV, and Stremio sources.
+- Smart source selection with Stremio quality preference and exact-game IPTV verification.
+- Stream quality and HDR diagnostics.
+- Game alerts and NFL RedZone support.
+- Multi-View where the platform can sustain multiple decoders.
+
+Multi-View differences
+----------------------
+
+Android TV should retain the TiviMate-style implementation:
+
+- Immersive edge-to-edge mode.
+- Hidden UI during playback.
+- Short Select for focus/audio behavior.
+- Hold Select for a popup menu.
+- Popup actions for adding streams, changing layouts, changing streams, removing tiles, retrying, and exiting immersive mode.
+
+On Apple TV, the same behavior should be mapped to Siri Remote click and hold interactions. On mobile, Multi-View should use touch controls instead of pretending to be a TV remote. On desktop, support mouse, keyboard, and controller shortcuts.
+
+Release infrastructure
+----------------------
+
+Create and maintain:
+
+- Apple Developer account.
+- Google Play Console account.
+- Microsoft Partner Center account.
+- Separate application IDs and bundle IDs for each platform.
+- Signing certificates and provisioning profiles.
+- CI builds for debug, beta, and production.
+- Crash reporting and playback telemetry.
+- Platform-specific store metadata and screenshots.
+- Automated unit, UI, and playback regression tests.
+
+Minimum physical-device test matrix
+------------------------------------
+
+- Chromecast with Google TV.
+- Nvidia Shield or an equivalent Android TV device.
+- iPhone and iPad.
+- Apple TV 4K.
+- Intel Mac and Apple Silicon Mac.
+- A low-end Windows machine.
+
+Important test cases
+--------------------
+
+- Low-memory Android TV playback.
+- 4K HDR on a real HDR television.
+- 4K HDR fallback to 1080p when hardware cannot sustain it.
+- Multiple simultaneous streams in Multi-View.
+- Incorrect IPTV channel names with misleading quality labels.
+- EPG programs that do and do not match the selected game.
+- Stremio streams that are higher quality than IPTV.
+- IPTV that is higher quality but does not carry the selected game.
+- Rapid remote input and repeated Select/Back/Menu events.
+- Background score and kickoff notifications.
+- Source failure and automatic fallback.
+- Loss of provider credentials or unavailable addons.
+
+Recommended technical direction
+-------------------------------
+
+Use Kotlin Multiplatform for business logic, SwiftUI for iOS and tvOS, Compose for Android TV, and Compose Multiplatform for desktop.
+
+This maximizes code reuse where behavior should be identical while keeping playback, focus, input, and window behavior native where those differences matter.
+
+The existing Android application should become the first platform implementation of a shared sports platform rather than being discarded and rebuilt independently for every device.

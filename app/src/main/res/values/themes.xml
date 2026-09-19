@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Rally" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:colorPrimary">@android:color/black</item>
+        <item name="android:colorPrimaryDark">@android:color/black</item>
+        <item name="android:colorAccent">@android:color/white</item>
+    </style>
+</resources>

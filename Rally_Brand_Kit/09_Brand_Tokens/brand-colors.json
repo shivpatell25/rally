@@ -1,0 +1,22 @@
+{
+  "brand": "Rally",
+  "colors": {
+    "rally_lime": "#EAFB78",
+    "rally_mint": "#B8F3C7",
+    "rally_cyan": "#6FCFF6",
+    "deep_navy": "#05080F",
+    "slate": "#0F1724",
+    "graphite": "#202834",
+    "off_white": "#F5F7FA"
+  },
+  "gradient": {
+    "type": "linear",
+    "angle_degrees": 0,
+    "stops": [
+      "#EAFB78",
+      "#B8F3C7",
+      "#82DDD7",
+      "#6FCFF6"
+    ]
+  }
+}

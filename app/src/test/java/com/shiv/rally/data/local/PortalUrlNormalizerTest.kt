@@ -1,0 +1,33 @@
+package com.shiv.rally.data.local
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class PortalUrlNormalizerTest {
+    @Test
+    fun `portal normalizer preserves real ports and removes endpoint suffixes`() {
+        assertEquals(
+            "http://example.com:8080/c",
+            PortalUrlNormalizer.normalizePortal("example.com:8080/c/server/load.php")
+        )
+    }
+
+    @Test
+    fun `portal normalizer repairs common remote colon typo`() {
+        assertEquals(
+            "http://tv.stream4k.cc/c",
+            PortalUrlNormalizer.normalizePortal("tv:stream4k.cc/c")
+        )
+    }
+
+    @Test
+    fun `addon normalizer only accepts valid web urls`() {
+        assertEquals(
+            "https://addon.example.com/manifest.json",
+            PortalUrlNormalizer.normalizeAddon("addon.example.com")
+        )
+        assertNull(PortalUrlNormalizer.normalizeAddon("not a url"))
+    }
+}
+

@@ -1,0 +1,5 @@
+:root {
+  --rally-lime:#EAFB78; --rally-mint:#B8F3C7; --rally-cyan:#6FCFF6;
+  --rally-deep-navy:#05080F; --rally-slate:#0F1724; --rally-graphite:#202834; --rally-off-white:#F5F7FA;
+  --rally-gradient:linear-gradient(90deg,#EAFB78 0%,#B8F3C7 42%,#82DDD7 70%,#6FCFF6 100%);
+}
