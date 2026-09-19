@@ -10,6 +10,8 @@ import com.shiv.rally.data.remote.sports.EspnRepositoryImpl
 import com.shiv.rally.data.remote.network.ResilientDns
 import com.shiv.rally.data.remote.stalker.StalkerApi
 import com.shiv.rally.data.remote.stalker.StalkerIptvRepositoryImpl
+import com.shiv.rally.data.remote.xtream.ProviderIptvRepository
+import com.shiv.rally.data.remote.xtream.XtreamApi
 import com.shiv.rally.domain.repository.IptvRepository
 import com.shiv.rally.domain.repository.SportsRepository
 import com.shiv.rally.domain.usecase.MatchEventToStreamUseCase
@@ -163,6 +165,31 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideXtreamApi(resilientDns: ResilientDns): XtreamApi {
+        val client = OkHttpClient.Builder()
+            .dns(resilientDns)
+            .addInterceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("User-Agent", "Rally/${BuildConfig.VERSION_NAME}")
+                    .header("Accept", "application/json")
+                    .build()
+                chain.proceed(request)
+            }
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .callTimeout(18, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+        return Retrofit.Builder()
+            .baseUrl("https://rally.invalid/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(XtreamApi::class.java)
+    }
+
+    @Provides
+    @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
         return Room.databaseBuilder(
             context,
@@ -195,7 +222,7 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindIptvRepository(
-        impl: StalkerIptvRepositoryImpl
+        impl: ProviderIptvRepository
     ): IptvRepository
 
     @Binds

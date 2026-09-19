@@ -24,8 +24,10 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.0-beta5"
+        // Beta 6 feature release with a monotonic Android version code so it
+        // upgrades existing beta/hotfix installations safely.
+        versionCode = 6
+        versionName = "1.0-beta6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

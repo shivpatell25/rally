@@ -1,12 +1,13 @@
 
 <img src="Rally_Brand_Kit/02_Wordmark/rally_wordmark_color_transparent_1024.png" alt="Rally wordmark" width="320">
 
-Rally is a sports-first Android TV app. It combines ESPN schedules and live data with the user's Stalker/Ministra IPTV subscription and configured Stremio addons, then presents matching streams in a cinematic, remote-first interface.
+Rally is a sports-first Android TV app. It combines ESPN schedules and live data with the user's Stalker/Ministra or Xtream IPTV subscription and configured Stremio addons, then presents matching streams in a cinematic, remote-first interface.
 
 ## Features
 
 - Live and upcoming NFL, NBA, MLB, NHL, soccer, and college events
 - Automatic matching between events and IPTV channels
+- Stalker/Ministra and Xtream Codes IPTV provider support
 - Stremio addon stream discovery and source switching
 - Full-screen playback, statistics Game View, and up to four-stream Multi-View
 - Searchable IPTV channel browser
@@ -18,7 +19,7 @@ Rally is a sports-first Android TV app. It combines ESPN schedules and live data
 
 - Presentation: Jetpack Compose, Compose for TV, MVVM, lifecycle-aware StateFlow collection
 - Domain: sports, stream, channel, quality, and matching models/use cases
-- Data: ESPN APIs, Stalker/Ministra middleware, Stremio addon APIs, Room, encrypted preferences
+- Data: ESPN APIs, Stalker/Ministra and Xtream Codes middleware, Stremio addon APIs, Room, encrypted preferences
 - Playback: AndroidX Media3 ExoPlayer with low-memory load controls and constrained Multi-View tracks
 - Dependency injection: Hilt
 
@@ -45,7 +46,7 @@ Release signing is configured through the `RALLY_KEYSTORE_PATH`, `RALLY_KEYSTORE
 
 ## Setup
 
-Open the app and enter the portal URL and MAC address supplied by the IPTV provider. Provider details are runtime settings and do not require source edits. Stremio addon manifest URLs can be added from the same screen.
+Open the app and choose the IPTV provider in Settings. For Stalker/Ministra, enter the portal URL and MAC address supplied by the provider. For Xtream Codes, enter the server URL, username, and password supplied by the provider. Provider details are runtime settings and do not require source edits. Stremio addon manifest URLs can be added from the same screen.
 
 HTTP portals are supported because some legacy Stalker providers do not offer TLS. The settings screen warns when a portal is unencrypted. Prefer HTTPS whenever the provider supports it because HTTP credentials and viewing traffic can be intercepted on the network.
 

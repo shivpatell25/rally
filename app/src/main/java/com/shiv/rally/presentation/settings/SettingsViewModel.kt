@@ -8,6 +8,7 @@ import com.shiv.rally.data.local.PortalUrlNormalizer
 import com.shiv.rally.BuildConfig
 import com.shiv.rally.data.update.RallyUpdateManager
 import com.shiv.rally.data.update.RallyUpdateState
+import com.shiv.rally.domain.model.IptvProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,11 +27,23 @@ class SettingsViewModel @Inject constructor(
     private val updateManager: RallyUpdateManager
 ) : ViewModel() {
 
+    private val _iptvProvider = MutableStateFlow(preferencesManager.iptvProvider)
+    val iptvProvider: StateFlow<IptvProvider> = _iptvProvider.asStateFlow()
+
     private val _portalUrl = MutableStateFlow(preferencesManager.portalUrl)
     val portalUrl: StateFlow<String> = _portalUrl.asStateFlow()
 
     private val _macAddress = MutableStateFlow(preferencesManager.macAddress)
     val macAddress: StateFlow<String> = _macAddress.asStateFlow()
+
+    private val _xtreamServerUrl = MutableStateFlow(preferencesManager.xtreamServerUrl)
+    val xtreamServerUrl: StateFlow<String> = _xtreamServerUrl.asStateFlow()
+
+    private val _xtreamUsername = MutableStateFlow(preferencesManager.xtreamUsername)
+    val xtreamUsername: StateFlow<String> = _xtreamUsername.asStateFlow()
+
+    private val _xtreamPassword = MutableStateFlow(preferencesManager.xtreamPassword)
+    val xtreamPassword: StateFlow<String> = _xtreamPassword.asStateFlow()
 
     private val _stremioAddonUrls = MutableStateFlow(preferencesManager.stremioAddonUrls)
     val stremioAddonUrls: StateFlow<List<String>> = _stremioAddonUrls.asStateFlow()
@@ -95,9 +108,29 @@ class SettingsViewModel @Inject constructor(
         _portalUrl.value = url
         _configurationError.value = null
     }
+
+    fun updateIptvProvider(provider: IptvProvider) {
+        _iptvProvider.value = provider
+        _configurationError.value = null
+    }
     
     fun updateMacAddress(mac: String) {
         _macAddress.value = mac
+    }
+
+    fun updateXtreamServerUrl(url: String) {
+        _xtreamServerUrl.value = url
+        _configurationError.value = null
+    }
+
+    fun updateXtreamUsername(username: String) {
+        _xtreamUsername.value = username
+        _configurationError.value = null
+    }
+
+    fun updateXtreamPassword(password: String) {
+        _xtreamPassword.value = password
+        _configurationError.value = null
     }
 
     fun updateNewAddonUrl(url: String) {
@@ -316,14 +349,25 @@ class SettingsViewModel @Inject constructor(
 
     fun saveConfiguration(): Boolean {
         val cleanUrl = PortalUrlNormalizer.normalizePortal(_portalUrl.value)
-        if (_portalUrl.value.isNotBlank() && cleanUrl.isBlank()) {
+        val cleanXtreamUrl = PortalUrlNormalizer.normalizeXtreamServer(_xtreamServerUrl.value)
+        if (_iptvProvider.value == IptvProvider.STALKER && _portalUrl.value.isNotBlank() && cleanUrl.isBlank()) {
             _configurationError.value = "Enter a valid IPTV portal URL."
             return false
         }
         val cleanMac = _macAddress.value.trim().uppercase()
-        if (cleanUrl.isNotBlank() && !cleanMac.matches(Regex("^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$"))) {
+        if (_iptvProvider.value == IptvProvider.STALKER && cleanUrl.isNotBlank() && !cleanMac.matches(Regex("^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$"))) {
             _configurationError.value = "Enter a valid MAC address using XX:XX:XX:XX:XX:XX."
             return false
+        }
+        if (_iptvProvider.value == IptvProvider.XTREAM) {
+            if (_xtreamServerUrl.value.isNotBlank() && cleanXtreamUrl.isBlank()) {
+                _configurationError.value = "Enter a valid Xtream server URL."
+                return false
+            }
+            if (cleanXtreamUrl.isBlank() || _xtreamUsername.value.trim().isBlank() || _xtreamPassword.value.isBlank()) {
+                _configurationError.value = "Enter the Xtream server URL, username, and password."
+                return false
+            }
         }
         if (_stremioAddonUrls.value.any { PortalUrlNormalizer.normalizeAddon(it) == null }) {
             _configurationError.value = "One or more Stremio addon URLs are invalid."
@@ -334,6 +378,10 @@ class SettingsViewModel @Inject constructor(
         }
         preferencesManager.portalUrl = cleanUrl
         preferencesManager.macAddress = cleanMac
+        preferencesManager.iptvProvider = _iptvProvider.value
+        preferencesManager.xtreamServerUrl = cleanXtreamUrl
+        preferencesManager.xtreamUsername = _xtreamUsername.value.trim()
+        preferencesManager.xtreamPassword = _xtreamPassword.value
         preferencesManager.stremioAddonUrls = _stremioAddonUrls.value
         preferencesManager.serialNumber = _serialNumber.value.trim()
         preferencesManager.deviceId = _deviceId.value.trim()
@@ -352,6 +400,7 @@ class SettingsViewModel @Inject constructor(
         preferencesManager.spokenScoreSummaries = _spokenScoreSummaries.value
         preferencesManager.scoreSaverEnabled = _scoreSaverEnabled.value
         preferencesManager.authToken = "" // Invalidate cached token so new handshake is forced
+        iptvRepository.clearMemoryCache()
         preferencesManager.setupComplete = true
         _configurationError.value = null
         return true

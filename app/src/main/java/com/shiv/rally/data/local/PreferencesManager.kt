@@ -8,6 +8,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import java.security.SecureRandom
 import com.shiv.rally.domain.model.FavoriteTeam
+import com.shiv.rally.domain.model.IptvProvider
 
 @Singleton
 class PreferencesManager @Inject constructor(@ApplicationContext context: Context) {
@@ -31,12 +32,22 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
 
     private fun migrateSettingsSchema() {
         val current = sharedPreferences.getInt("_rally_settings_schema", 0)
-        if (current < 1) {
+        if (current < 2) {
             // Versioned independently from the Room database so preference changes
             // remain safe across sideloaded beta upgrades.
-            sharedPreferences.edit().putInt("_rally_settings_schema", 1).apply()
+            sharedPreferences.edit()
+                .putInt("_rally_settings_schema", 2)
+                // Existing installations remain on their working Stalker setup.
+                .putString("iptv_provider", sharedPreferences.getString("iptv_provider", IptvProvider.STALKER.name))
+                .apply()
         }
     }
+
+    var iptvProvider: IptvProvider
+        get() = runCatching {
+            IptvProvider.valueOf(sharedPreferences.getString("iptv_provider", IptvProvider.STALKER.name).orEmpty())
+        }.getOrDefault(IptvProvider.STALKER)
+        set(value) = sharedPreferences.edit().putString("iptv_provider", value.name).apply()
 
     private fun migrateLegacyPreferences(context: Context) {
         if (sharedPreferences.getBoolean("_rally_migration_complete", false)) return
@@ -70,6 +81,22 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
                 .putString("portal_url", PortalUrlNormalizer.normalizePortal(value))
                 .apply()
         }
+
+    var xtreamServerUrl: String
+        get() = PortalUrlNormalizer.normalizeXtreamServer(sharedPreferences.getString("xtream_server_url", "").orEmpty())
+        set(value) {
+            sharedPreferences.edit()
+                .putString("xtream_server_url", PortalUrlNormalizer.normalizeXtreamServer(value))
+                .apply()
+        }
+
+    var xtreamUsername: String
+        get() = sharedPreferences.getString("xtream_username", "") ?: ""
+        set(value) = sharedPreferences.edit().putString("xtream_username", value.trim()).apply()
+
+    var xtreamPassword: String
+        get() = sharedPreferences.getString("xtream_password", "") ?: ""
+        set(value) = sharedPreferences.edit().putString("xtream_password", value).apply()
 
     var macAddress: String
         get() {

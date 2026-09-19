@@ -121,6 +121,12 @@ enum class EventStatus {
     CANCELED
 }
 
+/** IPTV middleware selected by the user in Settings. */
+enum class IptvProvider {
+    STALKER,
+    XTREAM
+}
+
 @Immutable
 data class IptvChannel(
     val id: String,

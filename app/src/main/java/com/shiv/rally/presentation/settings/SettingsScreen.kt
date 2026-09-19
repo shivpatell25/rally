@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +60,7 @@ import androidx.tv.material3.Text
 import com.shiv.rally.R
 import com.shiv.rally.BuildConfig
 import com.shiv.rally.data.update.RallyUpdateState
+import com.shiv.rally.domain.model.IptvProvider
 import com.shiv.rally.presentation.home.formatLeagueDisplayName
 import com.shiv.rally.presentation.theme.AppleTvTheme
 import com.shiv.rally.presentation.theme.RallyLayout
@@ -95,8 +97,12 @@ fun SettingsScreen(
     onSaved: () -> Unit,
     initialFocusRequester: FocusRequester? = null
 ) {
+    val iptvProvider by viewModel.iptvProvider.collectAsStateWithLifecycle()
     val portalUrl by viewModel.portalUrl.collectAsStateWithLifecycle()
     val macAddress by viewModel.macAddress.collectAsStateWithLifecycle()
+    val xtreamServerUrl by viewModel.xtreamServerUrl.collectAsStateWithLifecycle()
+    val xtreamUsername by viewModel.xtreamUsername.collectAsStateWithLifecycle()
+    val xtreamPassword by viewModel.xtreamPassword.collectAsStateWithLifecycle()
     val serialNumber by viewModel.serialNumber.collectAsStateWithLifecycle()
     val deviceId by viewModel.deviceId.collectAsStateWithLifecycle()
     val addonUrls by viewModel.stremioAddonUrls.collectAsStateWithLifecycle()
@@ -198,14 +204,22 @@ fun SettingsScreen(
         Box(Modifier.weight(1f).fillMaxHeight()) {
             when (section) {
                 SettingsSection.SOURCES -> SourcesSettings(
+                    iptvProvider = iptvProvider,
                     portalUrl = portalUrl,
                     macAddress = macAddress,
+                    xtreamServerUrl = xtreamServerUrl,
+                    xtreamUsername = xtreamUsername,
+                    xtreamPassword = xtreamPassword,
                     serialNumber = serialNumber,
                     deviceId = deviceId,
                     addonUrls = addonUrls,
                     newAddonUrl = newAddonUrl,
                     onPortalChange = viewModel::updatePortalUrl,
                     onMacChange = viewModel::updateMacAddress,
+                    onProviderChange = viewModel::updateIptvProvider,
+                    onXtreamServerChange = viewModel::updateXtreamServerUrl,
+                    onXtreamUsernameChange = viewModel::updateXtreamUsername,
+                    onXtreamPasswordChange = viewModel::updateXtreamPassword,
                     onSerialChange = viewModel::updateSerialNumber,
                     onDeviceChange = viewModel::updateDeviceId,
                     onNewAddonChange = viewModel::updateNewAddonUrl,
@@ -498,14 +512,22 @@ private fun SettingsPage(title: String, subtitle: String, content: @Composable C
 
 @Composable
 private fun SourcesSettings(
+    iptvProvider: IptvProvider,
     portalUrl: String,
     macAddress: String,
+    xtreamServerUrl: String,
+    xtreamUsername: String,
+    xtreamPassword: String,
     serialNumber: String,
     deviceId: String,
     addonUrls: List<String>,
     newAddonUrl: String,
     onPortalChange: (String) -> Unit,
     onMacChange: (String) -> Unit,
+    onProviderChange: (IptvProvider) -> Unit,
+    onXtreamServerChange: (String) -> Unit,
+    onXtreamUsernameChange: (String) -> Unit,
+    onXtreamPasswordChange: (String) -> Unit,
     onSerialChange: (String) -> Unit,
     onDeviceChange: (String) -> Unit,
     onNewAddonChange: (String) -> Unit,
@@ -517,24 +539,40 @@ private fun SourcesSettings(
     onClearDiagnostics: () -> Unit
 ) {
     SettingsPage("Sources", "Connect the services you are authorized to use.") {
-        SettingsPanel("IPTV Portal", "Stalker or Ministra middleware") {
-            SettingsField(portalUrl, onPortalChange, "Portal URL", KeyboardType.Uri)
-            if (portalUrl.startsWith("http://", true)) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "This provider uses an unencrypted connection. Prefer HTTPS when available.",
-                    color = Color(0xFFFFB340),
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF24180A)).padding(11.dp)
-                )
+        SettingsPanel("IPTV provider", "Choose the middleware used by your authorized subscription") {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SettingsButton("Stalker / Ministra", { onProviderChange(IptvProvider.STALKER) }, selected = iptvProvider == IptvProvider.STALKER, modifier = Modifier.weight(1f))
+                SettingsButton("Xtream Codes", { onProviderChange(IptvProvider.XTREAM) }, selected = iptvProvider == IptvProvider.XTREAM, modifier = Modifier.weight(1f))
             }
-            Spacer(Modifier.height(12.dp))
-            SettingsField(macAddress, onMacChange, "MAC address")
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SettingsField(serialNumber, onSerialChange, "Serial number (optional)", modifier = Modifier.weight(1f))
-                SettingsField(deviceId, onDeviceChange, "Device ID (optional)", modifier = Modifier.weight(1f))
+            Spacer(Modifier.height(16.dp))
+            if (iptvProvider == IptvProvider.XTREAM) {
+                SettingsField(xtreamServerUrl, onXtreamServerChange, "Server URL", KeyboardType.Uri)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SettingsField(xtreamUsername, onXtreamUsernameChange, "Username", modifier = Modifier.weight(1f))
+                    SettingsField(xtreamPassword, onXtreamPasswordChange, "Password", modifier = Modifier.weight(1f), password = true)
+                }
+                Spacer(Modifier.height(9.dp))
+                Text("Use the provider's server address only, for example https://provider.example:8080.", color = AppleTvTheme.TextTertiary, fontSize = 11.sp)
+            } else {
+                SettingsField(portalUrl, onPortalChange, "Portal URL", KeyboardType.Uri)
+                if (portalUrl.startsWith("http://", true)) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "This provider uses an unencrypted connection. Prefer HTTPS when available.",
+                        color = Color(0xFFFFB340),
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF24180A)).padding(11.dp)
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                SettingsField(macAddress, onMacChange, "MAC address")
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SettingsField(serialNumber, onSerialChange, "Serial number (optional)", modifier = Modifier.weight(1f))
+                    SettingsField(deviceId, onDeviceChange, "Device ID (optional)", modifier = Modifier.weight(1f))
+                }
             }
         }
 
@@ -719,13 +757,15 @@ private fun SettingsField(
     onValueChange: (String) -> Unit,
     label: String,
     keyboardType: KeyboardType = KeyboardType.Text,
-    modifier: Modifier = Modifier.fillMaxWidth()
+    modifier: Modifier = Modifier.fillMaxWidth(),
+    password: Boolean = false
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { androidx.compose.material3.Text(label) },
         singleLine = true,
+        visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         colors = settingsFieldColors(),
         shape = panelShape,

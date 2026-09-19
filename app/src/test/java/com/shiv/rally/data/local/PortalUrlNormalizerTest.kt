@@ -33,4 +33,12 @@ class PortalUrlNormalizerTest {
         )
         assertNull(PortalUrlNormalizer.normalizeAddon("not a url"))
     }
+
+    @Test
+    fun `xtream normalizer preserves domain suffix ports and endpoint path`() {
+        assertEquals(
+            "https://provider.example.to:8080",
+            PortalUrlNormalizer.normalizeXtreamServer("https://provider.example.to:8080/player_api.php")
+        )
+    }
 }

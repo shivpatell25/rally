@@ -34,6 +34,26 @@ object PortalUrlNormalizer {
         }
     }
 
+    /**
+     * Normalizes an Xtream server without applying Stalker-specific cleanup.
+     * Xtream hosts commonly use non-standard ports and domains such as .to;
+     * both must be preserved exactly as entered.
+     */
+    fun normalizeXtreamServer(rawValue: String): String {
+        var value = rawValue.trim()
+        if (value.isEmpty()) return ""
+        if (!value.startsWith("http://", true) && !value.startsWith("https://", true)) {
+            value = "http://$value"
+        }
+        value = value
+            .removeSuffix("/")
+            .removeSuffix("/player_api.php")
+            .removeSuffix("/get.php")
+            .removeSuffix("/")
+        val parsed = value.toHttpUrlOrNull() ?: return ""
+        return parsed.newBuilder().query(null).fragment(null).build().toString().removeSuffix("/")
+    }
+
     private fun repairRemoteColonTypo(value: String): String {
         val schemeEnd = value.indexOf("://")
         if (schemeEnd < 0) return value
