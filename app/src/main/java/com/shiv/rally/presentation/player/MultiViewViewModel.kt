@@ -9,7 +9,10 @@ import com.shiv.rally.domain.model.EventStatus
 import com.shiv.rally.domain.model.IptvChannel
 import com.shiv.rally.domain.model.MultiViewLayoutMode
 import com.shiv.rally.domain.model.MultiViewSlot
+import com.shiv.rally.domain.model.RelevantChannel
 import com.shiv.rally.domain.model.SportEvent
+import com.shiv.rally.domain.model.StreamCandidate
+import com.shiv.rally.domain.model.StremioStreamOption
 import com.shiv.rally.domain.repository.IptvRepository
 import com.shiv.rally.domain.repository.SportsRepository
 import com.shiv.rally.domain.usecase.SelectBestStreamUseCase
@@ -32,6 +35,12 @@ private fun decodeRouteComponent(value: String): String = runCatching {
     URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8.name())
 }.getOrDefault(value)
 
+private fun sourceQualityLabel(candidate: StreamCandidate): String = buildList {
+    candidate.quality.resolution?.let(::add)
+    candidate.quality.fps?.let(::add)
+    if (candidate.quality.isHdr) add("HDR")
+}.joinToString(" · ").ifBlank { "Adaptive" }
+
 @Immutable
 data class MultiViewUiState(
     val slots: List<MultiViewSlot> = emptyList(),
@@ -42,6 +51,12 @@ data class MultiViewUiState(
     val availableChannels: List<IptvChannel> = emptyList(),
     val isPickerOpen: Boolean = false,
     val pickerTargetSlotIndex: Int? = null,
+    val isSourcePickerOpen: Boolean = false,
+    val sourcePickerTargetSlotIndex: Int? = null,
+    val sourcePickerLoading: Boolean = false,
+    val sourcePickerCandidates: List<StreamCandidate> = emptyList(),
+    val sourcePickerChannels: List<RelevantChannel> = emptyList(),
+    val sourcePickerStreams: List<StremioStreamOption> = emptyList(),
     val macAddress: String = "",
     val token: String = ""
 )
@@ -197,6 +212,9 @@ class MultiViewViewModel @Inject constructor(
         var resolvedHeaders: Map<String, String>? = null
         var resolvedChannel: IptvChannel? = channel
         var resolvedEvent: SportEvent? = event
+        var selectedSourceId: String? = null
+        var sourceTitle: String? = channel?.name
+        var sourceQuality: String? = null
 
         val title = when {
             event != null -> "${event.awayTeam?.abbreviation ?: ""} @ ${event.homeTeam?.abbreviation ?: ""}"
@@ -234,6 +252,9 @@ class MultiViewViewModel @Inject constructor(
                 if (selected != null) {
                     resolvedChannel = selected.channel
                     resolvedHeaders = selected.headers
+                    selectedSourceId = selected.id
+                    sourceTitle = selected.title
+                    sourceQuality = sourceQualityLabel(selected)
                     resolvedStreamUrl = if (selected.channel != null) {
                         iptvRepository.getChannelStreamUrl(decodeRouteComponent(selected.playbackTarget))
                     } else {
@@ -280,6 +301,9 @@ class MultiViewViewModel @Inject constructor(
             scoreText = scoreText,
             statusText = statusText,
             isLoading = false,
+            selectedSourceId = selectedSourceId,
+            sourceTitle = sourceTitle,
+            sourceQuality = sourceQuality,
             error = null
         )
     }
@@ -354,6 +378,84 @@ class MultiViewViewModel @Inject constructor(
         )
     }
 
+    fun openSourcePicker(slotIndex: Int) {
+        val state = _uiState.value
+        val event = state.slots.getOrNull(slotIndex)?.event ?: return
+        _uiState.value = state.copy(
+            isSourcePickerOpen = true,
+            sourcePickerTargetSlotIndex = slotIndex,
+            sourcePickerLoading = true,
+            sourcePickerCandidates = emptyList(),
+            sourcePickerChannels = emptyList(),
+            sourcePickerStreams = emptyList()
+        )
+        viewModelScope.launch(ioDispatcher) {
+            val channels = state.availableChannels.ifEmpty {
+                runCatching { iptvRepository.getChannels() }.getOrDefault(emptyList())
+            }
+            val selection = runCatching { selectBestStream(event, channels) }.getOrNull()
+            withContext(Dispatchers.Main) {
+                val current = _uiState.value
+                if (current.sourcePickerTargetSlotIndex == slotIndex && current.isSourcePickerOpen) {
+                    _uiState.value = current.copy(
+                        sourcePickerLoading = false,
+                        sourcePickerCandidates = selection?.candidates.orEmpty(),
+                        sourcePickerChannels = selection?.relevantChannels.orEmpty(),
+                        sourcePickerStreams = selection?.stremioStreams.orEmpty()
+                    )
+                }
+            }
+        }
+    }
+
+    fun closeSourcePicker() {
+        _uiState.value = _uiState.value.copy(
+            isSourcePickerOpen = false,
+            sourcePickerTargetSlotIndex = null,
+            sourcePickerLoading = false,
+            sourcePickerCandidates = emptyList(),
+            sourcePickerChannels = emptyList(),
+            sourcePickerStreams = emptyList()
+        )
+    }
+
+    fun selectSourceForFocusedSlot(playbackTarget: String) {
+        val state = _uiState.value
+        val slotIndex = state.sourcePickerTargetSlotIndex ?: return
+        val slot = state.slots.getOrNull(slotIndex) ?: return
+        val candidate = state.sourcePickerCandidates.firstOrNull { it.playbackTarget == playbackTarget }
+            ?: state.sourcePickerCandidates.firstOrNull { it.stremioStream?.streamUrl == playbackTarget }
+            ?: return
+        val loadingSlot = slot.copy(
+            streamUrl = "",
+            streamHeaders = candidate.headers,
+            selectedSourceId = candidate.id,
+            sourceTitle = candidate.title,
+            sourceQuality = sourceQualityLabel(candidate),
+            channel = candidate.channel,
+            isLoading = true,
+            error = null
+        )
+        val updated = state.slots.toMutableList().apply { this[slotIndex] = loadingSlot }
+        closeSourcePicker()
+        _uiState.value = _uiState.value.copy(
+            slots = updated,
+            focusedSlotIndex = slotIndex
+        )
+        resolveIntoSlot(loadingSlot.slotId) {
+            runCatching {
+                val url = if (candidate.channel != null) {
+                    iptvRepository.getChannelStreamUrl(decodeRouteComponent(candidate.playbackTarget))
+                } else {
+                    candidate.playbackTarget
+                }
+                loadingSlot.copy(streamUrl = url, isLoading = false, error = null)
+            }.getOrElse { error ->
+                loadingSlot.copy(isLoading = false, error = error.message ?: "Unable to start this source")
+            }
+        }
+    }
+
     fun addSlotFromEvent(event: SportEvent) {
         val currentSlots = _uiState.value.slots
         if (currentSlots.size >= 4) return
@@ -419,6 +521,9 @@ class MultiViewViewModel @Inject constructor(
             subtitle = event.league,
             scoreText = if (event.scoreAway != null && event.scoreHome != null) "${event.scoreAway} - ${event.scoreHome}" else null,
             statusText = event.gameStatusDetail ?: if (event.status == EventStatus.LIVE) "LIVE" else "",
+            selectedSourceId = null,
+            sourceTitle = null,
+            sourceQuality = null,
             isLoading = true,
             error = null
         )
@@ -450,6 +555,9 @@ class MultiViewViewModel @Inject constructor(
             subtitle = channel.category.ifEmpty { "Sports" },
             scoreText = null,
             statusText = null,
+            selectedSourceId = null,
+            sourceTitle = null,
+            sourceQuality = null,
             isLoading = true,
             error = null
         )

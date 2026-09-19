@@ -413,6 +413,9 @@ data class MultiViewSlot(
     val statusText: String? = null,
     val resolution: String? = null,
     val fps: String? = null,
+    val selectedSourceId: String? = null,
+    val sourceTitle: String? = null,
+    val sourceQuality: String? = null,
     val isLoading: Boolean = false,
     val error: String? = null
 )

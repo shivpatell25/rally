@@ -80,12 +80,14 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.shiv.rally.R
+import com.shiv.rally.domain.model.BroadcastQualityInfo
 import com.shiv.rally.domain.model.EventStatus
 import com.shiv.rally.domain.model.IptvChannel
 import com.shiv.rally.domain.model.MultiViewLayoutMode
 import com.shiv.rally.domain.model.MultiViewSlot
 import com.shiv.rally.domain.model.SportEvent
 import com.shiv.rally.presentation.home.formatTeamDisplayName
+import com.shiv.rally.presentation.event.AppleTvStreamPicker
 import com.shiv.rally.presentation.theme.AppleTvTheme
 import kotlinx.coroutines.delay
 
@@ -114,6 +116,7 @@ fun MultiViewScreen(
         when {
             actionSlotIndex != null -> actionSlotIndex = null
             comparisonVisible -> comparisonVisible = false
+            state.isSourcePickerOpen -> viewModel.closeSourcePicker()
             state.isPickerOpen -> viewModel.closePicker()
             immersive -> immersive = false
             else -> onBack()
@@ -205,6 +208,10 @@ fun MultiViewScreen(
                         actionSlotIndex = null
                         viewModel.openPickerForSwap(index)
                     },
+                    onChangeSource = {
+                        actionSlotIndex = null
+                        viewModel.openSourcePicker(index)
+                    },
                     isAudioActive = state.audioSlotIndex == index,
                     onUseAudio = {
                         actionSlotIndex = null
@@ -219,7 +226,7 @@ fun MultiViewScreen(
                         viewModel.swapSlot(index)
                     },
                     canAdd = state.slots.size < 4,
-                    canChangeLayout = state.slots.size >= 2,
+                    canChangeLayout = state.slots.size >= 2 && state.slots.size != 3,
                     isImmersive = immersive,
                     onAdd = {
                         actionSlotIndex = null
@@ -273,12 +280,29 @@ fun MultiViewScreen(
                 onDismiss = viewModel::closePicker
             )
         }
+
+        if (state.isSourcePickerOpen) {
+            val targetSlot = state.slots.getOrNull(state.sourcePickerTargetSlotIndex ?: -1)
+            if (state.sourcePickerLoading) {
+                MultiViewSourceLoadingOverlay(onCancel = viewModel::closeSourcePicker)
+            } else if (targetSlot != null) {
+                AppleTvStreamPicker(
+                    channels = state.sourcePickerChannels,
+                    stremioStreams = state.sourcePickerStreams,
+                    candidates = state.sourcePickerCandidates,
+                    broadcastQuality = BroadcastQualityInfo("Adaptive", "Quality varies by source"),
+                    eventName = targetSlot.title,
+                    onChannelSelected = viewModel::selectSourceForFocusedSlot,
+                    onCancel = viewModel::closeSourcePicker
+                )
+            }
+        }
     }
 }
 
 private fun nextLayout(count: Int, current: MultiViewLayoutMode): MultiViewLayoutMode = when (count) {
     2 -> if (current == MultiViewLayoutMode.DUAL_FOCUS) MultiViewLayoutMode.DUAL_SPLIT else MultiViewLayoutMode.DUAL_FOCUS
-    3 -> if (current == MultiViewLayoutMode.TRIPLE_COLUMNS) MultiViewLayoutMode.TRIPLE_FOCUS else MultiViewLayoutMode.TRIPLE_COLUMNS
+    3 -> MultiViewLayoutMode.TRIPLE_FOCUS
     else -> if (current == MultiViewLayoutMode.QUAD_FOCUS) MultiViewLayoutMode.QUAD_GRID else MultiViewLayoutMode.QUAD_FOCUS
 }
 
@@ -307,7 +331,7 @@ private fun MultiViewHeader(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (slotCount < 4) MultiButton("Add Game", onAdd, primary = slotCount < 2)
-            if (slotCount >= 2) MultiButton(layoutLabel(slotCount, layoutMode), onChangeLayout)
+            if (slotCount >= 2 && slotCount != 3) MultiButton(layoutLabel(slotCount, layoutMode), onChangeLayout)
             if (slotCount >= 2) MultiButton("Compare", onCompare)
             if (slotCount > 0) MultiButton("Immersive", onImmersive)
             MultiButton("Done", onDone)
@@ -354,8 +378,33 @@ private fun MultiViewComparisonOverlay(slots: List<MultiViewSlot>, onDismiss: ()
 
 private fun layoutLabel(count: Int, mode: MultiViewLayoutMode): String = when (count) {
     2 -> if (mode == MultiViewLayoutMode.DUAL_FOCUS) "Layout · 70/30" else "Layout · 50/50"
-    3 -> if (mode == MultiViewLayoutMode.TRIPLE_COLUMNS) "Layout · Columns" else "Layout · Focus"
+    3 -> "Layout · 2 + 1"
     else -> if (mode == MultiViewLayoutMode.QUAD_FOCUS) "Layout · Focus" else "Layout · Grid"
+}
+
+@Composable
+private fun MultiViewSourceLoadingOverlay(onCancel: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    BackHandler(onBack = onCancel)
+    LaunchedEffect(Unit) {
+        delay(120)
+        runCatching { focus.requestFocus() }
+    }
+    Box(Modifier.fillMaxSize().background(AppleTvTheme.ScreenGradient), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(470.dp).clip(AppleTvTheme.DialogShape)
+                .background(AppleTvTheme.GlassPanelGradient)
+                .border(1.dp, AppleTvTheme.GlassBorder, AppleTvTheme.DialogShape)
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Finding broadcasts", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text("Checking configured sources for this game…", color = AppleTvTheme.TextSecondary, fontSize = 12.sp)
+            Spacer(Modifier.height(22.dp))
+            MultiButton("Cancel", onCancel, modifier = Modifier.focusRequester(focus))
+        }
+    }
 }
 
 @Composable
@@ -411,19 +460,16 @@ private fun MultiViewGrid(
             Slot(0, Modifier.weight(if (focusLayout) 1.9f else 1f).fillMaxHeight())
             Slot(1, Modifier.weight(1f).fillMaxHeight())
         }
-        3 -> if (layoutMode == MultiViewLayoutMode.TRIPLE_COLUMNS) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        3 -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.weight(1f).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Slot(0, Modifier.weight(1f).fillMaxHeight())
                 Slot(1, Modifier.weight(1f).fillMaxHeight())
-                Slot(2, Modifier.weight(1f).fillMaxHeight())
             }
-        } else {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Slot(0, Modifier.weight(1.7f).fillMaxHeight())
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Slot(1, Modifier.weight(1f).fillMaxWidth())
-                    Slot(2, Modifier.weight(1f).fillMaxWidth())
-                }
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Slot(2, Modifier.fillMaxWidth(.5f).fillMaxHeight())
             }
         }
         else -> if (layoutMode == MultiViewLayoutMode.QUAD_FOCUS) {
@@ -480,6 +526,7 @@ private fun MultiViewSlotItem(
                     .setMaxVideoSize(initialMaxWidth, initialMaxHeight)
                     .setMaxVideoFrameRate(30)
                     .setMaxVideoBitrate(initialMaxBitrate)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isAudioActive)
                     .setExceedVideoConstraintsIfNecessary(true)
                     .setExceedRendererCapabilitiesIfNecessary(false)
                     .build()
@@ -504,8 +551,8 @@ private fun MultiViewSlotItem(
             }
 
             val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(4_000, 10_000, 750, 1_500)
-                .setTargetBufferBytes(2 * 1024 * 1024)
+                .setBufferDurationsMs(1_500, 8_000, 500, 1_000)
+                .setTargetBufferBytes(1 * 1024 * 1024)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
             val renderers = DefaultRenderersFactory(context)
@@ -524,27 +571,23 @@ private fun MultiViewSlotItem(
     val exoPlayer = playbackSession?.player
     val trackSelector = playbackSession?.trackSelector
 
-    LaunchedEffect(exoPlayer, isAudioActive) {
+    LaunchedEffect(exoPlayer, isAudioActive, slotCount) {
         exoPlayer?.let { player ->
             player.volume = if (isAudioActive) 1f else 0f
         }
-    }
-
-    LaunchedEffect(exoPlayer, slotCount) {
-        exoPlayer?.let {
+        trackSelector?.let { selector ->
             val maxHeight = if (slotCount <= 2) 720 else 480
             val maxWidth = if (slotCount <= 2) 1280 else 854
             val maxBitrate = if (slotCount <= 2) 2_500_000 else 1_200_000
-            trackSelector?.let { selector ->
-                selector.setParameters(
-                    selector.buildUponParameters()
+            selector.setParameters(
+                selector.buildUponParameters()
                     .setMaxVideoSize(maxWidth, maxHeight)
                     .setMaxVideoFrameRate(30)
                     .setMaxVideoBitrate(maxBitrate)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isAudioActive)
                     .setExceedVideoConstraintsIfNecessary(true)
                     .setExceedRendererCapabilitiesIfNecessary(false)
-                )
-            }
+            )
         }
     }
 
@@ -606,14 +649,17 @@ private fun MultiViewSlotItem(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        resizeMode = if (showChrome) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         setShutterBackgroundColor(android.graphics.Color.BLACK)
                         isFocusable = false
                         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                         layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     }
                 },
-                update = { if (it.player !== exoPlayer) it.player = exoPlayer },
+                update = {
+                    if (it.player !== exoPlayer) it.player = exoPlayer
+                    it.resizeMode = if (showChrome) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -651,7 +697,7 @@ private fun MultiViewSlotItem(
                     slot.scoreText?.let { Text(it, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    (resolution ?: slot.resolution)?.let { SlotBadge(it) }
+                    (slot.sourceQuality ?: resolution ?: slot.resolution)?.let { SlotBadge(it) }
                     if (isAudioActive) SlotBadge("AUDIO")
                 }
             }
@@ -706,6 +752,7 @@ private fun SlotActionDialog(
     slot: MultiViewSlot,
     onFullScreen: () -> Unit,
     onChange: () -> Unit,
+    onChangeSource: () -> Unit,
     isAudioActive: Boolean,
     onUseAudio: () -> Unit,
     onPromote: () -> Unit,
@@ -740,7 +787,8 @@ private fun SlotActionDialog(
                 MultiButton("Move to Main", onPromote, modifier = Modifier.fillMaxWidth())
                 MultiButton("Swap Position", onSwap, modifier = Modifier.fillMaxWidth())
                 if (canAdd) MultiButton("Add Stream", onAdd, modifier = Modifier.fillMaxWidth())
-                MultiButton("Change Stream", onChange, modifier = Modifier.fillMaxWidth())
+                MultiButton("Change Game / Channel", onChange, modifier = Modifier.fillMaxWidth())
+                if (slot.event != null) MultiButton("Change Source", onChangeSource, modifier = Modifier.fillMaxWidth())
                 if (canChangeLayout) MultiButton("Change Layout", onChangeLayout, modifier = Modifier.fillMaxWidth())
                 if (slot.error != null) MultiButton("Retry", onRetry, modifier = Modifier.fillMaxWidth())
                 MultiButton(if (isImmersive) "Exit Immersive" else "Enter Immersive", onToggleImmersive, modifier = Modifier.fillMaxWidth())
