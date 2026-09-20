@@ -3,6 +3,7 @@
 .idea/
 local.properties
 .signing/
+RALLY_SIGNING_BACKUP.txt
 *.jks
 *.keystore
 keystore.properties
