@@ -101,14 +101,15 @@ private val cardShape = RoundedCornerShape(10.dp)
 private val buttonShape = RoundedCornerShape(8.dp)
 private val pillShape = RoundedCornerShape(6.dp)
 
-// Keep hero art consistent and inexpensive: a single matrix gives every source
-// the Rally editorial monochrome treatment without creating processed bitmaps
-// or adding a runtime blur/shader cost on TV hardware.
+// Keep hero art consistent and inexpensive: the local assets already contain
+// their monochrome grade and soft flares, so the runtime matrix only lowers
+// luminance. That preserves the subtle Rally color in the flares without adding
+// a blur or shader cost on TV hardware.
 private val rallyHeroColorMatrix = ColorMatrix(
     floatArrayOf(
-        0.153f, 0.515f, 0.052f, 0f, 0f,
-        0.153f, 0.515f, 0.052f, 0f, 0f,
-        0.153f, 0.515f, 0.052f, 0f, 0f,
+        0.78f, 0f, 0f, 0f, 0f,
+        0f, 0.78f, 0f, 0f, 0f,
+        0f, 0f, 0.78f, 0f, 0f,
         0f, 0f, 0f, 1f, 0f
     )
 )

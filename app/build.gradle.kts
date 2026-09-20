@@ -24,10 +24,10 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        // Beta 7 feature release with a monotonic Android version code so it
+        // Beta 7 hotfix 1 with a monotonic Android version code so it
         // upgrades existing beta/hotfix installations safely.
-        versionCode = 7
-        versionName = "1.0-beta7"
+        versionCode = 8
+        versionName = "1.0-beta7-hotfix1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
