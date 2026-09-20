@@ -40,6 +40,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -99,6 +100,18 @@ private val heroShape = RoundedCornerShape(12.dp)
 private val cardShape = RoundedCornerShape(10.dp)
 private val buttonShape = RoundedCornerShape(8.dp)
 private val pillShape = RoundedCornerShape(6.dp)
+
+// Keep hero art consistent and inexpensive: a single matrix gives every source
+// the Rally editorial monochrome treatment without creating processed bitmaps
+// or adding a runtime blur/shader cost on TV hardware.
+private val rallyHeroColorMatrix = ColorMatrix(
+    floatArrayOf(
+        0.153f, 0.515f, 0.052f, 0f, 0f,
+        0.153f, 0.515f, 0.052f, 0f, 0f,
+        0.153f, 0.515f, 0.052f, 0f, 0f,
+        0f, 0f, 0f, 1f, 0f
+    )
+)
 
 @Composable
 fun HomeScreen(
@@ -264,7 +277,13 @@ private fun HomeDashboardHero(
             .background(AppleTvTheme.GlassSurfaceHeavy)
             .border(1.dp, AppleTvTheme.GlassBorder, heroShape)
     ) {
-        Image(painterResource(backdrop), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Image(
+            painter = painterResource(backdrop),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            colorFilter = ColorFilter.colorMatrix(rallyHeroColorMatrix)
+        )
         Box(
             Modifier.fillMaxSize().background(
                 Brush.horizontalGradient(
@@ -913,7 +932,8 @@ private fun RallyHomeTop(
                     painter = painterResource(backdrop),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Crop,
+                    colorFilter = ColorFilter.colorMatrix(rallyHeroColorMatrix)
                 )
                 Box(
                     Modifier.fillMaxSize().background(
@@ -1118,7 +1138,8 @@ fun AppleTvImmersiveHero(
                 painter = painterResource(backdrop),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Crop,
+                colorFilter = ColorFilter.colorMatrix(rallyHeroColorMatrix)
             )
             Box(
                 Modifier.fillMaxSize().background(
@@ -2099,15 +2120,15 @@ private fun HomeScreenMultiViewModal(
 }
 
 fun getHeroColorBackdrop(event: SportEvent?): Int {
-    if (event == null) return R.drawable.hero_editorial_football_v4
+    if (event == null) return R.drawable.hero_landscape_football_rally
     val sport = event.sport.lowercase()
     val league = event.league.uppercase()
     return when {
-        sport.contains("basket") || league == "NBA" || league == "NCAAB" -> R.drawable.hero_editorial_basketball_v4
-        sport.contains("hock") || league == "NHL" -> R.drawable.hero_editorial_hockey_v4
-        sport.contains("socc") || league in setOf("EPL", "MLS") || league.contains("LIGA") || league.contains("CHAMPIONS") || league.contains("SERIE") -> R.drawable.hero_editorial_soccer_v4
-        sport.contains("base") || league == "MLB" -> R.drawable.hero_editorial_baseball_v4
-        else -> R.drawable.hero_editorial_football_v4
+        sport.contains("basket") || league == "NBA" || league == "NCAAB" -> R.drawable.hero_landscape_basketball_rally
+        sport.contains("hock") || league == "NHL" -> R.drawable.hero_landscape_hockey_rally
+        sport.contains("socc") || league in setOf("EPL", "MLS") || league.contains("LIGA") || league.contains("CHAMPIONS") || league.contains("SERIE") -> R.drawable.hero_landscape_soccer_rally
+        sport.contains("base") || league == "MLB" -> R.drawable.hero_landscape_baseball_rally
+        else -> R.drawable.hero_landscape_football_rally
     }
 }
 
