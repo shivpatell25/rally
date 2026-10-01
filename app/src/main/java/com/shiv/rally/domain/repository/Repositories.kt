@@ -13,7 +13,10 @@ interface SportsRepository {
     suspend fun getUpcomingEvents(): List<SportEvent>
     suspend fun getEventsSnapshot(): List<SportEvent> = getLiveEvents() + getUpcomingEvents()
     suspend fun getRecentEvents(): List<SportEvent> = getEventsSnapshot()
+    suspend fun getRecentCompletedEvents(): List<SportEvent> = getRecentEvents().filter { it.status == com.shiv.rally.domain.model.EventStatus.FINISHED }
     suspend fun getEventsByLeague(league: String): List<SportEvent>
+    suspend fun getEventsForDate(league: String, date: java.time.LocalDate): List<SportEvent> =
+        getEventsByLeague(league).filter { it.startTime.atZone(java.time.ZoneId.of("America/New_York")).toLocalDate() == date }
     suspend fun getEventById(eventId: String): SportEvent?
     suspend fun searchEvents(query: String): List<SportEvent>
     fun observeLiveEvent(eventId: String): Flow<SportEvent>

@@ -7,26 +7,23 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -44,51 +41,37 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.Border
-import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.Text
-import com.shiv.rally.R
 import com.shiv.rally.BuildConfig
 import com.shiv.rally.data.update.RallyUpdateState
 import com.shiv.rally.domain.model.IptvProvider
+import com.shiv.rally.presentation.common.RallyTvPalette
+import com.shiv.rally.presentation.common.RallyTvRule
+import com.shiv.rally.presentation.common.rallyTvFocus
 import com.shiv.rally.presentation.home.formatLeagueDisplayName
-import com.shiv.rally.presentation.theme.AppleTvTheme
-import com.shiv.rally.presentation.theme.RallyLayout
+import com.shiv.rally.presentation.theme.RallyBodyFont
+import com.shiv.rally.presentation.theme.RallyDisplayFont
 import kotlinx.coroutines.delay
-
-private enum class SettingsSection(val title: String, val subtitle: String) {
-    SOURCES("Sources", "IPTV and addons"),
-    SPORTS("Sports", "Leagues and order"),
-    TEAMS("Teams", "Favorite clubs"),
-    ALERTS("Alerts", "Live notifications"),
-    VIEWING("Viewing", "Playback and access"),
-    SUPPORT("Support", "About and diagnostics")
-}
-
-private val sectionShape = RallyLayout.ControlCorner
-private val panelShape = RallyLayout.CardCorner
-private val pillShape = RallyLayout.ControlCorner
 
 @Composable
 private fun settingsFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Color.White,
-    unfocusedTextColor = Color.White.copy(alpha = .86f),
-    focusedBorderColor = AppleTvTheme.RallyCyan,
-    unfocusedBorderColor = Color(0x2EFFFFFF),
-    focusedLabelColor = Color.White,
-    unfocusedLabelColor = AppleTvTheme.TextSecondary,
-    focusedContainerColor = AppleTvTheme.Graphite,
-    unfocusedContainerColor = AppleTvTheme.Slate
+    focusedTextColor = RallyTvPalette.Text,
+    unfocusedTextColor = RallyTvPalette.Text,
+    focusedBorderColor = RallyTvPalette.Accent,
+    unfocusedBorderColor = RallyTvPalette.Divider,
+    focusedLabelColor = RallyTvPalette.Text,
+    unfocusedLabelColor = RallyTvPalette.Muted,
+    focusedContainerColor = RallyTvPalette.FocusSurface,
+    unfocusedContainerColor = RallyTvPalette.BackgroundSoft
 )
 
 @Composable
@@ -149,61 +132,37 @@ fun SettingsScreen(
         }
     }
 
-    var section by remember { mutableStateOf(SettingsSection.SOURCES) }
     val fallbackFocus = remember { FocusRequester() }
     val firstFocus = initialFocusRequester ?: fallbackFocus
-    LaunchedEffect(Unit) {
+    LaunchedEffect(firstFocus) {
         delay(120)
         runCatching { firstFocus.requestFocus() }
     }
 
-    Row(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.width(285.dp).fillMaxHeight().background(Color(0xB80A101B)).border(1.dp, Color(0x385A7894)).padding(horizontal = 30.dp, vertical = 22.dp)
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 66.dp, vertical = 30.dp)
         ) {
-            Text("SETTINGS", color = AppleTvTheme.TextTertiary, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-            Spacer(Modifier.height(10.dp))
-            SettingsSection.entries.forEachIndexed { index, item ->
-                val selected = section == item
-                Button(
-                    onClick = { section = item },
-                    modifier = Modifier.fillMaxWidth().then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier),
-                    shape = ButtonDefaults.shape(sectionShape),
-                    scale = ButtonDefaults.scale(scale = 1f, focusedScale = AppleTvTheme.ButtonFocusScale),
-                    colors = ButtonDefaults.colors(
-                        containerColor = if (selected) AppleTvTheme.Graphite else Color.Transparent,
-                        focusedContainerColor = AppleTvTheme.Graphite,
-                        contentColor = if (selected) AppleTvTheme.RallyCyan else Color(0xA6FFFFFF),
-                        focusedContentColor = AppleTvTheme.RallyCyan
-                    ),
-                    border = ButtonDefaults.border(
-                        border = Border(border = BorderStroke(1.dp, if (selected) Color(0x24FFFFFF) else Color.Transparent), shape = sectionShape),
-                        focusedBorder = Border(border = BorderStroke(2.dp, AppleTvTheme.RallyCyan), shape = sectionShape)
-                    )
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-                        Text(item.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text(item.subtitle, fontSize = 10.sp, color = if (selected) Color.White.copy(alpha = .56f) else Color.White.copy(alpha = .4f))
+            Column(Modifier.widthIn(max = 1120.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text("SETTINGS", color = RallyTvPalette.Accent, fontFamily = RallyBodyFont, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                        Text("Make Rally yours", color = RallyTvPalette.Text, fontFamily = RallyDisplayFont, fontSize = 32.sp, fontWeight = FontWeight.Bold)
                     }
+                    SettingsButton(
+                        label = "Save and Apply",
+                        onClick = { if (viewModel.saveConfiguration()) onSaved() },
+                        primary = true,
+                        modifier = Modifier.focusRequester(firstFocus)
+                    )
                 }
-                Spacer(Modifier.height(6.dp))
-            }
-
-            Spacer(Modifier.weight(1f))
-            error?.let {
-                Text(it, color = Color(0xFFFF6961), fontSize = 11.sp, lineHeight = 15.sp, modifier = Modifier.padding(bottom = 10.dp))
-            }
-            SettingsButton(
-                label = "Save and Apply",
-                onClick = { if (viewModel.saveConfiguration()) onSaved() },
-                primary = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            when (section) {
-                SettingsSection.SOURCES -> SourcesSettings(
+                error?.let {
+                    Spacer(Modifier.height(12.dp))
+                    Text(it, color = RallyTvPalette.Live, fontFamily = RallyBodyFont, fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(30.dp))
+                SourcesSettings(
                     iptvProvider = iptvProvider,
                     portalUrl = portalUrl,
                     macAddress = macAddress,
@@ -230,7 +189,7 @@ fun SettingsScreen(
                     onRunDiagnostics = viewModel::runProviderDiagnostics,
                     onClearDiagnostics = viewModel::clearLocalDiagnostics
                 )
-                SettingsSection.SPORTS -> SportsSettings(
+                SportsSettings(
                     sportsOrder = sportsOrder,
                     enabledLeagues = enabledLeagues,
                     favoriteSports = favoriteSports,
@@ -239,18 +198,18 @@ fun SettingsScreen(
                     onMoveUp = viewModel::moveSportUp,
                     onMoveDown = viewModel::moveSportDown
                 )
-                SettingsSection.TEAMS -> TeamsSettings(
+                TeamsSettings(
                     favoriteTeams = favoriteTeams,
                     onToggleTeam = viewModel::toggleFavoriteTeam,
                     onAddTeam = viewModel::addFavoriteTeam
                 )
-                SettingsSection.ALERTS -> AlertsSettings(
+                AlertsSettings(
                     liveGameAlertsEnabled = liveGameAlertsEnabled,
                     redZoneAlertsEnabled = redZoneAlertsEnabled,
                     onToggleLiveGameAlerts = viewModel::toggleLiveGameAlerts,
                     onToggleRedZoneAlerts = viewModel::toggleRedZoneAlerts
                 )
-                SettingsSection.VIEWING -> ViewingSettings(
+                ViewingSettings(
                     lowLatencyMode = lowLatencyMode,
                     reducedMotion = reducedMotion,
                     highContrastFocus = highContrastFocus,
@@ -268,7 +227,7 @@ fun SettingsScreen(
                     onToggleAudioNormalization = viewModel::toggleAudioNormalization,
                     onToggleAdaptiveQuality = viewModel::toggleAdaptiveQuality
                 )
-                SettingsSection.SUPPORT -> SupportSettings(
+                SupportSettings(
                     diagnostics = providerDiagnostics,
                     message = supportMessage,
                     updateState = updateState,
@@ -283,6 +242,13 @@ fun SettingsScreen(
                     onOpenPrivacy = { openExternalPage(context, "https://github.com/shivpatell25/rally/blob/main/PRIVACY.md") },
                     onOpenReleases = { openExternalPage(context, "https://github.com/shivpatell25/rally/releases") }
                 )
+                Spacer(Modifier.height(6.dp))
+                SettingsButton(
+                    label = "Save and Apply",
+                    onClick = { if (viewModel.saveConfiguration()) onSaved() },
+                    primary = true
+                )
+                Spacer(Modifier.height(60.dp))
             }
         }
     }
@@ -329,13 +295,21 @@ private fun ViewingSettings(
 
 @Composable
 private fun ViewingToggle(title: String, description: String, enabled: Boolean, onToggle: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    var focused by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+            .rallyTvFocus(focused).clip(RoundedCornerShape(4.dp))
+            .background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+            .clickable(onClick = onToggle).focusable()
+            .padding(horizontal = 12.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(description, color = AppleTvTheme.TextSecondary, fontSize = 11.sp, lineHeight = 15.sp)
+            Text(title, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(description, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp, lineHeight = 17.sp)
         }
         Spacer(Modifier.width(18.dp))
-        SettingsButton(if (enabled) "On" else "Off", onToggle, selected = enabled)
+        Text(if (enabled) "ON" else "OFF", color = if (enabled) RallyTvPalette.Accent else RallyTvPalette.Subtle, fontFamily = RallyBodyFont, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -348,25 +322,10 @@ private fun AlertsSettings(
 ) {
     SettingsPage("Live Alerts", "Choose which sports moments can interrupt your TV experience.") {
         SettingsPanel("Favorite team alerts", "Kickoff, scores, close games, overtime and finals") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Game updates", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                SettingsButton(
-                    if (liveGameAlertsEnabled) "On" else "Off",
-                    onToggleLiveGameAlerts,
-                    selected = liveGameAlertsEnabled
-                )
-            }
+            ViewingToggle("Game updates", "Notify when a favorite team is playing.", liveGameAlertsEnabled, onToggleLiveGameAlerts)
         }
-        Spacer(Modifier.height(16.dp))
         SettingsPanel("NFL RedZone", "Notify when the dedicated RedZone feed goes live") {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("RedZone alerts", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                SettingsButton(
-                    if (redZoneAlertsEnabled) "On" else "Off",
-                    onToggleRedZoneAlerts,
-                    selected = redZoneAlertsEnabled
-                )
-            }
+            ViewingToggle("RedZone alerts", "Follow the dedicated live feed.", redZoneAlertsEnabled, onToggleRedZoneAlerts)
         }
     }
 }
@@ -391,9 +350,10 @@ private fun SupportSettings(
         SettingsPanel("Rally for Android TV", "Version ${BuildConfig.VERSION_NAME} · Build ${BuildConfig.VERSION_CODE}") {
             Text(
                 "Sports, kept simple. Rally combines public sports data with sources you configure and control.",
-                color = AppleTvTheme.TextSecondary,
-                fontSize = 12.sp,
-                lineHeight = 17.sp
+                color = RallyTvPalette.Muted,
+                fontFamily = RallyBodyFont,
+                fontSize = 13.sp,
+                lineHeight = 19.sp
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -414,14 +374,15 @@ private fun SupportSettings(
                 is RallyUpdateState.PermissionRequired -> "Allow Rally to install unknown apps, then select Install update again."
                 is RallyUpdateState.Error -> updateState.message
             }
-            Text(updateCopy, color = AppleTvTheme.TextSecondary, fontSize = 11.sp, lineHeight = 16.sp)
+            Text(updateCopy, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp, lineHeight = 17.sp)
             if (updateState is RallyUpdateState.Available && updateState.release.notes.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     updateState.release.notes.lineSequence().take(3).joinToString(" "),
-                    color = AppleTvTheme.TextTertiary,
-                    fontSize = 10.sp,
-                    lineHeight = 14.sp,
+                    color = RallyTvPalette.Muted,
+                    fontFamily = RallyBodyFont,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -437,8 +398,9 @@ private fun SupportSettings(
             Spacer(Modifier.height(8.dp))
             Text(
                 "Rally never installs silently. Android's system installer always asks for confirmation.",
-                color = AppleTvTheme.TextTertiary,
-                fontSize = 9.5.sp
+                color = RallyTvPalette.Muted,
+                fontFamily = RallyBodyFont,
+                fontSize = 12.sp
             )
         }
 
@@ -446,9 +408,10 @@ private fun SupportSettings(
         SettingsPanel("Support report", "Stored locally and scrubbed before export") {
             Text(
                 "The report includes app, device, playback recovery, and source-ranking events. Stream URLs, credentials, tokens, MAC addresses, and device IDs are redacted.",
-                color = AppleTvTheme.TextSecondary,
-                fontSize = 11.sp,
-                lineHeight = 16.sp
+                color = RallyTvPalette.Muted,
+                fontFamily = RallyBodyFont,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -466,9 +429,10 @@ private fun SupportSettings(
         SettingsPanel("Preferences backup", "Moves personalization without copying provider credentials") {
             Text(
                 "Backups include sports order, favorites, alerts, playback preferences, and accessibility settings. IPTV credentials and addon addresses stay on this TV.",
-                color = AppleTvTheme.TextSecondary,
-                fontSize = 11.sp,
-                lineHeight = 16.sp
+                color = RallyTvPalette.Muted,
+                fontFamily = RallyBodyFont,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
             )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -481,32 +445,31 @@ private fun SupportSettings(
         SettingsPanel("Content and providers", "Rally does not include or sell television service") {
             Text(
                 "Schedules and statistics come from public sports feeds. IPTV portals and Stremio addons are optional user-configured services. Use only sources and subscriptions you are authorized to access.",
-                color = AppleTvTheme.TextSecondary,
-                fontSize = 11.sp,
-                lineHeight = 16.sp
+                color = RallyTvPalette.Muted,
+                fontFamily = RallyBodyFont,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
             )
         }
 
         message?.let {
             Spacer(Modifier.height(14.dp))
-            Text(it, color = Color(0xFF6FCFFE), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(it, color = RallyTvPalette.Accent, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
 @Composable
 private fun SettingsPage(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize()
-            .padding(horizontal = RallyLayout.SafeHorizontal, vertical = RallyLayout.SafeVertical)
-            .verticalScroll(rememberScrollState())
-    ) {
-        Text(title, color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-.7).sp)
-        Spacer(Modifier.height(4.dp))
-        Text(subtitle, color = AppleTvTheme.TextSecondary, fontSize = 14.sp)
-        Spacer(Modifier.height(28.dp))
+    Column(Modifier.fillMaxWidth()) {
+        RallyTvRule()
+        Spacer(Modifier.height(22.dp))
+        Text(title.uppercase(), color = RallyTvPalette.Accent, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+        Spacer(Modifier.height(5.dp))
+        Text(subtitle, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 13.sp)
+        Spacer(Modifier.height(22.dp))
         content()
-        Spacer(Modifier.height(60.dp))
+        Spacer(Modifier.height(36.dp))
     }
 }
 
@@ -553,17 +516,18 @@ private fun SourcesSettings(
                     SettingsField(xtreamPassword, onXtreamPasswordChange, "Password", modifier = Modifier.weight(1f), password = true)
                 }
                 Spacer(Modifier.height(9.dp))
-                Text("Use the provider's server address only, for example https://provider.example:8080.", color = AppleTvTheme.TextTertiary, fontSize = 11.sp)
+                Text("Use the provider's server address only, for example https://provider.example:8080.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp)
             } else {
                 SettingsField(portalUrl, onPortalChange, "Portal URL", KeyboardType.Uri)
                 if (portalUrl.startsWith("http://", true)) {
                     Spacer(Modifier.height(10.dp))
                     Text(
                         "This provider uses an unencrypted connection. Prefer HTTPS when available.",
-                        color = Color(0xFFFFB340),
+                        color = Color(0xFFFFC783),
+                        fontFamily = RallyBodyFont,
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF24180A)).padding(11.dp)
+                        modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -580,17 +544,17 @@ private fun SourcesSettings(
         SettingsPanel("Stremio Addons", "Manifest URLs used to discover event streams") {
             addonUrls.forEach { url ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AppleTvTheme.Graphite).padding(horizontal = 14.dp, vertical = 11.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(addonDisplayName(url), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(addonDisplayName(url), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(2.dp))
-                        Text(url, color = AppleTvTheme.TextTertiary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(url, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     SettingsButton("Remove", { onRemoveAddon(url) }, danger = true)
                 }
-                Spacer(Modifier.height(8.dp))
+                RallyTvRule()
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SettingsField(newAddonUrl, onNewAddonChange, "Addon manifest URL", KeyboardType.Uri, Modifier.weight(1f))
@@ -602,7 +566,7 @@ private fun SourcesSettings(
 
         Spacer(Modifier.height(18.dp))
         SettingsPanel("Connection diagnostics", "Private checks run locally on this TV") {
-            SettingsButton(if (diagnostics.running) "Checking…" else "Run checks", onRunDiagnostics)
+            SettingsButton(if (diagnostics.running) "Checking…" else "Run checks", onRunDiagnostics, enabled = !diagnostics.running)
             diagnostics.portalResult?.let { result ->
                 Spacer(Modifier.height(10.dp))
                 DiagnosticSettingRow("TV provider", result)
@@ -620,10 +584,10 @@ private fun SourcesSettings(
 
 @Composable
 private fun DiagnosticSettingRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp)
         Spacer(Modifier.width(16.dp))
-        Text(value, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(value, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -637,19 +601,19 @@ private fun SportsSettings(
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit
 ) {
-    SettingsPage("Sports", "Choose what appears on Home and arrange shelf priority.") {
+    SettingsPage("Sports", "Choose what appears on Home and arrange shelf priority. Keep at least one sport enabled.") {
         sportsOrder.forEachIndexed { index, sport ->
             val allEnabled = enabledLeagues.isEmpty()
             val enabled = allEnabled || sport in enabledLeagues
             val favorite = sport in favoriteSports
             Row(
-                modifier = Modifier.fillMaxWidth().clip(panelShape).background(AppleTvTheme.Slate).border(1.dp, Color(0x20FFFFFF), panelShape).padding(14.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("${index + 1}", color = AppleTvTheme.TextTertiary, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(30.dp))
+                Text("${index + 1}", color = RallyTvPalette.Subtle, fontFamily = RallyBodyFont, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(30.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(formatLeagueDisplayName(sport), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                    Text(if (enabled) "Shown on Home" else "Hidden from Home", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
+                    Text(formatLeagueDisplayName(sport), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (enabled) "Shown on Home" else "Hidden from Home", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     SettingsButton(if (favorite) "Favorited" else "Favorite", { onToggleFavorite(sport) }, selected = favorite)
@@ -658,10 +622,10 @@ private fun SportsSettings(
                     SettingsButton("↓", { onMoveDown(sport) }, enabled = index < sportsOrder.lastIndex)
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            RallyTvRule()
         }
         if (enabledLeagues.isEmpty()) {
-            Text("All leagues are currently enabled. Toggling a league starts a custom selection.", color = AppleTvTheme.TextTertiary, fontSize = 11.sp)
+            Text("All leagues are currently enabled. Toggling a league starts a custom selection.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp)
         }
     }
 }
@@ -676,10 +640,10 @@ private fun TeamsSettings(
     var expandedLeague by remember { mutableStateOf<String?>(null) }
     val catalogs = remember { teamCatalogs() }
 
-    SettingsPage("Favorite Teams", "Favorite matchups are promoted in the Home spotlight.") {
-        SettingsPanel("Your Teams", "${favoriteTeams.size} selected") {
+    SettingsPage("My Rally", "Follow teams to personalize your game center.") {
+        SettingsPanel("Following", "${favoriteTeams.size} selected") {
             if (favoriteTeams.isEmpty()) {
-                Text("No favorite teams yet.", color = AppleTvTheme.TextSecondary, fontSize = 13.sp)
+                Text("You are not following any teams yet.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 13.sp)
             } else {
                 favoriteTeams.toList().sorted().chunked(4).forEach { rowTeams ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -706,17 +670,19 @@ private fun TeamsSettings(
         catalogs.forEach { (league, teams) ->
             val expanded = expandedLeague == league
             val selectedCount = teams.count { it in favoriteTeams }
-            Column(Modifier.fillMaxWidth().clip(panelShape).background(AppleTvTheme.Slate).border(1.dp, Color(0x20FFFFFF), panelShape).padding(13.dp)) {
-                Button(
-                    onClick = { expandedLeague = if (expanded) null else league },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = ButtonDefaults.shape(sectionShape),
-                    colors = ButtonDefaults.colors(containerColor = Color.Transparent, focusedContainerColor = AppleTvTheme.Graphite, contentColor = Color.White, focusedContentColor = AppleTvTheme.RallyCyan)
+            Column(Modifier.fillMaxWidth()) {
+                var focused by remember(league) { mutableStateOf(false) }
+                Row(
+                    Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }
+                        .rallyTvFocus(focused).clip(RoundedCornerShape(4.dp))
+                        .background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+                        .clickable { expandedLeague = if (expanded) null else league }.focusable()
+                        .padding(horizontal = 12.dp, vertical = 13.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(league, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (expanded) "Close" else "$selectedCount selected  ›", fontSize = 12.sp)
-                    }
+                    Text(league, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (expanded) "CLOSE" else "$selectedCount SELECTED  ›", color = if (focused) RallyTvPalette.Accent else RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp)
                 }
                 if (expanded) {
                     Spacer(Modifier.height(10.dp))
@@ -736,17 +702,17 @@ private fun TeamsSettings(
                     }
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            RallyTvRule()
         }
     }
 }
 
 @Composable
 private fun SettingsPanel(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(panelShape).background(AppleTvTheme.Slate).border(1.dp, Color(0x20F5F7FA), panelShape).padding(RallyLayout.PanelPadding)) {
-        Text(title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-        Text(subtitle, color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
-        Spacer(Modifier.height(15.dp))
+    Column(Modifier.fillMaxWidth().padding(bottom = 22.dp)) {
+        Text(title, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Text(subtitle, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp, lineHeight = 17.sp)
+        Spacer(Modifier.height(11.dp))
         content()
     }
 }
@@ -768,7 +734,7 @@ private fun SettingsField(
         visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         colors = settingsFieldColors(),
-        shape = panelShape,
+        shape = RoundedCornerShape(4.dp),
         modifier = modifier.height(58.dp)
     )
 }
@@ -784,41 +750,39 @@ private fun SettingsButton(
     modifier: Modifier = Modifier
 ) {
     var focused by remember { mutableStateOf(false) }
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.onFocusChanged { focused = it.isFocused },
-        shape = ButtonDefaults.shape(pillShape),
-        scale = ButtonDefaults.scale(scale = 1f, focusedScale = AppleTvTheme.ButtonFocusScale),
-        colors = ButtonDefaults.colors(
-            containerColor = when {
-                primary -> AppleTvTheme.OffWhite
-                danger -> Color(0x33FF453A)
-                selected -> Color(0x30202834)
-                else -> AppleTvTheme.SurfaceRaised
-            },
-            focusedContainerColor = if (primary) Color.White else AppleTvTheme.SurfaceFocused,
-            contentColor = when {
-                primary -> AppleTvTheme.DeepNavy
-                danger -> Color(0xFFFF6961)
-                else -> Color.White
-            },
-            focusedContentColor = if (primary) AppleTvTheme.DeepNavy else AppleTvTheme.RallyCyan
-        )
+    Row(
+        modifier.onFocusChanged { focused = it.isFocused }
+            .rallyTvFocus(focused)
+            .clip(RoundedCornerShape(4.dp))
+            .background(
+                when {
+                    !enabled -> Color.Transparent
+                    primary -> RallyTvPalette.Accent
+                    focused -> RallyTvPalette.FocusSurface
+                    selected -> RallyTvPalette.BackgroundSoft
+                    else -> Color.Transparent
+                }
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .focusable(enabled = enabled)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             label,
             color = when {
-                primary -> AppleTvTheme.DeepNavy
-                focused -> AppleTvTheme.RallyCyan
-                danger -> Color(0xFFFF6961)
-                else -> Color.White
+                !enabled -> RallyTvPalette.Subtle
+                primary -> RallyTvPalette.Background
+                danger -> RallyTvPalette.Live
+                selected || focused -> RallyTvPalette.Accent
+                else -> RallyTvPalette.Text
             },
-            fontSize = 11.sp,
+            fontFamily = RallyBodyFont,
+            fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -836,13 +800,15 @@ private fun formatFileSize(bytes: Long): String = when {
 }
 
 private fun writeTextDocument(context: Context, uri: Uri, value: String): Boolean = runCatching {
-    context.contentResolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use { it.write(value) }
+    val stream = context.contentResolver.openOutputStream(uri, "wt")
         ?: error("Unable to open the selected file")
+    stream.use { output -> output.bufferedWriter().use { it.write(value) } }
 }.isSuccess
 
 private fun readTextDocument(context: Context, uri: Uri): String? = runCatching {
-    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+    val stream = context.contentResolver.openInputStream(uri)
         ?: error("Unable to open the selected file")
+    stream.use { input -> input.bufferedReader().use { it.readText() } }
 }.getOrNull()
 
 private fun openExternalPage(context: Context, url: String) {

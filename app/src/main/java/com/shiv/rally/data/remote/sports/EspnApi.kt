@@ -1,6 +1,7 @@
 package com.shiv.rally.data.remote.sports
 
 import com.google.gson.JsonElement
+import com.google.gson.annotations.SerializedName
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -56,8 +57,21 @@ data class EspnCompetition(
     val competitors: List<EspnCompetitor>?,
     val broadcasts: List<EspnBroadcast>?,
     val venue: EspnVenue? = null,
+    val weather: EspnWeather? = null,
     val notes: List<EspnNote>? = null,
-    val headlines: List<EspnHeadline>? = null
+    val headlines: List<EspnHeadline>? = null,
+    val situation: EspnSituation? = null,
+    val date: String? = null
+)
+
+data class EspnSituation(
+    val down: Int? = null,
+    val distance: Int? = null,
+    val shortDownDistanceText: String? = null,
+    val downDistanceText: String? = null,
+    val possession: String? = null,
+    val yardLine: Int? = null,
+    val isRedZone: Boolean? = null
 )
 
 data class EspnNote(
@@ -71,8 +85,16 @@ data class EspnHeadline(
 )
 
 data class EspnVenue(
-    val fullName: String?
+    val fullName: String?,
+    val address: EspnVenueAddress? = null,
+    val images: List<EspnVenueImage>? = null
 )
+
+data class EspnVenueImage(val href: String? = null)
+data class EspnGameInfo(val venue: EspnVenue? = null)
+
+data class EspnVenueAddress(val city: String? = null, val state: String? = null)
+data class EspnWeather(val displayValue: String? = null, val temperature: Int? = null)
 
 data class EspnStatus(
     val type: EspnStatusType?
@@ -93,10 +115,12 @@ data class EspnCompetitor(
     val score: String?,
     val hits: Int? = null,
     val errors: Int? = null,
+    @SerializedName(value = "records", alternate = ["record"])
     val records: List<EspnRecord>? = null
 )
 
 data class EspnRecord(
+    @SerializedName(value = "name", alternate = ["type"])
     val name: String?,
     val summary: String?
 )
@@ -106,14 +130,25 @@ data class EspnTeam(
     val name: String?,
     val displayName: String?,
     val abbreviation: String?,
-    val logo: String?
-)
+    val logo: String?,
+    val color: String? = null,
+    val alternateColor: String? = null,
+    val logos: List<EspnTeamLogo>? = null
+) {
+    // Scoreboards use `logo`; historical game summaries use `logos`.
+    val logoImage: String?
+        get() = logo?.takeIf(String::isNotBlank)
+            ?: logos?.firstNotNullOfOrNull { it.href?.takeIf(String::isNotBlank) }
+}
+
+data class EspnTeamLogo(val href: String? = null)
 
 data class EspnBroadcast(
     val names: List<String>?
 )
 
 data class EspnSummaryResponse(
+    val gameInfo: EspnGameInfo? = null,
     val boxscore: EspnBoxscore? = null,
     val leaders: List<EspnLeaderGroup>? = null,
     val header: EspnSummaryHeader? = null,
@@ -162,7 +197,8 @@ data class EspnPlay(
     val homeScore: Int? = null,
     val period: EspnPlayPeriod? = null,
     val clock: EspnPlayClock? = null,
-    val scoringPlay: Boolean? = null
+    val scoringPlay: Boolean? = null,
+    val wallclock: String? = null
 )
 
 data class EspnPlayPeriod(val number: Int? = null, val displayValue: String? = null)

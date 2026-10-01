@@ -177,6 +177,8 @@ class SettingsViewModel @Inject constructor(
             _enabledLeagues.value.toMutableSet()
         }
         if (current.contains(league)) {
+            // Empty is the persisted "all" sentinel; retain one enabled sport.
+            if (current.size <= 1) return
             current.remove(league)
         } else {
             current.add(league)

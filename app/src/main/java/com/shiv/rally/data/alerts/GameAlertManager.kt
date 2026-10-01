@@ -17,6 +17,7 @@ import com.shiv.rally.domain.model.EventStatus
 import com.shiv.rally.domain.model.GameAlert
 import com.shiv.rally.domain.model.GameAlertType
 import com.shiv.rally.domain.model.SportEvent
+import com.shiv.rally.domain.model.matchesFavoriteTeamKeys
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -36,12 +37,12 @@ class GameAlertManager @Inject constructor(@ApplicationContext private val conte
         )
     }
 
-    fun evaluate(previous: List<SportEvent>, current: List<SportEvent>, favoriteTeamIds: Set<String>): List<GameAlert> {
+    fun evaluate(previous: List<SportEvent>, current: List<SportEvent>, favoriteTeamIds: Set<String>, savedEventIds: Set<String> = emptySet()): List<GameAlert> {
         if (previous.isEmpty()) return emptyList()
         val previousById = previous.associateBy { it.id }
         return current.flatMap { event ->
             val old = previousById[event.id] ?: return@flatMap emptyList()
-            val favorite = event.homeTeam?.id in favoriteTeamIds || event.awayTeam?.id in favoriteTeamIds
+            val favorite = event.id in savedEventIds || event.matchesFavoriteTeamKeys(favoriteTeamIds)
             if (!favorite) return@flatMap emptyList()
             buildList {
                 if (old.status == EventStatus.NOT_STARTED && event.status in setOf(EventStatus.LIVE, EventStatus.HALFTIME)) {

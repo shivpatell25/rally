@@ -66,6 +66,39 @@ class EspnRepositoryImpl @Inject constructor(
     private val summaryFetchedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val scoreboardMutex = Mutex()
     private val backgroundRefreshScheduled = AtomicBoolean(false)
+    private val recentCompletedMutex = Mutex()
+    private var recentCompletedAt = 0L
+    private var recentCompleted: List<SportEvent> = emptyList()
+
+    override suspend fun getRecentCompletedEvents(): List<SportEvent> = withContext(Dispatchers.IO) {
+        recentCompletedMutex.withLock {
+            if (System.currentTimeMillis() - recentCompletedAt < 600_000L) return@withLock recentCompleted
+            val today = LocalDate.now()
+            val enabled = preferencesManager.enabledLeagues
+            val gate = Semaphore(2)
+            val leagues = listOf("MLB", "NHL", "NBA", "NFL", "NCAAF", "EPL")
+                .filter { enabled.isEmpty() || it in enabled }
+            val recent = cachedEvents.filter { it.status == EventStatus.FINISHED }.toMutableList()
+            // Daily scoreboards accept a single date across every supported league.
+            // Range requests can fail for the entire feed, leaving empty highlight cards.
+            // Stop once we have enough recent games instead of fetching every day eagerly.
+            for (daysBack in 1L..7L) {
+                if (recent.distinctBy { it.id }.size >= 8) break
+                val date = today.minusDays(daysBack).format(espnDateFormatter)
+                recent += leagues.map { league -> async { gate.withPermit {
+                    val path = espnLeagues.getValue(league)
+                    runCatching { api.getScoreboard(path.first, path.second, date, limit = 40).events.orEmpty()
+                        .mapNotNull { it.toSportEvent(league, includeHistorical = true) }
+                        .filter { it.status == EventStatus.FINISHED } }.getOrDefault(emptyList())
+                } } }.awaitAll().flatten()
+            }
+            recentCompleted = recent
+                .distinctBy { it.id }.sortedByDescending { it.startTime }
+            recentCompleted.forEach { eventCache.putIfAbsent(it.id, it) }
+            recentCompletedAt = System.currentTimeMillis() - if (recentCompleted.isEmpty()) 540_000L else 0L
+            recentCompleted
+        }
+    }
 
     override suspend fun getLiveEvents(): List<SportEvent> {
         return fetchScoreboards().filter { it.status == EventStatus.LIVE || it.status == EventStatus.HALFTIME }
@@ -97,7 +130,16 @@ class EspnRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getEventsByLeague(league: String): List<SportEvent> {
-        return fetchScoreboards().filter { it.league == league }
+        return fetchScoreboards().filter { event ->
+            if (league.equals("Soccer", true)) event.league in setOf("EPL", "La Liga", "Champions League", "Serie A", "MLS")
+            else event.league.equals(league, true)
+        }
+    }
+
+    override suspend fun getEventsForDate(league: String, date: LocalDate): List<SportEvent> = withContext(Dispatchers.IO) {
+        val mapping = espnLeagues[league] ?: return@withContext emptyList()
+        api.getScoreboard(mapping.first, mapping.second, date.format(DateTimeFormatter.BASIC_ISO_DATE), 1_000)
+            .events.orEmpty().mapNotNull { it.toSportEvent(league, includeHistorical = true) }.distinctBy { it.id }
     }
 
     override suspend fun getEventById(eventId: String): SportEvent? = withContext(Dispatchers.IO) {
@@ -128,10 +170,10 @@ class EspnRepositoryImpl @Inject constructor(
                     val ev = SportEvent(
                         id = eventId,
                         name = "$awayName at $homeName",
-                        homeTeam = Team(homeComp.team.id, homeName, homeAbbr, homeComp.team.logo),
-                        awayTeam = Team(awayComp.team.id, awayName, awayAbbr, awayComp.team.logo),
-                        homeTeamBadge = homeComp.team.logo ?: "",
-                        awayTeamBadge = awayComp.team.logo ?: "",
+                        homeTeam = Team(homeComp.team.id, homeName, homeAbbr, homeComp.team.logoImage, listOfNotNull(homeComp.team.color, homeComp.team.alternateColor)),
+                        awayTeam = Team(awayComp.team.id, awayName, awayAbbr, awayComp.team.logoImage, listOfNotNull(awayComp.team.color, awayComp.team.alternateColor)),
+                        homeTeamBadge = homeComp.team.logoImage ?: "",
+                        awayTeamBadge = awayComp.team.logoImage ?: "",
                         scoreHome = homeComp.score?.toIntOrNull(),
                         scoreAway = awayComp.score?.toIntOrNull(),
                         sport = pair.first,
@@ -141,9 +183,11 @@ class EspnRepositoryImpl @Inject constructor(
                             "post" -> EventStatus.FINISHED
                             else -> EventStatus.NOT_STARTED
                         },
-                        startTime = Instant.now(),
+                        startTime = runCatching { Instant.parse(comp.date) }.getOrDefault(Instant.now()),
                         liveStats = mutableMapOf<String, String>().apply {
                             comp.status?.type?.detail?.let { put("Game Status", it) }
+                            homeComp.records?.firstOrNull { it.name == "total" }?.summary?.let { put("$homeAbbr Record", it) }
+                            awayComp.records?.firstOrNull { it.name == "total" }?.summary?.let { put("$awayAbbr Record", it) }
                         },
                         gameStatusDetail = comp.status?.type?.detail ?: comp.status?.type?.description
                     )
@@ -354,7 +398,7 @@ class EspnRepositoryImpl @Inject constructor(
             // 2. Per-player Prominent Leaders
             val playerLeaders = mutableListOf<com.shiv.rally.domain.model.PlayerLeader>()
             summary.leaders?.forEach { group ->
-                val teamLogo = group.team?.logo
+                val teamLogo = group.team?.logoImage
                 val teamAbbr = group.team?.abbreviation
                 group.leaders?.forEach { cat ->
                     val topLeader = cat.leaders?.firstOrNull()
@@ -410,7 +454,7 @@ class EspnRepositoryImpl @Inject constructor(
             // Fallback for Baseball / other sports with boxscore.players
             if (playerLeaders.isEmpty() && summary.boxscore?.players != null) {
                 summary.boxscore.players.forEach { playerGroup ->
-                    val teamLogo = playerGroup.team?.logo
+                    val teamLogo = playerGroup.team?.logoImage
                     val teamAbbr = playerGroup.team?.abbreviation
                     val battingCat = playerGroup.statistics?.find { it.name?.contains("bat", ignoreCase = true) == true } ?: playerGroup.statistics?.firstOrNull()
                     val topBatter = battingCat?.athletes?.firstOrNull()
@@ -490,8 +534,8 @@ class EspnRepositoryImpl @Inject constructor(
                     text = text,
                     awayScore = play.awayScore,
                     homeScore = play.homeScore,
-                    period = play.period?.number,
                     clock = play.clock?.displayValue,
+                    wallClock = play.wallclock,
                     isScoringPlay = play.scoringPlay == true
                 )
             }.sortedByDescending { it.sequence }
@@ -529,7 +573,7 @@ class EspnRepositoryImpl @Inject constructor(
                         teamId = team?.id,
                         teamName = team?.displayName ?: team?.name ?: "Team",
                         teamAbbreviation = team?.abbreviation ?: "TEAM",
-                        teamLogoUrl = team?.logo,
+                        teamLogoUrl = team?.logoImage,
                         category = category.name,
                         labels = category.labels ?: category.descriptions.orEmpty(),
                         rows = rows
@@ -541,6 +585,9 @@ class EspnRepositoryImpl @Inject constructor(
             val summaryAway = summaryCompetition?.competitors?.find { it.homeAway == "away" }
             val summaryHome = summaryCompetition?.competitors?.find { it.homeAway == "home" }
             val updatedEvent = event.copy(
+                venue = summary.gameInfo?.venue?.fullName ?: event.venue,
+                venueImageUrl = summary.gameInfo?.venue?.images?.firstOrNull()?.href
+                    ?: summaryCompetition?.venue?.images?.firstOrNull()?.href ?: event.venueImageUrl,
                 scoreAway = summaryAway?.score?.toIntOrNull() ?: event.scoreAway,
                 scoreHome = summaryHome?.score?.toIntOrNull() ?: event.scoreHome,
                 status = if (summaryCompetition?.status?.type?.state != null) {
@@ -644,35 +691,13 @@ class EspnRepositoryImpl @Inject constructor(
     override suspend fun getLeagueHub(league: String): LeagueHub = withContext(Dispatchers.IO) {
         val events = runCatching { getEventsByLeague(league) }.getOrDefault(emptyList())
         val path = espnLeagues[league] ?: return@withContext LeagueHub(league, events)
-        val standings = runCatching {
-            val root = api.getJson("https://site.api.espn.com/apis/v2/sports/${path.first}/${path.second}/standings")
-            collectObjects(root) { it.has("team") && it.has("stats") }.mapNotNull { entry ->
-                val teamObj = entry.getAsJsonObject("team") ?: return@mapNotNull null
-                val name = teamObj.string("displayName", "name") ?: return@mapNotNull null
-                val stats = entry.getAsJsonArray("stats")
-                val summary = stats?.mapNotNull { stat ->
-                    stat.takeIf { it.isJsonObject }?.asJsonObject?.let { obj ->
-                        val label = obj.string("shortDisplayName", "name")
-                        val value = obj.string("displayValue")
-                        if (label != null && value != null && label.lowercase() in setOf("w", "l", "t", "pct", "gb")) "$label $value" else null
-                    }
-                }?.take(3)?.joinToString(" · ").orEmpty()
-                name to summary
-            }.distinctBy { it.first }
-        }.getOrDefault(emptyList())
+        val (standings, playoffPicture) = runCatching {
+            espnStandings(api.getJson("https://site.api.espn.com/apis/v2/sports/${path.first}/${path.second}/standings").asJsonObject, league)
+        }.getOrDefault(emptyList<Pair<String, String>>() to emptyList())
         val postseasonTerms = listOf("playoff", "wild card", "divisional", "conference", "championship", "final", "postseason")
         val postseasonEvents = events.filter { event ->
             val context = "${event.name} ${event.eventContextTitle.orEmpty()} ${event.gameStatusDetail.orEmpty()}".lowercase()
             postseasonTerms.any(context::contains)
-        }
-        val playoffCutoff = when (league.uppercase()) {
-            "NFL" -> 14
-            "NBA", "NHL" -> 16
-            "MLB" -> 12
-            else -> 8
-        }
-        val playoffPicture = standings.take(playoffCutoff).mapIndexed { index, standing ->
-            standing.first to "Seed ${index + 1}${standing.second.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty()}"
         }
         LeagueHub(league, events, standings, postseasonEvents, playoffPicture)
     }
@@ -775,7 +800,7 @@ class EspnRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun EspnEvent.toSportEvent(leagueName: String): SportEvent? {
+    private fun EspnEvent.toSportEvent(leagueName: String, includeHistorical: Boolean = false): SportEvent? {
         val competition = competitions?.firstOrNull() ?: run {
             return null
         }
@@ -805,7 +830,7 @@ class EspnRepositoryImpl @Inject constructor(
         }
         
         // Filter out extreme old data only for finished/non-live events
-        if (status != EventStatus.LIVE && status != EventStatus.HALFTIME) {
+        if (!includeHistorical && status != EventStatus.LIVE && status != EventStatus.HALFTIME) {
             if (startTime.isBefore(Instant.now().minusSeconds(12 * 3600))) {
                 return null
             }
@@ -819,11 +844,51 @@ class EspnRepositoryImpl @Inject constructor(
         val homeAbbr = homeCompetitor.team.abbreviation ?: homeCompetitor.team.name?.take(3)?.uppercase() ?: ""
         val awayAbbr = awayCompetitor.team.abbreviation ?: awayCompetitor.team.name?.take(3)?.uppercase() ?: ""
 
-        val homeTeamModel = Team(id = homeCompetitor.team.id, name = homeName, abbreviation = homeAbbr, logoUrl = homeCompetitor.team.logo)
-        val awayTeamModel = Team(id = awayCompetitor.team.id, name = awayName, abbreviation = awayAbbr, logoUrl = awayCompetitor.team.logo)
+        val homeTeamModel = Team(
+            id = homeCompetitor.team.id,
+            name = homeName,
+            abbreviation = homeAbbr,
+            logoUrl = homeCompetitor.team.logoImage,
+            colors = listOfNotNull(homeCompetitor.team.color, homeCompetitor.team.alternateColor)
+        )
+        val awayTeamModel = Team(
+            id = awayCompetitor.team.id,
+            name = awayName,
+            abbreviation = awayAbbr,
+            logoUrl = awayCompetitor.team.logoImage,
+            colors = listOfNotNull(awayCompetitor.team.color, awayCompetitor.team.alternateColor)
+        )
 
         val stats = mutableMapOf<String, String>()
+        competition.venue?.address?.let { address ->
+            listOfNotNull(address.city, address.state).joinToString(", ").takeIf(String::isNotBlank)?.let { stats["Venue City"] = it }
+        }
+        competition.weather?.let { weather ->
+            weather.displayValue?.takeIf(String::isNotBlank)?.let { stats["Weather"] = it }
+            weather.temperature?.let { stats["Temperature"] = "$it°" }
+        }
         competition.status?.type?.detail?.let { stats["Game Status"] = it }
+        competition.situation?.let { situation ->
+            situation.yardLine?.let { stats["Drive Yard Line"] = it.toString() }
+            val downDistance = situation.shortDownDistanceText
+                ?: situation.downDistanceText
+                ?: if (situation.down != null && situation.distance != null) {
+                    val ordinal = when (situation.down) {
+                        1 -> "1st"
+                        2 -> "2nd"
+                        3 -> "3rd"
+                        else -> "${situation.down}th"
+                    }
+                    "$ordinal & ${situation.distance}"
+                } else null
+            downDistance?.let {
+                stats["Current Drive"] = it + if (situation.isRedZone == true) " · Red zone" else ""
+            }
+            when (situation.possession) {
+                homeCompetitor.team.id -> stats["Possession"] = homeAbbr
+                awayCompetitor.team.id -> stats["Possession"] = awayAbbr
+            }
+        }
         homeCompetitor.records?.firstOrNull()?.summary?.let { stats["$homeAbbr Record"] = it }
         awayCompetitor.records?.firstOrNull()?.summary?.let { stats["$awayAbbr Record"] = it }
         if (homeCompetitor.hits != null || awayCompetitor.hits != null) {
@@ -892,14 +957,15 @@ class EspnRepositoryImpl @Inject constructor(
             name = this.name ?: "${homeTeamModel.name} vs ${awayTeamModel.name}",
             homeTeam = homeTeamModel,
             awayTeam = awayTeamModel,
-            homeTeamBadge = homeCompetitor.team.logo ?: "",
-            awayTeamBadge = awayCompetitor.team.logo ?: "",
+            homeTeamBadge = homeCompetitor.team.logoImage ?: "",
+            awayTeamBadge = awayCompetitor.team.logoImage ?: "",
             scoreHome = homeCompetitor.score?.toIntOrNull(),
             scoreAway = awayCompetitor.score?.toIntOrNull(),
             sport = espnLeagues[leagueName]?.first ?: "unknown",
             league = leagueName,
             status = status,
             venue = competition.venue?.fullName,
+            venueImageUrl = competition.venue?.images?.firstOrNull()?.href,
             eventContextTitle = contextTitle,
             startTime = startTime,
             liveStats = stats,

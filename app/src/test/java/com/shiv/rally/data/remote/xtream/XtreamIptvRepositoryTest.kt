@@ -15,7 +15,8 @@ import retrofit2.Response
 
 class XtreamIptvRepositoryTest {
     private class FakeXtreamApi : XtreamApi {
-        val requestedUrls = mutableListOf<String>()
+        // Categories and streams are fetched concurrently by the repository.
+        val requestedUrls: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 
         override suspend fun request(url: String): Response<JsonElement> {
             requestedUrls += url

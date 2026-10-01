@@ -3,11 +3,19 @@ package com.shiv.rally.presentation.home
 import com.shiv.rally.domain.model.EventStatus
 import com.shiv.rally.domain.model.SportEvent
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
 
 class LivingHeroTest {
+    @Test fun `club names keep their identity instead of taking the final word`() {
+        assertEquals("Nashville SC", matchupTeamName("Nashville SC", "MLS"))
+        assertEquals("New York Red Bulls", matchupTeamName("New York Red Bulls", "MLS"))
+        assertEquals("Manchester City", matchupTeamName("Manchester City", "EPL"))
+        assertEquals("White Sox", matchupTeamName("Chicago White Sox", "MLB"))
+        assertEquals("Bears", matchupTeamName("Chicago Bears", "NFL"))
+    }
     @Test
     fun `basketball stays editorially close within eight points`() {
         assertTrue(isEditoriallyClose(event("Basketball", "NBA", 101, 108)))

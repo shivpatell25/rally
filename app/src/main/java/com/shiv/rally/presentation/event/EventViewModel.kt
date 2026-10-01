@@ -10,6 +10,7 @@ import com.shiv.rally.domain.model.SportEvent
 import com.shiv.rally.domain.model.StremioStreamOption
 import com.shiv.rally.domain.model.FavoriteTeam
 import com.shiv.rally.domain.model.Team
+import com.shiv.rally.domain.model.TeamInjury
 import com.shiv.rally.data.local.PreferencesManager
 import com.shiv.rally.domain.repository.IptvRepository
 import com.shiv.rally.domain.repository.SportsRepository
@@ -17,6 +18,8 @@ import com.shiv.rally.domain.repository.StremioRepository
 import com.shiv.rally.domain.usecase.SelectBestStreamUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,12 +41,14 @@ class EventViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<EventUiState>(EventUiState.Loading)
     val uiState: StateFlow<EventUiState> = _uiState.asStateFlow()
 
-    init {
-        loadEventDetails()
-    }
+    private var loadJob: Job? = null
+    init { loadEventDetails() }
+
+    fun retry() { _uiState.value = EventUiState.Loading; loadEventDetails() }
 
     private fun loadEventDetails() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             try {
                 val event = sportsRepository.getEventById(eventId)
 
@@ -60,7 +65,6 @@ class EventViewModel @Inject constructor(
                     emptyList()
                 }
 
-                // 2. Instant initial Success state (<1ms) so the Event Details screen renders with zero lag!
                 _uiState.value = EventUiState.Success(
                     event = event,
                     bestMatch = null,
@@ -71,18 +75,24 @@ class EventViewModel @Inject constructor(
                     streamCandidates = emptyList(),
                     isLoadingStreams = true,
                     primaryStreamTarget = null,
-                    favoriteTeamIds = favoriteIdsFor(event)
+                    favoriteTeamIds = favoriteIdsFor(event),
+                    isEventWatchlisted = event.id in preferencesManager.savedEventIds
                 )
 
                 // 3. Match IPTV channels, query Stremio addons, and fetch rich stats summary concurrently!
                 val channelsDeferred = async(kotlinx.coroutines.Dispatchers.IO) {
-                    try { iptvRepository.getChannels() } catch (e: Exception) { emptyList() }
+                    try { iptvRepository.getChannels() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { emptyList() }
                 }
                 val stremioDeferred = async(kotlinx.coroutines.Dispatchers.IO) {
-                    try { stremioRepository.getStreamsForEvent(event) } catch (e: Exception) { emptyList() }
+                    try { stremioRepository.getStreamsForEvent(event) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { emptyList() }
                 }
                 val summaryDeferred = async(kotlinx.coroutines.Dispatchers.IO) {
-                    try { sportsRepository.getEventSummary(event) } catch (e: Exception) { event }
+                    val detailed = try { sportsRepository.getEventSummary(event) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { event }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        val current = _uiState.value as? EventUiState.Success
+                        if (current != null) _uiState.value = current.copy(event = detailed)
+                    }
+                    detailed
                 }
 
                 // Publish addon streams as soon as they are ready. IPTV discovery may
@@ -130,9 +140,9 @@ class EventViewModel @Inject constructor(
                     streamCandidates = selection.candidates,
                     isLoadingStreams = false,
                     primaryStreamTarget = selection.primary?.playbackTarget,
-                    favoriteTeamIds = favoriteIdsFor(summaryEvent)
+                    favoriteTeamIds = favoriteIdsFor(summaryEvent),
+                    isEventWatchlisted = summaryEvent.id in preferencesManager.savedEventIds
                 )
-
                 // Start observing for live updates
                 sportsRepository.observeLiveEvent(eventId).collect { liveEvent ->
                     val currentState = _uiState.value
@@ -140,7 +150,8 @@ class EventViewModel @Inject constructor(
                         _uiState.value = currentState.copy(event = liveEvent)
                     }
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 _uiState.value = EventUiState.Error(e.message ?: "Failed to load event")
             }
         }
@@ -152,6 +163,12 @@ class EventViewModel @Inject constructor(
             FavoriteTeam(team.id, current.event.league, team.name, team.abbreviation, team.logoUrl, team.colors)
         )
         _uiState.value = current.copy(favoriteTeamIds = favoriteIdsFor(current.event))
+    }
+
+    fun toggleEventWatchlist() {
+        val current = _uiState.value as? EventUiState.Success ?: return
+        val isSaved = preferencesManager.toggleSavedEvent(current.event.id)
+        _uiState.value = current.copy(isEventWatchlisted = isSaved)
     }
 
     private fun favoriteIdsFor(event: SportEvent): Set<String> = listOfNotNull(event.homeTeam, event.awayTeam)
@@ -172,7 +189,9 @@ sealed class EventUiState {
         val streamCandidates: List<com.shiv.rally.domain.model.StreamCandidate> = emptyList(),
         val isLoadingStreams: Boolean = false,
         val primaryStreamTarget: String? = null,
-        val favoriteTeamIds: Set<String> = emptySet()
+        val favoriteTeamIds: Set<String> = emptySet(),
+        val isEventWatchlisted: Boolean = false,
+        val injuries: Map<String, List<TeamInjury>> = emptyMap()
     ) : EventUiState()
     data class Error(val message: String) : EventUiState()
 }

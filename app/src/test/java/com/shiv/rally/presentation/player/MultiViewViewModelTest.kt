@@ -148,6 +148,17 @@ class MultiViewViewModelTest {
         assertNull(state.pickerTargetSlotIndex)
     }
 
+    @Test fun `a matchup channel contributes its game once to the stats tile`() = runTest(testDispatcher) {
+        val vm = createViewModel(SavedStateHandle(mapOf("eventIds" to "event_1,event_2")))
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.addSlotFromChannel(fakeChannel1)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("event_1", vm.uiState.value.slots.last().event?.id)
+        vm.addStatsTile()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(listOf("event_1", "event_2"), vm.uiState.value.statsGames.map { it.id })
+    }
+
     @Test
     fun testAddSlotFromEvent_appendsSlotAndUpdatesFocus() = runTest(testDispatcher) {
         val savedStateHandle = SavedStateHandle()
@@ -171,6 +182,62 @@ class MultiViewViewModelTest {
 
         viewModel.setFocusedSlot(1)
         assertEquals(1, viewModel.uiState.value.focusedSlotIndex)
+        assertEquals(1, viewModel.uiState.value.audioSlotIndex)
+    }
+
+    @Test fun pinnedAudioSurvivesFocusAndPositionChanges() = runTest(testDispatcher) {
+        val vm = createViewModel(SavedStateHandle(mapOf("eventIds" to "event_1,event_2")))
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.setAudioSlot(0)
+        vm.setFocusedSlot(1)
+        assertEquals(0, vm.uiState.value.audioSlotIndex)
+        vm.swapSlot(0)
+        assertEquals("event_1", vm.uiState.value.slots[vm.uiState.value.audioSlotIndex].event?.id)
+        vm.toggleAudioFollowsFocus()
+        assertEquals(vm.uiState.value.focusedSlotIndex, vm.uiState.value.audioSlotIndex)
+    }
+
+    @Test fun statsTileOccupiesOneSlotAndDoesNotTakeOverAudio() = runTest(testDispatcher) {
+        val vm = createViewModel(SavedStateHandle(mapOf("eventIds" to "event_1,event_2")))
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.setFocusedSlot(1)
+        vm.addStatsTile()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.uiState.value.statsTileEnabled)
+        assertEquals(2, vm.uiState.value.focusedSlotIndex)
+        assertEquals(1, vm.uiState.value.audioSlotIndex)
+        assertEquals(2, vm.uiState.value.statsGames.size)
+        vm.addSlotFromChannel(fakeChannel1)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.addSlotFromChannel(fakeChannel1.copy(id = "extra"))
+        assertEquals(3, vm.uiState.value.slots.size)
+        vm.removeStatsTile()
+        assertFalse(vm.uiState.value.statsTileEnabled)
+    }
+
+    @Test fun duplicateEventStreamsProduceOneStatsGame() = runTest(testDispatcher) {
+        val vm = createViewModel(SavedStateHandle(mapOf("eventIds" to "event_1")))
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.addSlotFromEvent(fakeEvent1)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.addStatsTile()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(2, vm.uiState.value.slots.size)
+        assertEquals(listOf("event_1"), vm.uiState.value.statsGames.map { it.id })
+    }
+
+    @Test fun statsCanReplaceStreamWhenAllFourTilesAreOccupied() = runTest(testDispatcher) {
+        val vm = createViewModel(SavedStateHandle(mapOf("eventIds" to "event_1,event_2")))
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.addSlotFromChannel(fakeChannel1)
+        vm.addSlotFromChannel(fakeChannel1.copy(id = "extra"))
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.openPickerForSwap(3)
+        vm.addStatsTile()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(3, vm.uiState.value.slots.size)
+        assertTrue(vm.uiState.value.statsTileEnabled)
+        assertFalse(vm.uiState.value.isPickerOpen)
     }
 
     @Test

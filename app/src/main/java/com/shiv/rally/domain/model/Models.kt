@@ -28,6 +28,7 @@ data class SportEvent(
     val homeTeamBadge: String? = null,
     val awayTeamBadge: String? = null,
     val venue: String? = null,
+    val venueImageUrl: String? = null,
     val eventContextTitle: String? = null,
     val liveStats: Map<String, String> = emptyMap(),
     val gameStatusDetail: String? = null,
@@ -48,6 +49,7 @@ data class GamePlay(
     val homeScore: Int? = null,
     val period: Int? = null,
     val clock: String? = null,
+    val wallClock: String? = null,
     val isScoringPlay: Boolean = false
 )
 

@@ -9,17 +9,21 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.NavHostController
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -33,6 +37,7 @@ import androidx.tv.material3.Surface
 import com.shiv.rally.data.local.PreferencesManager
 import com.shiv.rally.presentation.event.EventScreen
 import com.shiv.rally.presentation.home.HomeScreen
+import com.shiv.rally.presentation.home.LiveGamesScreen
 import com.shiv.rally.presentation.iptv.IptvBrowserScreen
 import com.shiv.rally.presentation.player.PlayerScreen
 import com.shiv.rally.presentation.player.MultiViewScreen
@@ -45,14 +50,15 @@ import com.shiv.rally.presentation.theme.RallyTheme
 import com.shiv.rally.presentation.theme.LocalRallyAccessibility
 import com.shiv.rally.presentation.theme.RallyAccessibilitySettings
 import com.shiv.rally.presentation.common.TvActionGate
-import com.shiv.rally.presentation.common.RallyAmbientSurface
-import com.shiv.rally.presentation.common.RallyDestination
-import com.shiv.rally.presentation.common.RallyTopBar
-import com.shiv.rally.presentation.common.RallyChromeFocus
+import com.shiv.rally.presentation.common.RallyTvBackdrop
+import com.shiv.rally.presentation.common.RallyTvChromeFocus
+import com.shiv.rally.presentation.common.RallyTvDestination
+import com.shiv.rally.presentation.common.RallyTvTopBar
 import com.shiv.rally.presentation.common.RallyScoreSaverHost
 import com.shiv.rally.presentation.highlights.HighlightsScreen
 import com.shiv.rally.presentation.watchlist.WatchlistScreen
 import com.shiv.rally.presentation.onboarding.OnboardingScreen
+import com.shiv.rally.presentation.schedule.ScheduleScreen
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,7 +90,11 @@ class MainActivity : ComponentActivity() {
         } catch (error: IllegalStateException) {
             // Compose TV can race focus search with an async shelf replacement. Dropping that one
             // stale key event is preferable to terminating playback or the entire Home screen.
-            if (error.message?.contains("LayoutCoordinate operations are only valid when isAttached is true") == true) {
+            if (
+                error.message?.contains("LayoutCoordinate operations are only valid when isAttached is true") == true ||
+                error.message?.contains("FocusRequester is not initialized") == true
+            ) {
+                android.util.Log.w("RallyFocus", "Ignored a stale focus target during navigation", error)
                 true
             } else {
                 throw error
@@ -112,9 +122,6 @@ class MainActivity : ComponentActivity() {
                     val startDest = if (preferencesManager.hasCredentials()) "home" else "onboarding"
                     val backStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = backStackEntry?.destination?.route.orEmpty()
-                    val ambientContextKey = backStackEntry?.arguments?.getString("league")
-                        ?: currentRoute
-                    val interactionTick by interactionTicks.collectAsState()
                     val accessibility = remember(currentRoute) {
                         RallyAccessibilitySettings(
                             reducedMotion = preferencesManager.reducedMotion,
@@ -124,16 +131,26 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     val baseDensity = LocalDensity.current
-                    val chromeFocus = remember { RallyChromeFocus() }
+                    val chromeFocus = remember { RallyTvChromeFocus() }
+                    var homeResetRequest by rememberSaveable { mutableIntStateOf(0) }
                     val contentFocusRequester = remember(currentRoute) { FocusRequester() }
                     val showChrome = currentRoute != "onboarding" &&
-                        !currentRoute.startsWith("player/") && !currentRoute.startsWith("multiview")
+                        !currentRoute.startsWith("player/") &&
+                        !currentRoute.startsWith("multiview")
+                    // Home content starts below the persistent navigation shell. This keeps
+                    // scrolling hero text and cards from leaking behind the logo and tabs.
+                    val immersiveHero = currentRoute.startsWith("event/")
                     val selectedDestination = when {
-                        currentRoute == "home" || currentRoute.startsWith("event/") -> RallyDestination.HOME
-                        currentRoute == "iptv" -> RallyDestination.LIVE
-                        currentRoute == "leagues" || currentRoute.startsWith("league/") -> RallyDestination.LEAGUES
-                        currentRoute == "highlights" -> RallyDestination.HIGHLIGHTS
-                        currentRoute == "watchlist" || currentRoute.startsWith("team/") -> RallyDestination.MY_TEAMS
+                        currentRoute == "home" -> RallyTvDestination.HOME
+                        currentRoute == "iptv" -> RallyTvDestination.LIVE
+                        currentRoute == "live-games" -> RallyTvDestination.LIVE
+                        currentRoute.startsWith("event/") -> RallyTvDestination.LIVE
+                        currentRoute == "schedule" -> RallyTvDestination.SCHEDULE
+                        currentRoute == "leagues" || currentRoute.startsWith("league/") -> RallyTvDestination.LEAGUES
+                        currentRoute == "highlights" -> RallyTvDestination.HIGHLIGHTS
+                        currentRoute == "watchlist" || currentRoute.startsWith("team/") -> RallyTvDestination.MY_RALLY
+                        currentRoute == "search" -> RallyTvDestination.SEARCH
+                        currentRoute == "settings" -> RallyTvDestination.SETTINGS
                         else -> null
                     }
 
@@ -153,24 +170,13 @@ class MainActivity : ComponentActivity() {
                         LocalRallyAccessibility provides accessibility,
                         LocalDensity provides Density(baseDensity.density, if (accessibility.largeText) 1.12f else baseDensity.fontScale)
                     ) {
-                    RallyAmbientSurface(contextKey = ambientContextKey) {
-                        Column(Modifier.fillMaxSize()) {
-                            if (showChrome) {
-                                RallyTopBar(
-                                    selected = selectedDestination,
-                                    onHome = { navigateTopLevel("home") },
-                                    onLive = { navigateTopLevel("iptv") },
-                                    onLeagues = { navigateTopLevel("leagues") },
-                                    onHighlights = { navigateTopLevel("highlights") },
-                                    onWatchlist = { navigateTopLevel("watchlist") },
-                                    onSearch = { navigateTopLevel("search") },
-                                    onSettings = { navigateTopLevel("settings") },
-                                    focus = chromeFocus,
-                                    contentFocusRequester = contentFocusRequester
-                                )
-                            }
-                            Box(Modifier.weight(1f)) {
-                    NavHost(navController = navController, startDestination = startDest) {
+                    RallyTvBackdrop {
+                        Box(Modifier.fillMaxSize()) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = startDest,
+                        modifier = Modifier.fillMaxSize().padding(top = if (showChrome && !immersiveHero) 70.dp else 0.dp)
+                    ) {
                         composable("onboarding") {
                             OnboardingScreen(
                                 onContinue = {
@@ -206,22 +212,45 @@ class MainActivity : ComponentActivity() {
                                 onSettingsClick = {
                                     if (navigationGate.tryAcquire("navigate")) navController.navigate("settings") { launchSingleTop = true }
                                 },
-                                onNavigateToPlayer = { channelId ->
+                                onNavigateToPlayer = { channelId, clipTitle ->
                                     if (navigationGate.tryAcquire("navigate")) {
                                         val encoded = channelId.routeEncoded()
-                                        navController.navigate("player/$encoded") { launchSingleTop = true }
+                                        navController.navigate("player/$encoded${clipTitle?.let { "?clipTitle=${it.routeEncoded()}" }.orEmpty()}") { launchSingleTop = true }
                                     }
                                 },
                                 onNavigateToIptv = {
                                     if (navigationGate.tryAcquire("navigate")) navController.navigate("iptv") { launchSingleTop = true }
                                 },
+                                onNavigateToLiveGames = { navigateTopLevel("live-games") },
+                                onNavigateToHighlights = { navigateTopLevel("highlights") },
                                 onLeagueClick = { league ->
                                     if (navigationGate.tryAcquire("navigate")) {
                                         navController.navigate("league/${league.routeEncoded()}") { launchSingleTop = true }
                                     }
                                 },
+                                onScheduleClick = { navigateTopLevel("schedule") },
                                 initialFocusRequester = contentFocusRequester,
-                                topNavigationFocusRequester = chromeFocus.home
+                                topNavigationFocusRequester = chromeFocus.home,
+                                homeResetRequest = homeResetRequest
+                            )
+                        }
+                        composable("schedule") {
+                            ScheduleScreen(
+                                onEventClick = { event ->
+                                    if (navigationGate.tryAcquire("navigate")) {
+                                        navController.navigate("event/${event.id.routeEncoded()}") { launchSingleTop = true }
+                                    }
+                                },
+                                initialFocusRequester = contentFocusRequester
+                            )
+                        }
+                        composable("live-games") {
+                            LiveGamesScreen(
+                                onEventClick = { event ->
+                                    if (navigationGate.tryAcquire("navigate")) navController.navigate("event/${event.id.routeEncoded()}") { launchSingleTop = true }
+                                },
+                                onBrowseChannels = { navigateTopLevel("iptv") },
+                                initialFocusRequester = contentFocusRequester
                             )
                         }
                         composable("search") {
@@ -244,8 +273,8 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("highlights") {
                             HighlightsScreen(
-                                onPlay = { target ->
-                                    if (navigationGate.tryAcquire("navigate")) navController.navigate("player/${target.routeEncoded()}") { launchSingleTop = true }
+                                onPlay = { target, title ->
+                                    if (navigationGate.tryAcquire("navigate")) navController.navigate("player/${target.routeEncoded()}?clipTitle=${title.routeEncoded()}") { launchSingleTop = true }
                                 },
                                 onEvent = { event ->
                                     if (navigationGate.tryAcquire("navigate")) navController.navigate("event/${event.id.routeEncoded()}") { launchSingleTop = true }
@@ -306,6 +335,9 @@ class MainActivity : ComponentActivity() {
                             deepLinks = listOf(androidx.navigation.navDeepLink { uriPattern = "rally://event/{eventId}" })
                         ) {
                             EventScreen(
+                                onPlayHighlight = { target, title ->
+                                    if (navigationGate.tryAcquire("navigate")) navController.navigate("player/${target.routeEncoded()}?clipTitle=${title.routeEncoded()}") { launchSingleTop = true }
+                                },
                                 onWatchLive = { streamOrChannelId ->
                                     if (!navigationGate.tryAcquire("navigate")) return@EventScreen
                                     val encoded = streamOrChannelId.routeEncoded()
@@ -322,10 +354,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable(
-                            route = "player/{channelId}?eventId={eventId}",
+                            route = "player/{channelId}?eventId={eventId}&clipTitle={clipTitle}",
                             arguments = listOf(
                                 navArgument("channelId") { type = NavType.StringType },
-                                navArgument("eventId") { type = NavType.StringType; nullable = true; defaultValue = null }
+                                navArgument("eventId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                                navArgument("clipTitle") { type = NavType.StringType; nullable = true; defaultValue = null }
                             ),
                             deepLinks = listOf(androidx.navigation.navDeepLink { uriPattern = "rally://player/{channelId}?eventId={eventId}" })
                         ) {
@@ -382,11 +415,28 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                            }
+                        if (showChrome) {
+                            RallyTvTopBar(
+                                selected = selectedDestination,
+                                onHome = {
+                                    homeResetRequest += 1
+                                    navigateTopLevel("home")
+                                },
+                                onLive = { navigateTopLevel("live-games") },
+                                onSchedule = { navigateTopLevel("schedule") },
+                                onLeagues = { navigateTopLevel("leagues") },
+                                onHighlights = { navigateTopLevel("highlights") },
+                                onMyRally = { navigateTopLevel("watchlist") },
+                                onSearch = { navigateTopLevel("search") },
+                                onSettings = { navigateTopLevel("settings") },
+                                focus = chromeFocus,
+                                contentFocusRequester = contentFocusRequester,
+                                modifier = Modifier.align(Alignment.TopCenter)
+                            )
                         }
                         RallyScoreSaverHost(
                             enabled = preferencesManager.scoreSaverEnabled,
-                            interactionTick = interactionTick,
+                            interactionEvents = interactionTicks,
                             currentRoute = currentRoute,
                             onDismiss = { interactionTicks.value = SystemClock.uptimeMillis() }
                         )
@@ -395,6 +445,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
     }
 
     override fun onNewIntent(intent: Intent) {

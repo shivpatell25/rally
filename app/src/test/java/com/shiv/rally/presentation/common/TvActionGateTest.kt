@@ -5,6 +5,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TvActionGateTest {
+    @Test fun `a control whose action changed stays responsive`() {
+        val gate = TvActionGate(minimumIntervalMs = 450L, clock = { 1_000L })
+        assertTrue(gate.tryAcquire("Audio: Focus"))
+        assertTrue(gate.tryAcquire("Audio: Pinned"))
+        assertFalse(gate.tryAcquire("Audio: Pinned"))
+    }
     @Test
     fun `blocks rapid repeats but keeps independent actions responsive`() {
         var now = 1_000L
