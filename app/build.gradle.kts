@@ -24,10 +24,9 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        // Beta 7 hotfix 1 with a monotonic Android version code so it
-        // upgrades existing beta/hotfix installations safely.
-        versionCode = 8
-        versionName = "1.0-beta7-hotfix1"
+        // Beta 8 release after the Rally TV redesign and multiview audit.
+        versionCode = 9
+        versionName = "1.0-beta8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
