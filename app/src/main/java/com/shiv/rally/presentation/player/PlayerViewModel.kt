@@ -44,6 +44,7 @@ class PlayerViewModel @Inject constructor(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
+    val clipTitle: String? = savedStateHandle.get<String>("clipTitle")?.takeIf(String::isNotBlank)
     private val rawChannelId: String = checkNotNull(savedStateHandle["channelId"])
     private var activeChannelId: String = rawChannelId
     private var activeEventId: String? = savedStateHandle.get<String>("eventId")?.takeIf { it.isNotBlank() && it != "null" }

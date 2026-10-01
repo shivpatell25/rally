@@ -1,21 +1,24 @@
-@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
+@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @file:androidx.media3.common.util.UnstableApi
 
 package com.shiv.rally.presentation.player
 
 import android.net.Uri
-import android.view.LayoutInflater
-import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.AndroidExternalSurface
+import androidx.compose.foundation.AndroidExternalSurfaceZOrder
+import androidx.compose.foundation.AndroidEmbeddedExternalSurface
+import androidx.compose.foundation.AndroidExternalSurfaceScope
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -55,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -81,14 +86,15 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.ui.PlayerView
-import androidx.tv.material3.Border
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.ui.SubtitleView
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.Card
-import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.Text
 import androidx.tv.foundation.lazy.list.TvLazyColumn
 import androidx.tv.foundation.lazy.list.items
@@ -105,9 +111,16 @@ import com.shiv.rally.domain.model.StreamCandidate
 import com.shiv.rally.domain.model.parseQualityFromChannelName
 import com.shiv.rally.domain.model.resolveMaxBroadcastQuality
 import com.shiv.rally.presentation.event.AppleTvStreamPicker
+import com.shiv.rally.presentation.common.RallyTvActionButton
+import com.shiv.rally.presentation.common.RallyTvPalette
+import com.shiv.rally.presentation.common.RallyTvRule
+import com.shiv.rally.presentation.common.rallyTvFocus
 import com.shiv.rally.presentation.common.RallyControlButton
 import com.shiv.rally.presentation.common.RallyPagedRow
 import com.shiv.rally.presentation.home.formatTeamDisplayName
+import com.shiv.rally.presentation.home.matchupTeamName
+import com.shiv.rally.presentation.home.getEditorialPhoto
+import com.shiv.rally.presentation.home.getSportBackdrop
 import com.shiv.rally.presentation.theme.AppleTvTheme
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -129,6 +142,7 @@ private data class PlaybackDiagnostics(
     val codec: String = "Detecting",
     val bufferedMs: Long = 0L,
     val droppedFrames: Int = 0,
+    val renderedFrames: Int = 0,
     val sourceHealthScore: Int = 0,
     val recoveryAttempt: Int = 0,
     val lowLatencyMode: Boolean = true,
@@ -140,6 +154,37 @@ private data class PlaybackSession(
     val player: ExoPlayer,
     val trackSelector: DefaultTrackSelector
 )
+
+private data class MediaTrackChoice(
+    val label: String,
+    val group: Tracks.Group?,
+    val trackIndex: Int?,
+    val selected: Boolean
+)
+
+private fun mediaTrackChoices(tracks: Tracks, type: Int, captionsDisabled: Boolean): List<MediaTrackChoice> {
+    val trackChoices = tracks.groups
+        .filter { it.type == type }
+        .flatMap { group ->
+            (0 until group.length)
+                .filter(group::isTrackSupported)
+                .map { index ->
+                    val format = group.getTrackFormat(index)
+                    val language = format.language?.takeUnless { it == "und" }
+                    val label = listOfNotNull(
+                        language?.let { Locale.forLanguageTag(it).getDisplayName(Locale.getDefault()) },
+                        format.label?.takeIf { it.isNotBlank() },
+                        format.codecs?.uppercase(Locale.getDefault())
+                    ).distinct().joinToString(" · ").ifBlank { "Track ${index + 1}" }
+                    MediaTrackChoice(label, group, index, group.isTrackSelected(index))
+                }
+        }
+    return buildList {
+        add(MediaTrackChoice("Automatic", null, null, trackChoices.none { it.selected } && !captionsDisabled))
+        if (type == C.TRACK_TYPE_TEXT) add(MediaTrackChoice("Off", null, -1, captionsDisabled))
+        addAll(trackChoices)
+    }
+}
 
 private fun extractSpecs(format: Format?, current: VideoStreamSpecs): VideoStreamSpecs {
     if (format == null) return current
@@ -172,36 +217,60 @@ private fun extractSpecs(format: Format?, current: VideoStreamSpecs): VideoStrea
 @Composable
 private fun VideoPlayerSurface(
     exoPlayer: ExoPlayer,
-    onRemoteKey: (Int) -> Boolean,
     onSurfaceClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    AndroidView(
-        factory = { context ->
-            val parent = android.widget.FrameLayout(context)
-            (LayoutInflater.from(context).inflate(R.layout.player_view_surface, parent, false) as PlayerView).apply {
-                player = exoPlayer
-                setShutterBackgroundColor(android.graphics.Color.BLACK)
-                runCatching {
-                    PlayerView::class.java
-                        .getMethod("setEnableComposeSurfaceSyncWorkaround", Boolean::class.javaPrimitiveType)
-                        .invoke(this, true)
-                }
-                isFocusable = false
-                isFocusableInTouchMode = false
-                descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                setOnClickListener { onSurfaceClick() }
-                setOnKeyListener { _, keyCode, event ->
-                    event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0 && onRemoteKey(keyCode)
-                }
+    var videoAspect by remember(exoPlayer) { mutableStateOf(16f / 9f) }
+    var cues by remember(exoPlayer) { mutableStateOf<List<Cue>>(emptyList()) }
+    DisposableEffect(exoPlayer) {
+        fun updateSize(size: VideoSize) {
+            if (size.width > 0 && size.height > 0) videoAspect =
+                size.width * size.pixelWidthHeightRatio / size.height
+        }
+        updateSize(exoPlayer.videoSize)
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) = updateSize(videoSize)
+            override fun onCues(cueGroup: CueGroup) { cues = cueGroup.cues }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+    BoxWithConstraints(modifier.pointerInput(onSurfaceClick) {
+        detectTapGestures { onSurfaceClick() }
+    }, contentAlignment = Alignment.Center) {
+        val surfaceWidth = minOf(maxWidth, maxHeight * videoAspect)
+        val surfaceHeight = surfaceWidth / videoAspect
+        val bindSurface: AndroidExternalSurfaceScope.() -> Unit = {
+            onSurface { surface, _, _ ->
+                exoPlayer.setVideoSurface(surface)
+                surface.onDestroyed { runCatching { exoPlayer.clearVideoSurface(surface) } }
             }
-        },
-        update = {
-            if (it.player !== exoPlayer) it.player = exoPlayer
-            it.setOnClickListener { onSurfaceClick() }
-        },
-        modifier = modifier
-    )
+        }
+        // Android 14's SurfaceView/Compose synchronization can leave the decoded
+        // picture obscured or cropped. Embed that surface in the UI layer on API 34;
+        // other TV versions retain the lower-cost external video surface.
+        if (android.os.Build.VERSION.SDK_INT == 34) {
+            AndroidEmbeddedExternalSurface(
+                modifier = Modifier.width(surfaceWidth).height(surfaceHeight),
+                onInit = bindSurface
+            )
+        } else {
+            AndroidExternalSurface(
+                modifier = Modifier.width(surfaceWidth).height(surfaceHeight),
+                zOrder = AndroidExternalSurfaceZOrder.MediaOverlay,
+                onInit = bindSurface
+            )
+        }
+        AndroidView(
+            factory = { context -> SubtitleView(context).apply {
+                isFocusable = false
+                setUserDefaultStyle()
+                setFractionalTextSize(.035f)
+            } },
+            update = { it.setCues(cues) },
+            modifier = Modifier.width(surfaceWidth).height(surfaceHeight)
+        )
+    }
 }
 
 @Composable
@@ -215,6 +284,7 @@ fun PlayerScreen(
         PlayerUiState.Loading -> PlayerLoadingState()
         is PlayerUiState.Error -> PlayerErrorState(current.message, viewModel::retry, onBack)
         is PlayerUiState.Success -> PlayerContent(
+            clipTitle = viewModel.clipTitle,
             streamUrl = current.streamUrl,
             macAddress = current.macAddress,
             token = current.token,
@@ -280,6 +350,7 @@ private fun PlayerErrorState(message: String, onRetry: () -> Unit, onBack: () ->
 @Composable
 fun PlayerContent(
     streamUrl: String,
+    clipTitle: String? = null,
     macAddress: String = "",
     token: String = "",
     event: SportEvent?,
@@ -327,6 +398,7 @@ fun PlayerContent(
     val controlFocus = remember { FocusRequester() }
     val gameViewFocus = remember { FocusRequester() }
     val gameViewMenuFocus = remember { FocusRequester() }
+    val gameViewStatsFocus = remember { FocusRequester() }
     val highlightsFocus = remember { FocusRequester() }
     val errorFocus = remember { FocusRequester() }
 
@@ -390,8 +462,7 @@ fun PlayerContent(
             .setTargetBufferBytes(playbackProfile.targetBufferBytes)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        val renderersFactory = DefaultRenderersFactory(context)
-            .setEnableDecoderFallback(true)
+        val renderersFactory = rallyRenderersFactory(context)
         val sessionPlayer = ExoPlayer.Builder(context, renderersFactory)
             .setTrackSelector(sessionTrackSelector)
             .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSource))
@@ -401,6 +472,11 @@ fun PlayerContent(
     }
     val exoPlayer = playbackSession.player
     val trackSelector = playbackSession.trackSelector
+    var currentTracks by remember(exoPlayer) { mutableStateOf(exoPlayer.currentTracks) }
+    var trackPickerType by remember { mutableStateOf<Int?>(null) }
+    var captionsDisabled by remember(exoPlayer) { mutableStateOf(false) }
+    val hasAudioTracks = currentTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO && (0 until it.length).any(it::isTrackSupported) }
+    val hasTextTracks = currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && (0 until it.length).any(it::isTrackSupported) }
     val highlightsAreVisible by rememberUpdatedState(currentHighlightsVisible)
     val playbackStartedAt = remember(streamUrl) { android.os.SystemClock.elapsedRealtime() }
     var readyReported by remember(streamUrl) { mutableStateOf(false) }
@@ -495,6 +571,7 @@ fun PlayerContent(
             }
 
             override fun onTracksChanged(tracks: Tracks) {
+                currentTracks = tracks
                 tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO }?.let { group ->
                     (0 until group.length).firstOrNull { group.isTrackSelected(it) }?.let { index ->
                         streamSpecs = extractSpecs(group.getTrackFormat(index), streamSpecs)
@@ -517,11 +594,11 @@ fun PlayerContent(
                         onPlaybackStall(streamUrl)
                     }
                 }
-                canRestart = exoPlayer.isCurrentMediaItemSeekable
+                canRestart = exoPlayer.playbackState == Player.STATE_READY || exoPlayer.playbackState == Player.STATE_ENDED
             }
 
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-                canRestart = exoPlayer.isCurrentMediaItemSeekable
+                canRestart = exoPlayer.playbackState == Player.STATE_READY || exoPlayer.playbackState == Player.STATE_ENDED
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -654,6 +731,7 @@ fun PlayerContent(
                 codec = format?.sampleMimeType?.substringAfterLast('/')?.uppercase(Locale.US) ?: "Detecting",
                 bufferedMs = (exoPlayer.bufferedPosition - exoPlayer.currentPosition).coerceAtLeast(0L),
                 droppedFrames = exoPlayer.videoDecoderCounters?.droppedBufferCount ?: 0,
+                renderedFrames = exoPlayer.videoDecoderCounters?.renderedOutputBufferCount ?: 0,
                 sourceHealthScore = sourceHealthScore,
                 recoveryAttempt = recoveryAttempt,
                 lowLatencyMode = lowLatencyMode,
@@ -684,6 +762,7 @@ fun PlayerContent(
     fun dismissLayerOrLeave() {
         when {
             diagnosticsVisible -> diagnosticsVisible = false
+            trackPickerType != null -> trackPickerType = null
             selectedOtherEvent != null -> selectedOtherEvent = null
             sourcePickerVisible -> sourcePickerVisible = false
             playbackError != null -> onBack()
@@ -707,34 +786,26 @@ fun PlayerContent(
             }
             android.view.KeyEvent.KEYCODE_MENU -> {
                 if (gameViewVisible && !sourcePickerVisible) {
-                    gameViewOverlayVisible = !gameViewOverlayVisible
+                    runCatching { gameViewStatsFocus.requestFocus() }
                 } else if (!sourcePickerVisible) {
                     controlsVisible = !controlsVisible
                 }
                 true
             }
             android.view.KeyEvent.KEYCODE_DPAD_UP -> when {
-                gameViewVisible && !gameViewOverlayVisible -> {
-                    runCatching { gameViewMenuFocus.requestFocus() }
-                    true
-                }
                 !controlsVisible && !gameViewVisible -> {
                     controlsVisible = true
                     true
                 }
                 else -> false
             }
-            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> if (controlsVisible && !gameViewVisible) {
-                controlsVisible = false
-                true
-            } else false
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> when {
+                !controlsVisible && !gameViewVisible -> { controlsVisible = true; true }
+                else -> false
+            }
             android.view.KeyEvent.KEYCODE_DPAD_CENTER,
             android.view.KeyEvent.KEYCODE_ENTER,
             android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> when {
-                gameViewVisible && !gameViewOverlayVisible -> {
-                    gameViewOverlayVisible = true
-                    true
-                }
                 !controlsVisible && !gameViewVisible -> {
                     controlsVisible = true
                     true
@@ -747,20 +818,19 @@ fun PlayerContent(
 
     BackHandler { dismissLayerOrLeave() }
 
-    LaunchedEffect(controlsVisible, gameViewVisible, gameViewOverlayVisible, currentHighlightsVisible, sourcePickerVisible, selectedOtherEvent, playbackError, diagnosticsVisible) {
+    LaunchedEffect(controlsVisible, gameViewVisible, gameViewOverlayVisible, currentHighlightsVisible, sourcePickerVisible, selectedOtherEvent, playbackError, diagnosticsVisible, trackPickerType) {
         val target = when {
-            diagnosticsVisible -> null
-            sourcePickerVisible || selectedOtherEvent != null -> null
+            diagnosticsVisible || trackPickerType != null || sourcePickerVisible || selectedOtherEvent != null -> null
             playbackError != null -> errorFocus
             currentHighlightsVisible -> highlightsFocus
-            gameViewVisible && gameViewOverlayVisible -> gameViewFocus
+            gameViewVisible -> gameViewFocus
             controlsVisible -> controlFocus
             else -> rootFocus
         }
         if (target != null) {
             repeat(3) { attempt ->
                 if (attempt > 0) delay(80) else delay(120)
-                runCatching { target.requestFocus() }
+                if (runCatching { target.requestFocus() }.isSuccess) return@LaunchedEffect
             }
         }
     }
@@ -772,21 +842,13 @@ fun PlayerContent(
         }
     }
 
-    LaunchedEffect(gameViewOverlayVisible, gameViewVisible, sourcePickerVisible, selectedOtherEvent, playbackError, interactionVersion) {
-        if (gameViewVisible && gameViewOverlayVisible && !currentHighlightsVisible && !sourcePickerVisible && selectedOtherEvent == null && playbackError == null) {
-            delay(4_000)
-            gameViewOverlayVisible = false
-        }
-    }
-
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(if (gameViewVisible) Color.Transparent else Color.Black)
             .focusRequester(rootFocus)
             .focusProperties {
-                canFocus = !controlsVisible &&
-                    (!gameViewVisible || !gameViewOverlayVisible) &&
+                canFocus = !controlsVisible && !gameViewVisible &&
                     !currentHighlightsVisible &&
                     !sourcePickerVisible &&
                     selectedOtherEvent == null &&
@@ -799,24 +861,16 @@ fun PlayerContent(
                     handleRemoteKey(it.nativeKeyEvent.keyCode)
             }
     ) {
-        val gameViewHorizontalPadding = 28.dp
-        val gameViewGap = 16.dp
+        val gameViewHorizontalPadding = 26.dp
+        val gameViewGap = 12.dp
         val gameViewAvailableWidth = maxWidth - (gameViewHorizontalPadding * 2) - gameViewGap
-        val gameViewMainHeight = minOf(320.dp, gameViewAvailableWidth * (9f / 25f))
-        val centeredGameViewTop = ((maxHeight - gameViewMainHeight) / 2f).coerceAtLeast(52.dp)
-        val gameViewTop = if (currentHighlightsVisible || otherLiveEvents.isEmpty()) centeredGameViewTop else 48.dp
+        val gameViewMainHeight = minOf(300.dp, gameViewAvailableWidth * (9f / 25f))
+        val gameViewTop = 80.dp
         val gameViewVideoWidth = gameViewMainHeight * (16f / 9f)
         val gameViewInfoWidth = gameViewAvailableWidth - gameViewVideoWidth
-
-        if (gameViewVisible) {
-            Image(
-                painterResource(R.drawable.rally_ambient_background_v5),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-            Box(Modifier.fillMaxSize().background(Color(0x3205080F)))
-        }
+        // Both columns end at the same baseline: 90dp to the moments rail, 51dp
+        // for its thumbnail plus padding. Keep that baseline inside the safe area.
+        val gameViewInfoHeight = minOf(gameViewMainHeight + 141.dp, maxHeight - gameViewTop - 20.dp)
 
         val videoModifier = if (gameViewVisible) {
             Modifier
@@ -832,7 +886,6 @@ fun PlayerContent(
         if (!currentHighlightsVisible) {
             VideoPlayerSurface(
                 exoPlayer = exoPlayer,
-                onRemoteKey = ::handleRemoteKey,
                 onSurfaceClick = {
                     if (gameViewVisible) gameViewOverlayVisible = true else controlsVisible = true
                     interactionVersion++
@@ -842,63 +895,77 @@ fun PlayerContent(
         }
 
         if (gameViewVisible) {
-            GameViewModeBar(
-                highlightsSelected = currentHighlightsVisible,
-                highlightsAvailable = event != null,
-                gameViewFocusRequester = gameViewMenuFocus,
-                onGameView = { currentHighlightsVisible = false },
-                onHighlights = {
-                    currentHighlightsVisible = true
-                    gameViewOverlayVisible = false
-                }
-            )
+            GameViewChrome(
+                    event = event,
+                    currentChannel = currentChannel,
+                    sourceLabel = currentChannel?.name ?: activeAddonSource?.addonName?.takeIf(String::isNotBlank) ?: "Selected source",
+                    sourceLabels = streamCandidates.map { it.title }.distinct(),
+                    signalQuality = listOfNotNull(streamSpecs.resolution, streamSpecs.dynamicRange).joinToString(" · ").ifBlank { "Signal info" },
+                    otherLiveEvents = otherLiveEvents,
+                    mainTop = gameViewTop,
+                    mainHeight = gameViewMainHeight,
+                    videoWidth = gameViewVideoWidth,
+                    infoWidth = gameViewInfoWidth,
+                    infoHeight = gameViewInfoHeight,
+                    isPlaying = isPlaying,
+                    initialFocus = gameViewFocus,
+                    segmentFocus = gameViewMenuFocus,
+                    statsFocus = gameViewStatsFocus,
+                    canRestart = canRestart,
+                    canChooseAudio = hasAudioTracks,
+                    canChooseCaptions = hasTextTracks,
+                    onTogglePlayback = {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else {
+                            if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekTo(0L)
+                            exoPlayer.play()
+                        }
+                    },
+                    onRestart = {
+                        if (exoPlayer.isCurrentMediaItemSeekable) exoPlayer.seekTo(0L) else {
+                            exoPlayer.seekToDefaultPosition()
+                            exoPlayer.prepare()
+                        }
+                        exoPlayer.playWhenReady = true
+                    },
+                    onFullscreen = {
+                        currentHighlightsVisible = false
+                        gameViewVisible = false
+                        gameViewOverlayVisible = false
+                        controlsVisible = true
+                    },
+                    onAudio = { trackPickerType = C.TRACK_TYPE_AUDIO },
+                    onCaptions = { trackPickerType = C.TRACK_TYPE_TEXT },
+                    onDiagnostics = { diagnosticsVisible = true },
+                    onChooseSource = { sourcePickerVisible = true },
+                    onMultiView = {
+                        onNavigateToMultiView(currentChannel?.id ?: streamUrl, event?.id, null)
+                    },
+                    onKeyMoments = {
+                        currentHighlightsVisible = true
+                        gameViewOverlayVisible = false
+                    },
+                    onOtherEvent = { selectedOtherEvent = it }
+                )
             if (currentHighlightsVisible) {
                 CurrentHighlightsChrome(
                     event = event,
                     mainTop = gameViewTop,
                     mainHeight = gameViewMainHeight,
                     videoWidth = gameViewVideoWidth,
-                    infoWidth = gameViewInfoWidth,
                     initialFocus = highlightsFocus,
+                    onBackToLive = { currentHighlightsVisible = false },
                     onRemoteKey = ::handleRemoteKey
-                )
-            } else {
-                GameViewChrome(
-                    event = event,
-                    currentChannel = currentChannel,
-                    displaySpecs = displaySpecs,
-                    broadcastQuality = broadcastQuality,
-                    otherLiveEvents = otherLiveEvents,
-                    mainTop = gameViewTop,
-                    mainHeight = gameViewMainHeight,
-                    videoWidth = gameViewVideoWidth,
-                    infoWidth = gameViewInfoWidth,
-                    isPlaying = isPlaying,
-                    overlayVisible = gameViewOverlayVisible,
-                    initialFocus = gameViewFocus,
-                    onTogglePlayback = {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-                    },
-                    onFullScreen = {
-                        gameViewVisible = false
-                        gameViewOverlayVisible = false
-                        controlsVisible = false
-                    },
-                    onChooseSource = { sourcePickerVisible = true },
-                    onMultiView = {
-                        onNavigateToMultiView(currentChannel?.id ?: streamUrl, event?.id, null)
-                    },
-                    onOtherEvent = { selectedOtherEvent = it }
                 )
             }
         }
 
         AnimatedVisibility(
             visible = controlsVisible && !gameViewVisible,
-            enter = fadeIn(),
-            exit = fadeOut()
+            enter = fadeIn(androidx.compose.animation.core.tween(160)),
+            exit = fadeOut(androidx.compose.animation.core.tween(120))
         ) {
             PlaybackHud(
+                clipTitle = clipTitle,
                 event = event,
                 currentChannel = currentChannel,
                 displaySpecs = displaySpecs,
@@ -910,9 +977,23 @@ fun PlayerContent(
                 },
                 onChooseSource = { sourcePickerVisible = true },
                 onDiagnostics = { diagnosticsVisible = true },
-                canRestart = canRestart || currentChannel?.supportsCatchUp == true,
+                isPlaying = isPlaying,
+                onTogglePlayback = {
+                    if (exoPlayer.isPlaying) exoPlayer.pause() else {
+                            if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekTo(0L)
+                            exoPlayer.play()
+                        }
+                },
+                canChooseAudio = hasAudioTracks,
+                canChooseCaptions = hasTextTracks,
+                onAudio = { trackPickerType = C.TRACK_TYPE_AUDIO },
+                onCaptions = { trackPickerType = C.TRACK_TYPE_TEXT },
+                canRestart = canRestart,
                 onRestart = {
-                    exoPlayer.seekToDefaultPosition()
+                    if (exoPlayer.isCurrentMediaItemSeekable) exoPlayer.seekTo(0L) else {
+                        exoPlayer.seekToDefaultPosition()
+                        exoPlayer.prepare()
+                    }
                     exoPlayer.playWhenReady = true
                 },
                 onMultiView = {
@@ -984,6 +1065,24 @@ fun PlayerContent(
             )
         }
 
+        trackPickerType?.let { type ->
+            MediaTrackPickerOverlay(
+                title = if (type == C.TRACK_TYPE_AUDIO) "Audio track" else "Captions",
+                choices = mediaTrackChoices(currentTracks, type, captionsDisabled),
+                onSelect = { choice ->
+                    val parameters = trackSelector.parameters.buildUpon()
+                        .setTrackTypeDisabled(type, type == C.TRACK_TYPE_TEXT && choice.trackIndex == -1)
+                        .clearOverridesOfType(type)
+                    if (choice.group != null && choice.trackIndex != null) {
+                        parameters.addOverride(TrackSelectionOverride(choice.group.mediaTrackGroup, listOf(choice.trackIndex)))
+                    }
+                    if (type == C.TRACK_TYPE_TEXT) captionsDisabled = choice.trackIndex == -1
+                    trackSelector.parameters = parameters.build()
+                    trackPickerType = null
+                },
+                onDismiss = { trackPickerType = null }
+            )
+        }
         selectedOtherEvent?.let { target ->
             OtherLiveGameActionDialog(
                 currentEvent = event,
@@ -1017,13 +1116,14 @@ private fun PlaybackDiagnosticsPanel(
         runCatching { closeFocus.requestFocus() }
     }
     Box(
-        Modifier.fillMaxSize().background(Color(0x75000000)).clickable(onClick = onDismiss),
+        Modifier.fillMaxSize().background(Color(0x75000000)),
         contentAlignment = Alignment.CenterEnd
     ) {
         Column(
-            Modifier.padding(end = 28.dp).width(310.dp).clip(playerPanelShape)
+            Modifier.padding(end = 28.dp).width(310.dp)
+                .focusProperties { exit = { FocusRequester.Cancel } }.focusGroup().clip(playerPanelShape)
                 .background(AppleTvTheme.GlassPanelGradient)
-                .border(1.dp, Color(0x5A8CA8BE), playerPanelShape)
+                .border(1.dp, AppleTvTheme.GlassBorder, playerPanelShape)
                 .padding(20.dp)
                 .clickable(enabled = false) {}
         ) {
@@ -1034,6 +1134,7 @@ private fun PlaybackDiagnosticsPanel(
             DiagnosticRow("Video", specs)
             DiagnosticRow("Codec", snapshot.codec)
             DiagnosticRow("Buffer", "${snapshot.bufferedMs / 1_000.0} s")
+            DiagnosticRow("Rendered frames", snapshot.renderedFrames.toString())
             DiagnosticRow("Dropped frames", snapshot.droppedFrames.toString())
             DiagnosticRow("Source health", healthLabel(snapshot.sourceHealthScore))
             DiagnosticRow("Recovery", if (snapshot.recoveryAttempt == 0) "Not needed" else "Attempt ${snapshot.recoveryAttempt}")
@@ -1063,7 +1164,46 @@ private fun healthLabel(score: Int): String = when {
 }
 
 @Composable
+private fun MediaTrackPickerOverlay(
+    title: String,
+    choices: List<MediaTrackChoice>,
+    onSelect: (MediaTrackChoice) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val firstChoiceFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        delay(100)
+        runCatching { firstChoiceFocus.requestFocus() }
+    }
+    Box(
+        Modifier.fillMaxSize().background(Color(0xD9000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            Modifier.width(360.dp).focusProperties { exit = { FocusRequester.Cancel } }.focusGroup()
+                .clip(playerPanelShape).background(AppleTvTheme.GlassPanelGradient)
+                .border(1.dp, AppleTvTheme.GlassBorder, playerPanelShape).padding(20.dp)
+        ) {
+            Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            TvLazyColumn(Modifier.heightIn(max = 390.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                items(choices) { choice ->
+                    PlayerButton(
+                        if (choice.selected) "✓  ${choice.label}" else choice.label,
+                        { onSelect(choice) },
+                        modifier = Modifier.fillMaxWidth().then(if (choice == choices.first()) Modifier.focusRequester(firstChoiceFocus) else Modifier)
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            PlayerButton("Close", onDismiss, modifier = Modifier.align(Alignment.End))
+        }
+    }
+}
+
+@Composable
 private fun PlaybackHud(
+    clipTitle: String?,
     event: SportEvent?,
     currentChannel: IptvChannel?,
     displaySpecs: String,
@@ -1072,6 +1212,12 @@ private fun PlaybackHud(
     onGameView: () -> Unit,
     onChooseSource: () -> Unit,
     onDiagnostics: () -> Unit,
+    isPlaying: Boolean,
+    onTogglePlayback: () -> Unit,
+    canChooseAudio: Boolean,
+    canChooseCaptions: Boolean,
+    onAudio: () -> Unit,
+    onCaptions: () -> Unit,
     canRestart: Boolean,
     onRestart: () -> Unit,
     onMultiView: () -> Unit
@@ -1088,15 +1234,15 @@ private fun PlaybackHud(
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 22.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             PlayerButton("‹ Back", onBack)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Image(painterResource(R.drawable.rally_mark_ui), "Rally", Modifier.size(34.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(currentChannel?.name ?: "Live Sports", color = AppleTvTheme.TextSecondary, fontSize = 12.sp, maxLines = 1)
-            }
+            Spacer(Modifier.weight(1f))
+            PlayerButton((currentChannel?.name ?: "Pick Source").take(18), onChooseSource)
+            Spacer(Modifier.width(7.dp))
+            PlayerMetaPill(displaySpecs)
+            Spacer(Modifier.width(14.dp))
+            Image(painterResource(R.drawable.rally_mark_ui), "Rally", Modifier.size(27.dp), contentScale = ContentScale.Fit)
         }
 
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 30.dp, end = 30.dp, bottom = 27.dp)) {
@@ -1121,18 +1267,20 @@ private fun PlaybackHud(
                     overflow = TextOverflow.Ellipsis
                 )
             } else {
-                Text(currentChannel?.name ?: "Live stream", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text(clipTitle ?: currentChannel?.name ?: "Live stream", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(5.dp))
-                Text(currentChannel?.category?.ifBlank { "Live TV" } ?: "Live TV", color = AppleTvTheme.TextSecondary, fontSize = 12.sp)
+                Text(if (clipTitle != null) "RECENT HIGHLIGHTS" else currentChannel?.category?.ifBlank { "Live TV" } ?: "Live TV", color = AppleTvTheme.TextSecondary, fontSize = 12.sp, letterSpacing = .6.sp)
             }
             Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (event != null) PlayerButton("Game View", onGameView, true, Modifier.focusRequester(firstFocus))
-                PlayerButton("Sources", onChooseSource, modifier = if (event == null) Modifier.focusRequester(firstFocus) else Modifier)
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlayerButton(if (isPlaying) "Pause" else "Play", onTogglePlayback, true, Modifier.focusRequester(firstFocus))
+                PlayerButton("Restart", onRestart, enabled = canRestart)
+                if (event != null) PlayerButton("Game View", onGameView)
+                PlayerButton("Pick Source", onChooseSource)
+                PlayerButton("Audio", onAudio, enabled = canChooseAudio)
+                PlayerButton("Captions", onCaptions, enabled = canChooseCaptions)
+                PlayerButton("Multiview", onMultiView)
                 PlayerButton("Diagnostics", onDiagnostics)
-                if (canRestart) PlayerButton("Restart", onRestart)
-                PlayerButton("Multi-View", onMultiView)
-                PlayerMetaPill(displaySpecs)
             }
         }
     }
@@ -1205,80 +1353,51 @@ private fun CurrentHighlightsChrome(
     mainTop: androidx.compose.ui.unit.Dp,
     mainHeight: androidx.compose.ui.unit.Dp,
     videoWidth: androidx.compose.ui.unit.Dp,
-    infoWidth: androidx.compose.ui.unit.Dp,
     initialFocus: FocusRequester,
+    onBackToLive: () -> Unit,
     onRemoteKey: (Int) -> Boolean
 ) {
     val playable = remember(event?.id, event?.highlightClips) {
         event?.highlightClips.orEmpty().filter { !it.streamUrl.isNullOrBlank() }
     }
-    var selectedId by remember(event?.id, playable) { mutableStateOf(playable.firstOrNull()?.id) }
-    val selected = playable.firstOrNull { it.id == selectedId } ?: playable.firstOrNull()
+    val selected = playable.firstOrNull()
 
     Box(Modifier.fillMaxSize()) {
         if (selected != null) {
             HighlightClipPlayer(
                 clip = selected,
-                onRemoteKey = onRemoteKey,
-                modifier = Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = mainTop)
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = mainTop)
                     .width(videoWidth).height(mainHeight).clip(playerPanelShape)
-                    .border(1.dp, Color(0x355A7894), playerPanelShape)
+                    .border(1.dp, RallyTvPalette.Divider, playerPanelShape)
             )
         } else {
             Box(
-                Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = mainTop)
+                Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = mainTop)
                     .width(videoWidth).height(mainHeight).clip(playerPanelShape)
-                    .background(AppleTvTheme.GlassPanelGradient)
-                    .border(1.dp, AppleTvTheme.GlassBorder, playerPanelShape),
+                    .background(RallyTvPalette.BackgroundSoft)
+                    .border(1.dp, RallyTvPalette.Divider, playerPanelShape),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No current highlights yet", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Text("No current highlights yet", color = RallyTvPalette.Text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(7.dp))
-                    Text("New clips appear here as the broadcast publishes them.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
+                    Text("New clips appear here as the broadcast publishes them.", color = RallyTvPalette.Muted, fontSize = 11.sp)
                 }
             }
         }
 
-        Column(
-            Modifier.align(Alignment.TopEnd).padding(top = mainTop, end = 28.dp)
-                .width(infoWidth).height(mainHeight).clip(playerPanelShape)
-                .background(AppleTvTheme.GlassPanelGradient)
-                .border(1.dp, AppleTvTheme.GlassBorder, playerPanelShape)
-                .padding(13.dp)
-        ) {
-            Text("CURRENT HIGHLIGHTS", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-            Text(
-                event?.name ?: "Live game",
-                color = AppleTvTheme.TextSecondary,
-                fontSize = 10.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(10.dp))
-            if (playable.isEmpty()) {
-                Box(Modifier.fillMaxSize().focusRequester(initialFocus).focusable(), contentAlignment = Alignment.Center) {
-                    Text("Highlights will refresh automatically.", color = AppleTvTheme.TextTertiary, fontSize = 11.sp)
-                }
-            } else {
-                TvLazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(playable, key = { it.id }) { clip ->
-                        HighlightClipChoice(
-                            clip = clip,
-                            selected = clip.id == selected?.id,
-                            onClick = { selectedId = clip.id },
-                            modifier = if (clip == playable.first()) Modifier.focusRequester(initialFocus) else Modifier
-                        )
-                    }
-                }
-            }
-        }
+        PlayerButton(
+            "Back to Live",
+            onBackToLive,
+            primary = true,
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 44.dp, top = mainTop + 10.dp).focusRequester(initialFocus)
+        )
 
         selected?.let { clip ->
             Column(
                 Modifier.align(Alignment.TopStart).padding(start = 43.dp, top = mainTop + mainHeight - 63.dp)
                     .width(videoWidth - 30.dp)
-                    .clip(playerPillShape).background(Color(0xA805080F)).padding(horizontal = 10.dp, vertical = 7.dp)
+                    .padding(horizontal = 10.dp, vertical = 7.dp)
             ) {
                 Text("NOW PLAYING · HIGHLIGHT", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
                 Text(clip.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -1290,7 +1409,6 @@ private fun CurrentHighlightsChrome(
 @Composable
 private fun HighlightClipPlayer(
     clip: HighlightClip,
-    onRemoteKey: (Int) -> Boolean,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1308,7 +1426,7 @@ private fun HighlightClipPlayer(
             .setTargetBufferBytes(8 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
-        ExoPlayer.Builder(context, DefaultRenderersFactory(context).setEnableDecoderFallback(true))
+        ExoPlayer.Builder(context, rallyRenderersFactory(context))
             .setTrackSelector(selector)
             .setLoadControl(loadControl)
             .build()
@@ -1321,7 +1439,7 @@ private fun HighlightClipPlayer(
         }
         onDispose { player.release() }
     }
-    VideoPlayerSurface(player, onRemoteKey, onSurfaceClick = {}, modifier = modifier)
+    VideoPlayerSurface(player, onSurfaceClick = {}, modifier = modifier)
 }
 
 @Composable
@@ -1334,9 +1452,9 @@ private fun HighlightClipChoice(
     var focused by remember(clip.id) { mutableStateOf(false) }
     Row(
         modifier.fillMaxWidth().height(70.dp).onFocusChanged { focused = it.isFocused }
-            .clip(playerActionShape)
-            .background(if (focused) Color(0xD0223349) else if (selected) Color(0xB8172437) else Color(0x750A101B))
-            .border(if (focused) 1.5.dp else 1.dp, if (focused) Color.White else Color(0x315A7894), playerActionShape)
+            .clip(RoundedCornerShape(4.dp))
+            .background(if (focused) RallyTvPalette.FocusSurface else if (selected) RallyTvPalette.BackgroundSoft else Color.Transparent)
+            .border(if (focused) 1.dp else 0.dp, if (focused) RallyTvPalette.Accent else RallyTvPalette.Divider, RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .padding(7.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1349,9 +1467,9 @@ private fun HighlightClipChoice(
         )
         Spacer(Modifier.width(9.dp))
         Column(Modifier.weight(1f)) {
-            Text(clip.title, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(clip.title, color = RallyTvPalette.Text, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             clip.durationSeconds?.let { seconds ->
-                Text("${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}", color = AppleTvTheme.TextTertiary, fontSize = 8.sp)
+                Text("${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}", color = RallyTvPalette.Muted, fontSize = 8.sp)
             }
         }
     }
@@ -1361,498 +1479,253 @@ private fun HighlightClipChoice(
 private fun GameViewChrome(
     event: SportEvent?,
     currentChannel: IptvChannel?,
-    displaySpecs: String,
-    broadcastQuality: BroadcastQualityInfo,
+    sourceLabel: String,
+    sourceLabels: List<String>,
+    signalQuality: String,
     otherLiveEvents: List<SportEvent>,
     mainTop: androidx.compose.ui.unit.Dp,
     mainHeight: androidx.compose.ui.unit.Dp,
     videoWidth: androidx.compose.ui.unit.Dp,
     infoWidth: androidx.compose.ui.unit.Dp,
+    infoHeight: androidx.compose.ui.unit.Dp,
     isPlaying: Boolean,
-    overlayVisible: Boolean,
     initialFocus: FocusRequester,
+    segmentFocus: FocusRequester,
+    statsFocus: FocusRequester,
+    canRestart: Boolean,
+    canChooseAudio: Boolean,
+    canChooseCaptions: Boolean,
     onTogglePlayback: () -> Unit,
-    onFullScreen: () -> Unit,
+    onRestart: () -> Unit,
+    onFullscreen: () -> Unit,
+    onAudio: () -> Unit,
+    onCaptions: () -> Unit,
+    onDiagnostics: () -> Unit,
     onChooseSource: () -> Unit,
     onMultiView: () -> Unit,
+    onKeyMoments: () -> Unit,
     onOtherEvent: (SportEvent) -> Unit
 ) {
-    Box(Modifier.fillMaxSize()) {
-        VideoFrameChrome(
-            event = event,
-            currentChannel = currentChannel,
-            displaySpecs = displaySpecs,
-            isPlaying = isPlaying,
-            overlayVisible = overlayVisible,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 28.dp, top = mainTop)
-                .width(videoWidth)
-                .height(mainHeight),
-            initialFocus = initialFocus,
-            onTogglePlayback = onTogglePlayback,
-            onFullScreen = onFullScreen,
-            onChooseSource = onChooseSource,
-            onMultiView = onMultiView
-        )
-
-        GameInformationPanel(
-            event = event,
-            broadcastQuality = broadcastQuality,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = mainTop, end = 28.dp)
-                .width(infoWidth)
-                .height(mainHeight)
-        )
-
-        if (otherLiveEvents.isNotEmpty()) {
-            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 28.dp, end = 28.dp, bottom = 18.dp)) {
-                Text("OTHER LIVE GAMES", color = AppleTvTheme.TextTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Spacer(Modifier.height(8.dp))
-                RallyPagedRow(
-                    items = otherLiveEvents.take(12),
-                    key = { it.id },
-                    pageSize = 4,
-                    spacing = 10.dp
-                ) { liveEvent, itemModifier, width ->
-                    LiveGameCard(liveEvent, { onOtherEvent(liveEvent) }, itemModifier.width(width))
-                }
-            }
-        }
+    var selectedSegment by remember(event?.id) { mutableIntStateOf(0) }
+    val lastControlFocus = remember { FocusRequester() }
+    val sourceFocus = remember { FocusRequester() }
+    val otherGamesFocus = remember { FocusRequester() }
+    val controlRequesters = remember(initialFocus, lastControlFocus) {
+        listOf(initialFocus, FocusRequester(), FocusRequester(), FocusRequester(), FocusRequester(), FocusRequester(), lastControlFocus)
     }
-}
-
-@Composable
-private fun VideoFrameChrome(
-    event: SportEvent?,
-    currentChannel: IptvChannel?,
-    displaySpecs: String,
-    isPlaying: Boolean,
-    overlayVisible: Boolean,
-    modifier: Modifier = Modifier,
-    initialFocus: FocusRequester,
-    onTogglePlayback: () -> Unit,
-    onFullScreen: () -> Unit,
-    onChooseSource: () -> Unit,
-    onMultiView: () -> Unit
-) {
-    Box(modifier.clip(playerPanelShape)) {
-        AnimatedVisibility(visible = overlayVisible, enter = fadeIn(), exit = fadeOut()) {
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        0f to Color(0xB8000000),
-                        .30f to Color.Transparent,
-                        .62f to Color.Transparent,
-                        1f to Color(0xE6000000)
-                    )
-                )
-            ) {
-        if (event != null) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (event.isLive()) {
-                        Box(Modifier.size(7.dp).clip(CircleShape).background(AppleTvTheme.AccentRed))
-                        Spacer(Modifier.width(7.dp))
-                        Text("LIVE", color = AppleTvTheme.AccentRed, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                        Spacer(Modifier.width(9.dp))
-                    }
-                    Text(event.league, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                }
-                Text(event.gameStatusDetail.orEmpty(), color = AppleTvTheme.TextSecondary, fontSize = 10.sp)
-            }
-
-            Column(Modifier.align(Alignment.TopCenter).padding(top = 46.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(event.scoreLine(), color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    listOfNotNull(event.awayTeam?.abbreviation, event.homeTeam?.abbreviation).joinToString("   ·   "),
-                    color = AppleTvTheme.TextSecondary,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = .8.sp
-                )
-            }
-        } else {
-            Text(
-                currentChannel?.name ?: "Live stream",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(16.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+    val enabledControls = listOf(true, canRestart, true, true, canChooseAudio, canChooseCaptions, true)
+    fun controlNavigation(index: Int): Modifier = Modifier
+        .focusRequester(controlRequesters[index])
+        .focusProperties {
+            left = (index - 1 downTo 0).firstOrNull { enabledControls[it] }
+                ?.let { controlRequesters[it] } ?: FocusRequester.Cancel
+            right = (index + 1 until controlRequesters.size).firstOrNull { enabledControls[it] }
+                ?.let { controlRequesters[it] } ?: statsFocus
+            up = sourceFocus
+            down = segmentFocus
         }
-
-            Row(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 13.dp, vertical = 11.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+    Box(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 26.dp, end = 26.dp, top = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                PlayerButton(
-                    if (isPlaying) "Pause" else "Play",
-                    onTogglePlayback,
-                    true,
-                    Modifier.focusRequester(initialFocus),
-                    iconRes = if (isPlaying) R.drawable.ic_rally_pause else R.drawable.ic_rally_play
-                )
-                if (event?.isLive() == true) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(6.dp).clip(CircleShape).background(AppleTvTheme.AccentRed))
-                        Spacer(Modifier.width(5.dp))
-                        Text("LIVE", color = AppleTvTheme.AccentRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    }
+            if (event != null) {
+                AsyncImage(event.awayTeamBadge ?: event.awayTeam?.logoUrl, null, Modifier.size(40.dp), contentScale = ContentScale.Fit)
+                Spacer(Modifier.width(5.dp))
+                Column(Modifier.width(92.dp)) {
+                    Text(matchupTeamName(event.awayTeam?.name, event.league), color = RallyTvPalette.Text, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(event.liveStats["${event.awayTeam?.abbreviation} Record"].orEmpty(), color = RallyTvPalette.Muted, fontSize = 9.sp)
                 }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-                PlayerMetaPill(displaySpecs)
-                PlayerButton("Sources", onChooseSource)
-                PlayerButton("Multi", onMultiView)
-                PlayerButton("Full", onFullScreen)
-            }
-            }
-        }
-    }
-}
-
-}
-
-@Composable
-private fun GameInformationPanel(
-    event: SportEvent?,
-    broadcastQuality: BroadcastQualityInfo,
-    modifier: Modifier = Modifier
-) {
-    var selectedTab by remember(event?.id) { mutableStateOf(0) }
-    Column(
-        modifier.clip(playerPanelShape).background(AppleTvTheme.GlassPanelGradient).border(1.dp, AppleTvTheme.GlassBorder, playerPanelShape).padding(15.dp)
-    ) {
-        if (event == null) {
-            Text("GAME VIEW", color = AppleTvTheme.TextTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("Live channel", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(5.dp))
-            Text("Game data is available when playback starts from a matchup card.", color = AppleTvTheme.TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
-        } else {
-            Row(Modifier.fillMaxWidth().clip(playerActionShape).background(Color(0x80172437)).border(1.dp, Color(0x385A7894), playerActionShape).padding(2.dp)) {
-                GameInfoTab("STATS", selectedTab == 0, { selectedTab = 0 }, Modifier.weight(1f))
-                GameInfoTab("PLAYERS", selectedTab == 1, { selectedTab = 1 }, Modifier.weight(1f))
-                GameInfoTab("PLAYS", selectedTab == 2, { selectedTab = 2 }, Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(10.dp))
-            if (selectedTab == 1) {
-                val tables = remember(event.playerStatTables) {
-                    event.playerTablesForDisplay(teamLimit = 2, rowLimit = 4)
+                Text("${event.scoreAway ?: "–"}", color = RallyTvPalette.Text, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (event.isLive()) Text("● LIVE", color = RallyTvPalette.Live, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    else Text(event.league, color = RallyTvPalette.Muted, fontSize = 11.sp)
+                    Text(
+                        if (event.status == EventStatus.NOT_STARTED) java.time.format.DateTimeFormatter.ofPattern("EEE · h:mm a").withZone(java.time.ZoneId.systemDefault()).format(event.startTime)
+                        else event.gameStatusDetail.orEmpty(),
+                        color = RallyTvPalette.Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
                 }
-                if (tables.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                        tables.forEach { table ->
-                            GameViewPlayerTeamColumn(table, Modifier.weight(1f).fillMaxHeight())
-                        }
-                        repeat(2 - tables.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                } else if (event.playerLeaders.isNotEmpty()) {
-                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                        val awayAbbr = event.awayTeam?.abbreviation
-                        val homeAbbr = event.homeTeam?.abbreviation
-                        GameViewLeaderTeamColumn(
-                            teamName = event.awayTeam?.name,
-                            abbreviation = awayAbbr,
-                            logoUrl = event.awayTeamBadge,
-                            leaders = event.playerLeaders.filter { it.teamAbbr.equals(awayAbbr, true) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        GameViewLeaderTeamColumn(
-                            teamName = event.homeTeam?.name,
-                            abbreviation = homeAbbr,
-                            logoUrl = event.homeTeamBadge,
-                            leaders = event.playerLeaders.filter { it.teamAbbr.equals(homeAbbr, true) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                } else {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("Player statistics are not published for this matchup yet.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp, lineHeight = 16.sp, textAlign = TextAlign.Center)
-                    }
+                Text("${event.scoreHome ?: "–"}", color = RallyTvPalette.Text, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(5.dp))
+                Column(Modifier.width(92.dp)) {
+                    Text(matchupTeamName(event.homeTeam?.name, event.league), color = RallyTvPalette.Text, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(event.liveStats["${event.homeTeam?.abbreviation} Record"].orEmpty(), color = RallyTvPalette.Muted, fontSize = 9.sp)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("STREAM QUALITY", color = AppleTvTheme.TextTertiary, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                    Text(broadcastQuality.badgeText, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-                }
-            } else if (selectedTab == 2) {
-                Text("GAME TIMELINE", color = AppleTvTheme.TextTertiary, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                Spacer(Modifier.height(5.dp))
-                if (event.plays.isEmpty()) {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("Play-by-play will appear when the official game feed publishes it.", color = AppleTvTheme.TextSecondary, fontSize = 10.sp, lineHeight = 15.sp, textAlign = TextAlign.Center)
-                    }
-                } else {
-                    Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        event.plays.take(5).forEach { play ->
-                            Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(if (play.isScoringPlay) Color(0x1F6FCFFF) else Color(0x0FFFFFFF)).padding(horizontal = 8.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(listOfNotNull(play.period?.let { "P$it" }, play.clock).joinToString(" · "), color = AppleTvTheme.TextTertiary, fontSize = 7.sp, modifier = Modifier.width(45.dp))
-                                Text(play.text, color = Color.White, fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                if (play.awayScore != null && play.homeScore != null) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("${play.awayScore}–${play.homeScore}", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("OFFICIAL DATA", color = AppleTvTheme.TextTertiary, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                    Text(broadcastQuality.badgeText, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-                }
+                AsyncImage(event.homeTeamBadge ?: event.homeTeam?.logoUrl, null, Modifier.size(40.dp), contentScale = ContentScale.Fit)
             } else {
-                TeamScoreRow(event)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    PlayerMetaPill(event.league)
-                    PlayerMetaPill(broadcastQuality.badgeText)
-                }
-                val insights = remember(event) { event.gameInsights() }
-                val comparisonStats = remember(event) { event.teamStats.filterNot { it.label.isPredictionMetric() } }
-                if (comparisonStats.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text("TEAM STATS", color = AppleTvTheme.TextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                    Spacer(Modifier.height(3.dp))
-                    comparisonStats.take(3).forEach { stat ->
-                        Row(Modifier.fillMaxWidth().height(15.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(stat.awayValue, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text(stat.label, color = AppleTvTheme.TextSecondary, fontSize = 10.sp)
-                            Text(stat.homeValue, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-                if (insights.isNotEmpty()) {
-                    Spacer(Modifier.height(7.dp))
-                    Text("GAME ANALYTICS", color = AppleTvTheme.TextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                    Spacer(Modifier.height(3.dp))
-                    insights.take(2).forEach { insight ->
-                        Row(Modifier.fillMaxWidth().height(15.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(4.dp).clip(CircleShape).background(AppleTvTheme.RallyCyan))
-                            Spacer(Modifier.width(6.dp))
-                            Text(insight, color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-                if (event.playerLeaders.isNotEmpty()) {
-                    Spacer(Modifier.height(7.dp))
-                    Text("PLAYER LEADERS", color = AppleTvTheme.TextTertiary, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                    Spacer(Modifier.height(3.dp))
-                    event.playerLeaders.take(if (insights.isEmpty()) 3 else 2).forEach { leader ->
-                        PlayerLeaderRow(leader)
-                    }
-                } else if (comparisonStats.isEmpty() && insights.isEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(event.venue ?: "Live matchup information", color = AppleTvTheme.TextSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
+                Text(currentChannel?.name ?: "Live stream", color = RallyTvPalette.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
+            Spacer(Modifier.weight(1f))
+            PlayerButton("${if (sourceLabel == "Selected source") "Source" else sourceLabel.take(14)}  ⌄", onChooseSource, modifier = Modifier.focusRequester(sourceFocus).focusProperties { down = statsFocus })
+            Spacer(Modifier.width(6.dp))
+            PlayerButton(signalQuality, onDiagnostics, modifier = Modifier.focusProperties { down = statsFocus })
+            Spacer(Modifier.width(12.dp))
+            Image(painterResource(R.drawable.rally_mark_ui), "Rally", Modifier.size(27.dp), contentScale = ContentScale.Fit)
         }
-    }
-}
 
-@Composable
-private fun GameViewPlayerTeamColumn(
-    table: com.shiv.rally.domain.model.PlayerStatTable,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(table.teamLogoUrl, null, Modifier.size(27.dp), contentScale = ContentScale.Fit)
-            Spacer(Modifier.width(7.dp))
-            Text(table.teamName, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("PLAYER", color = AppleTvTheme.TextTertiary, fontSize = 7.sp, fontWeight = FontWeight.Bold)
-            Text(table.labels.take(3).joinToString("  ").ifBlank { "STATS" }, color = AppleTvTheme.TextTertiary, fontSize = 7.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        }
-        Spacer(Modifier.height(3.dp))
-        table.rows.take(4).forEach { player ->
-            Row(Modifier.fillMaxWidth().height(28.dp), verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(player.headshotUrl, null, Modifier.size(21.dp).clip(CircleShape).background(Color(0x14FFFFFF)), contentScale = ContentScale.Crop)
-                Spacer(Modifier.width(6.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(player.shortName ?: player.displayName, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(listOfNotNull(player.jersey, player.position).joinToString(" · "), color = AppleTvTheme.TextTertiary, fontSize = 6.sp, maxLines = 1)
-                }
-                Text(player.stats.take(3).joinToString("  "), color = AppleTvTheme.TextSecondary, fontSize = 7.sp, maxLines = 1)
-            }
-        }
-    }
-}
 
-@Composable
-private fun GameViewLeaderTeamColumn(
-    teamName: String?,
-    abbreviation: String?,
-    logoUrl: String?,
-    leaders: List<com.shiv.rally.domain.model.PlayerLeader>,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(logoUrl, null, Modifier.size(27.dp), contentScale = ContentScale.Fit)
-            Spacer(Modifier.width(7.dp))
-            Text(
-                formatTeamDisplayName(teamName).takeUnless { it.isBlank() || it == "Team" } ?: abbreviation.orEmpty(),
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Spacer(Modifier.height(7.dp))
-        if (leaders.isEmpty()) {
-            Text("No verified player data yet.", color = AppleTvTheme.TextSecondary, fontSize = 8.sp, lineHeight = 12.sp)
-        } else {
-            leaders.take(4).forEach { leader -> PlayerLeaderRow(leader) }
-        }
-    }
-}
 
-@Composable
-private fun GameInfoTab(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    var focused by remember(label) { mutableStateOf(false) }
-    Box(
-        modifier.height(34.dp).onFocusChanged { focused = it.isFocused }.clip(RoundedCornerShape(7.dp))
-            .background(
-                when {
-                    focused -> Color(0xB0233449)
-                    selected -> Color(0x781A293C)
-                    else -> Color.Transparent
-                }
-            )
-            .border(
-                if (focused) 1.5.dp else 1.dp,
-                when {
-                    focused -> Color(0xD6B9D8EA)
-                    selected -> Color(0x3D7A94AF)
-                    else -> Color.Transparent
-                },
-                RoundedCornerShape(7.dp)
-            )
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, color = if (selected || focused) Color.White else AppleTvTheme.TextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .35.sp)
-    }
-}
-
-@Composable
-private fun PlayerLeaderRow(leader: com.shiv.rally.domain.model.PlayerLeader) {
-    Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(20.dp).clip(CircleShape).background(Color(0x14FFFFFF)), contentAlignment = Alignment.Center) {
-            val imageUrl = leader.headshotUrl ?: leader.teamLogoUrl
-            if (!imageUrl.isNullOrBlank()) {
-                AsyncImage(imageUrl, null, Modifier.size(18.dp), contentScale = ContentScale.Fit)
-            } else {
-                Text(leader.teamAbbr?.take(3).orEmpty(), color = AppleTvTheme.TextSecondary, fontSize = 7.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-        Spacer(Modifier.width(7.dp))
-        Column(Modifier.weight(1f)) {
-            Text(leader.playerShortName, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(listOfNotNull(leader.position, leader.category).joinToString(" · "), color = AppleTvTheme.TextTertiary, fontSize = 7.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Spacer(Modifier.width(6.dp))
-        Text(leader.statDisplay, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-    }
-}
-
-@Composable
-private fun TeamScoreRow(event: SportEvent) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TeamMark(event.awayTeamBadge, event.awayTeam?.abbreviation ?: "AWAY")
-        Spacer(Modifier.width(9.dp))
-        Column(Modifier.weight(1f)) {
-            Text(formatTeamDisplayName(event.awayTeam?.name), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(formatTeamDisplayName(event.homeTeam?.name), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(event.scoreAway?.toString() ?: "–", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text(event.scoreHome?.toString() ?: "–", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.width(9.dp))
-        TeamMark(event.homeTeamBadge, event.homeTeam?.abbreviation ?: "HOME")
-    }
-}
-
-@Composable
-private fun TeamMark(url: String?, abbreviation: String) {
-    Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0x14FFFFFF)), contentAlignment = Alignment.Center) {
-        if (!url.isNullOrBlank()) {
-            AsyncImage(url, null, Modifier.size(34.dp), contentScale = ContentScale.Fit)
-        } else {
-            Text(abbreviation.take(3), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun LiveGameCard(event: SportEvent, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Card(
-        onClick = onClick,
-        modifier = modifier.height(106.dp),
-        shape = CardDefaults.shape(RoundedCornerShape(10.dp)),
-        scale = CardDefaults.scale(scale = 1f, focusedScale = AppleTvTheme.CardFocusScale),
-        colors = CardDefaults.colors(containerColor = Color(0xD90A101B), focusedContainerColor = Color(0xF2172437)),
-        border = CardDefaults.border(
-            border = Border(border = BorderStroke(1.dp, Color(0x20FFFFFF)), shape = RoundedCornerShape(10.dp)),
-            focusedBorder = Border(border = BorderStroke(2.dp, AppleTvTheme.RallyCyan), shape = RoundedCornerShape(10.dp))
+        RallyGameInformationPanel(
+            event = event,
+            sourceLabel = sourceLabel,
+            sourceLabels = sourceLabels,
+            onChooseSource = onChooseSource,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = mainTop, end = 26.dp)
+                .width(infoWidth)
+                .height(infoHeight),
+            initialTabFocus = statsFocus,
+            leftExitFocus = lastControlFocus
         )
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            Image(painterResource(playerSportArtwork(event.sport)), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x5C02060B), Color(0xF00A101B)))))
-            Column(Modifier.fillMaxSize().padding(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(AppleTvTheme.AccentRed))
-                    Spacer(Modifier.width(5.dp))
-                    Text("LIVE", color = AppleTvTheme.AccentRed, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(7.dp))
-                    Text(event.league, color = AppleTvTheme.TextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.weight(1f))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    TeamMark(event.awayTeamBadge, event.awayTeam?.abbreviation ?: "AWAY")
-                    Text(event.scoreLine(), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                    TeamMark(event.homeTeamBadge, event.homeTeam?.abbreviation ?: "HOME")
-                }
+
+        Row(
+            Modifier.align(Alignment.TopStart)
+                .padding(start = 26.dp, top = mainTop + mainHeight + 8.dp)
+                .width(videoWidth),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PlayerButton(
+                if (isPlaying) "Pause" else "Play",
+                onTogglePlayback,
+                primary = true,
+                modifier = Modifier.weight(1f).then(controlNavigation(0))
+            )
+            PlayerButton("Restart", onRestart, modifier = Modifier.weight(1f).then(controlNavigation(1)), enabled = canRestart)
+            PlayerButton("Fullscreen", onFullscreen, modifier = Modifier.weight(1.18f).then(controlNavigation(2)))
+            PlayerButton("Source", onChooseSource, modifier = Modifier.weight(1f).then(controlNavigation(3)))
+            PlayerButton("Audio", onAudio, modifier = Modifier.weight(.82f).then(controlNavigation(4)), enabled = canChooseAudio)
+            PlayerButton("Captions", onCaptions, modifier = Modifier.weight(1f).then(controlNavigation(5)), enabled = canChooseCaptions)
+            PlayerButton(
+                "Multiview",
+                onMultiView,
+                modifier = Modifier.weight(1f).then(controlNavigation(6))
+            )
+        }
+
+        Row(
+            Modifier.align(Alignment.TopStart)
+                .padding(start = 26.dp, top = mainTop + mainHeight + 52.dp)
+                .width(videoWidth)
+        ) {
+            GameViewSegment("Key Moments", selectedSegment == 0, { selectedSegment = 0 }, Modifier.focusRequester(segmentFocus).focusProperties { up = initialFocus; right = otherGamesFocus })
+            Spacer(Modifier.width(23.dp))
+            GameViewSegment("Other Live Games", selectedSegment == 1, { selectedSegment = 1 }, Modifier.focusRequester(otherGamesFocus).focusProperties { up = initialFocus; left = segmentFocus; right = statsFocus })
+        }
+
+        if (selectedSegment == 0) {
+            val plays = event?.plays.orEmpty().filter { it.isScoringPlay }.sortedByDescending { it.sequence }.take(4)
+            val clips = event?.highlightClips.orEmpty().take(4)
+            if (plays.isEmpty() && clips.isEmpty()) {
                 Text(
-                    listOfNotNull(event.awayTeam?.abbreviation, event.gameStatusDetail, event.homeTeam?.abbreviation).joinToString("   ·   "),
-                    color = AppleTvTheme.TextSecondary,
-                    fontSize = 7.sp,
-                    maxLines = 1,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
+                    "Key moments are not available for this game yet.",
+                    color = RallyTvPalette.Muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = mainTop + mainHeight + 90.dp)
                 )
+            } else {
+                Row(
+                    Modifier.align(Alignment.TopStart)
+                        .padding(start = 26.dp, top = mainTop + mainHeight + 90.dp, end = 26.dp)
+                        .width(videoWidth),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    clips.forEach { clip ->
+                        KeyMomentTile(clip.title, clip.durationSeconds?.let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" } ?: "Highlight",
+                            clip.thumbnailUrl, event, !clip.streamUrl.isNullOrBlank(), onKeyMoments, Modifier.weight(1f))
+                    }
+                    plays.take((4 - clips.size).coerceAtLeast(0)).forEach { play ->
+                        KeyMomentTile(play.text,
+                            play.wallClock ?: listOfNotNull(play.period?.let { "P$it" }, play.clock).joinToString(" · "),
+                            null, event, false, {}, Modifier.weight(1f))
+                    }
+                }
+            }
+        } else if (otherLiveEvents.isEmpty()) {
+            Text(
+                "No other live games are available right now.",
+                color = RallyTvPalette.Muted,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.TopStart).padding(start = 26.dp, top = mainTop + mainHeight + 90.dp)
+            )
+        } else {
+            Row(
+                Modifier.align(Alignment.TopStart)
+                    .padding(start = 26.dp, top = mainTop + mainHeight + 90.dp, end = 26.dp)
+                    .width(videoWidth),
+                horizontalArrangement = Arrangement.spacedBy(26.dp)
+            ) {
+                otherLiveEvents.take(3).forEach { liveEvent ->
+                    GameViewLiveGameRow(liveEvent, { onOtherEvent(liveEvent) }, Modifier.weight(1f))
+                }
             }
         }
     }
 }
 
-private fun playerSportArtwork(sport: String): Int = when {
-    sport.contains("football", true) -> R.drawable.card_landscape_football_v2
-    sport.contains("basketball", true) -> R.drawable.card_landscape_basketball_v2
-    sport.contains("baseball", true) -> R.drawable.card_landscape_baseball_v2
-    sport.contains("hockey", true) -> R.drawable.card_landscape_hockey_v2
-    sport.contains("soccer", true) -> R.drawable.card_landscape_soccer_v2
-    else -> R.drawable.rally_ambient_background_v2
+@Composable
+private fun KeyMomentTile(title: String, detail: String, thumbnailUrl: String?, event: SportEvent?, enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    var focused by remember(title) { mutableStateOf(false) }
+    Row(modifier.onFocusChanged { focused = it.isFocused }
+        .clip(RoundedCornerShape(6.dp))
+        .background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+        .clickable(enabled = enabled, onClick = onClick).padding(2.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(65.dp).height(47.dp).clip(RoundedCornerShape(5.dp))) {
+            Image(painterResource(getEditorialPhoto(event) ?: getSportBackdrop(event)), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            thumbnailUrl?.let { AsyncImage(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+            Text(detail, color = Color.White, fontSize = 8.sp, modifier = Modifier.align(Alignment.BottomStart).background(Color(0xB0000000)).padding(2.dp))
+        }
+        Column(Modifier.padding(start = 6.dp)) {
+            Text(title, color = RallyTvPalette.Text, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(detail, color = RallyTvPalette.Muted, fontSize = 8.sp, maxLines = 1)
+        }
+    }
 }
+
+
+@Composable
+private fun GameViewSegment(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var focused by remember(label) { mutableStateOf(false) }
+    Column(
+        modifier.onFocusChanged { focused = it.isFocused }
+            .rallyTvFocus(focused)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 3.dp)
+    ) {
+        Text(label, color = if (selected || focused) RallyTvPalette.Text else RallyTvPalette.Muted, fontSize = 12.sp, fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Medium)
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.width((label.length * 7).dp).height(2.dp).background(if (selected) RallyTvPalette.Accent else Color.Transparent))
+    }
+}
+
+@Composable
+private fun GameViewLiveGameRow(
+    event: SportEvent,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var focused by remember(event.id) { mutableStateOf(false) }
+    Column(
+        modifier.onFocusChanged { focused = it.isFocused }
+            .rallyTvFocus(focused)
+            .background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
+    ) {
+        Text("${event.league}  ·  LIVE", color = RallyTvPalette.Live, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(event.name, color = RallyTvPalette.Text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(event.scoreLine(), color = RallyTvPalette.Muted, fontSize = 11.sp)
+    }
+}
+
 
 @Composable
 private fun PlaybackErrorOverlay(
@@ -1923,9 +1796,49 @@ private fun PlayerButton(
     onClick: () -> Unit,
     primary: Boolean = false,
     modifier: Modifier = Modifier,
-    iconRes: Int? = null
+    iconRes: Int? = null,
+    enabled: Boolean = true
 ) {
-    RallyControlButton(label, onClick, modifier, primary, iconRes)
+    var focused by remember(label) { mutableStateOf(false) }
+    val shape = RoundedCornerShape(6.dp)
+    Row(
+        modifier
+            .height(29.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .rallyTvFocus(focused)
+            .clip(shape)
+            .background(
+                when {
+                    !enabled -> Color(0x88101A21)
+                    primary -> Color(0xFFF2F5F7)
+                    focused -> Color(0xFF293038)
+                    else -> Color(0xE013181D)
+                }
+            )
+            .border(1.dp, if (focused) Color(0xA6D7DCE1) else Color(0x3C6A7076), shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        iconRes?.let {
+            Image(painterResource(it), null, Modifier.size(13.dp), contentScale = ContentScale.Fit)
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            label.uppercase(),
+            color = when {
+                !enabled -> RallyTvPalette.Subtle
+                primary -> Color(0xFF050A0D)
+                else -> RallyTvPalette.Text
+            },
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = .55.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -2043,4 +1956,18 @@ private fun SportEvent.broadcastStations(): List<String> {
     return if (context.startsWith("TV:", ignoreCase = true)) {
         context.substringAfter(":").split(",").map(String::trim).filter(String::isNotEmpty)
     } else emptyList()
+}
+
+/** The emulator's virtual AVC decoder can output corrupted buffers. Physical TVs
+ * keep their normal hardware decoder order and power-efficient playback path. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+internal fun rallyRenderersFactory(context: android.content.Context): DefaultRenderersFactory {
+    val factory = DefaultRenderersFactory(context).setEnableDecoderFallback(true)
+    if (android.os.Build.HARDWARE in setOf("ranchu", "goldfish")) {
+        factory.setMediaCodecSelector { mimeType, secure, tunneling ->
+            MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling)
+                .sortedBy { if (it.name.contains("goldfish", ignoreCase = true)) 1 else 0 }
+        }
+    }
+    return factory
 }

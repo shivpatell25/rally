@@ -32,7 +32,8 @@ class HighlightsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _state.value = HighlightsUiState.Loading
             runCatching {
-                val events = sportsRepository.getRecentEvents()
+                val events = (sportsRepository.getLiveEvents() + sportsRepository.getRecentCompletedEvents())
+                    .distinctBy { it.id }
                     .sortedWith(
                         compareBy<SportEvent> {
                             when (it.status) {
@@ -47,7 +48,7 @@ class HighlightsViewModel @Inject constructor(
                 events.map { event ->
                     async { gate.withPermit { runCatching { sportsRepository.getEventSummary(event) }.getOrDefault(event) } }
                 }.awaitAll().flatMap { event ->
-                    event.highlightClips.map { HighlightItem(event, it) }
+                    event.highlightClips.filter { !it.streamUrl.isNullOrBlank() }.map { HighlightItem(event, it) }
                 }.distinctBy { it.clip.id }
             }.onSuccess { clips ->
                 _state.value = HighlightsUiState.Success(clips)

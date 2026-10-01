@@ -21,6 +21,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,8 +95,11 @@ fun RallyActionableError(
     message: String,
     onRetry: (() -> Unit)? = null,
     onSettings: (() -> Unit)? = null,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    initialFocusRequester: FocusRequester? = null
 ) {
+    val firstFocus = initialFocusRequester ?: remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(120); runCatching { firstFocus.requestFocus() } }
     val copy = classifyRallyError(message)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
@@ -104,9 +112,9 @@ fun RallyActionableError(
             Text(copy.guidance, color = AppleTvTheme.TextSecondary, fontSize = 13.sp, lineHeight = 19.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(20.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                onRetry?.let { RallyControlButton("Try Again", it, primary = true) }
-                onSettings?.let { RallyControlButton("Open Settings", it) }
-                onBack?.let { RallyControlButton("Back", it) }
+                onRetry?.let { RallyControlButton("Try Again", it, primary = true, modifier = Modifier.focusRequester(firstFocus)) }
+                onSettings?.let { RallyControlButton("Open Settings", it, modifier = if (onRetry == null) Modifier.focusRequester(firstFocus) else Modifier) }
+                onBack?.let { RallyControlButton("Back", it, modifier = if (onRetry == null && onSettings == null) Modifier.focusRequester(firstFocus) else Modifier) }
             }
         }
     }

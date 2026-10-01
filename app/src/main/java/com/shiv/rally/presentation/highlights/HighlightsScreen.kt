@@ -51,32 +51,32 @@ private val highlightShape = RoundedCornerShape(10.dp)
 @Composable
 fun HighlightsScreen(
     viewModel: HighlightsViewModel = hiltViewModel(),
-    onPlay: (String) -> Unit,
+    onPlay: (String, String) -> Unit,
     onEvent: (com.shiv.rally.domain.model.SportEvent) -> Unit,
     initialFocusRequester: FocusRequester? = null
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     when (val current = state) {
         HighlightsUiState.Loading -> HighlightMessage("Finding today’s highlights…")
-        is HighlightsUiState.Error -> HighlightMessage(current.message, viewModel::load)
-        is HighlightsUiState.Success -> HighlightsContent(current.items, onPlay, onEvent, initialFocusRequester)
+        is HighlightsUiState.Error -> HighlightMessage(current.message, viewModel::load, initialFocusRequester)
+        is HighlightsUiState.Success -> HighlightsContent(current.items, onPlay, onEvent, viewModel::load, initialFocusRequester)
     }
 }
 
 @Composable
-private fun HighlightsContent(items: List<HighlightItem>, onPlay: (String) -> Unit, onEvent: (com.shiv.rally.domain.model.SportEvent) -> Unit, initialFocusRequester: FocusRequester?) {
+private fun HighlightsContent(items: List<HighlightItem>, onPlay: (String, String) -> Unit, onEvent: (com.shiv.rally.domain.model.SportEvent) -> Unit, onRefresh: () -> Unit, initialFocusRequester: FocusRequester?) {
     val fallbackFocus = remember { FocusRequester() }
     val firstFocus = initialFocusRequester ?: fallbackFocus
     LaunchedEffect(items.size) { delay(120); runCatching { firstFocus.requestFocus() } }
     Column(Modifier.fillMaxSize().padding(start = 30.dp, end = 30.dp, top = 12.dp, bottom = 18.dp)) {
         Column(Modifier.height(74.dp)) {
-            Text("HIGHLIGHTS", color = AppleTvTheme.RallyCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text("HIGHLIGHTS", color = AppleTvTheme.GlassBorderFocused, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
             Text("The biggest moments, right now.", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black, letterSpacing = (-.6).sp)
-            Text("Event-linked clips from supported leagues.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
+            Text("Highlights and recaps from recent games.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
         }
         Spacer(Modifier.height(16.dp))
         if (items.isEmpty()) {
-            HighlightEmptyCard(Modifier.focusRequester(firstFocus))
+            HighlightEmptyCard(onRefresh, Modifier.focusRequester(firstFocus))
         } else {
             RallyPagedRow(
                 items = items,
@@ -86,7 +86,7 @@ private fun HighlightsContent(items: List<HighlightItem>, onPlay: (String) -> Un
             ) { item, modifier, width ->
                 HighlightCard(
                     item = item,
-                    onClick = { item.clip.streamUrl?.let(onPlay) ?: onEvent(item.event) },
+                    onClick = { item.clip.streamUrl?.let { onPlay(it, item.clip.title) } ?: onEvent(item.event) },
                     modifier = modifier,
                     width = width
                 )
@@ -101,12 +101,12 @@ private fun HighlightCard(item: HighlightItem, onClick: () -> Unit, modifier: Mo
     Box(
         modifier.width(width).height(235.dp).onFocusChanged { focused = it.isFocused }
             .rallyFocusScale(focused)
-            .clip(highlightShape).background(Color(0xC20A101B)).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894), highlightShape).clickable(onClick = onClick)
+            .clip(highlightShape).background(Color(0xC20A101B)).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.GlassBorderFocused else Color(0x385A7894), highlightShape).clickable(onClick = onClick)
     ) {
         AsyncImage(item.clip.thumbnailUrl, item.clip.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x12000000), .48f to Color(0x4D05080F), 1f to Color(0xF205080F))))
         Column(Modifier.align(Alignment.BottomStart).padding(15.dp)) {
-            Text(formatLeagueDisplayName(item.event.league).uppercase(), color = AppleTvTheme.RallyCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text(formatLeagueDisplayName(item.event.league).uppercase(), color = AppleTvTheme.GlassBorderFocused, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Text(item.clip.title, color = Color.White, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(item.event.name, color = AppleTvTheme.TextSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -114,36 +114,37 @@ private fun HighlightCard(item: HighlightItem, onClick: () -> Unit, modifier: Mo
 }
 
 @Composable
-private fun HighlightEmptyCard(modifier: Modifier = Modifier) {
+private fun HighlightEmptyCard(onRefresh: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     Row(
         modifier.fillMaxWidth().height(190.dp).onFocusChanged { focused = it.isFocused }
             .rallyFocusScale(focused)
             .clip(highlightShape)
             .background(if (focused) Color(0xD6172437) else Color(0xA80A101B))
-            .border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894), highlightShape)
-            .clickable(onClick = {})
+            .border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.GlassBorderFocused else Color(0x385A7894), highlightShape)
+            .clickable(onClick = onRefresh)
             .padding(24.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            Text("RECENT COVERAGE", color = AppleTvTheme.RallyCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+            Text("RECENT COVERAGE", color = AppleTvTheme.GlassBorderFocused, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
             Spacer(Modifier.height(7.dp))
             Text("No league clips have been published yet.", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
-            Text("This page fills automatically as supported leagues release highlights.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
+            Text("Press OK to check for new highlights.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
         }
     }
 }
 
 @Composable
-private fun HighlightMessage(message: String, retry: (() -> Unit)? = null) {
+private fun HighlightMessage(message: String, retry: (() -> Unit)? = null, requester: FocusRequester? = null) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(message, color = AppleTvTheme.TextSecondary, fontSize = 16.sp)
             retry?.let { action ->
+                LaunchedEffect(Unit) { delay(120); runCatching { requester?.requestFocus() } }
                 Spacer(Modifier.height(14.dp))
                 var focused by remember { mutableStateOf(false) }
-                Box(Modifier.onFocusChanged { focused = it.isFocused }.clip(highlightShape).background(if (focused) AppleTvTheme.OffWhite else AppleTvTheme.SurfaceRaised).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else AppleTvTheme.GlassBorder, highlightShape).clickable(onClick = action).padding(horizontal = 18.dp, vertical = 10.dp)) {
+                Box(Modifier.then(if (requester != null) Modifier.focusRequester(requester) else Modifier).onFocusChanged { focused = it.isFocused }.clip(highlightShape).background(if (focused) AppleTvTheme.OffWhite else AppleTvTheme.SurfaceRaised).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.GlassBorderFocused else AppleTvTheme.GlassBorder, highlightShape).clickable(onClick = action).padding(horizontal = 18.dp, vertical = 10.dp)) {
                     Text("Try Again", color = if (focused) AppleTvTheme.DeepNavy else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }

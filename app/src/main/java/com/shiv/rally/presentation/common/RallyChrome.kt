@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
@@ -56,202 +57,12 @@ import com.shiv.rally.presentation.theme.AppleTvTheme
 import com.shiv.rally.presentation.theme.RallyBodyFont
 import com.shiv.rally.presentation.theme.LocalRallyAccessibility
 
-enum class RallyDestination { HOME, LIVE, LEAGUES, HIGHLIGHTS, MY_TEAMS }
 
-class RallyChromeFocus {
-    val home = FocusRequester()
-    val live = FocusRequester()
-    val leagues = FocusRequester()
-    val highlights = FocusRequester()
-    val myTeams = FocusRequester()
-    val search = FocusRequester()
-    val settings = FocusRequester()
-}
 
-private val chromeShape = RoundedCornerShape(10.dp)
-private val navShape = RoundedCornerShape(8.dp)
 
-@Composable
-fun RallyAmbientSurface(
-    modifier: Modifier = Modifier,
-    contextKey: String = "",
-    content: @Composable BoxScope.() -> Unit
-) {
-    val accessibility = LocalRallyAccessibility.current
-    val targetTint = when {
-        contextKey.contains("NFL", true) -> Color(0xFF215A86)
-        contextKey.contains("NBA", true) -> Color(0xFF7E3B2D)
-        contextKey.contains("NHL", true) -> Color(0xFF316779)
-        contextKey.contains("MLB", true) -> Color(0xFF344E86)
-        contextKey.contains("SOCCER", true) -> Color(0xFF246B58)
-        else -> Color(0xFF1C5267)
-    }
-    val contextTint by animateColorAsState(
-        targetValue = targetTint,
-        animationSpec = if (accessibility.reducedMotion) snap() else tween(520),
-        label = "context background"
-    )
-    Box(modifier.fillMaxSize().background(AppleTvTheme.DeepNavy)) {
-        Image(
-            painter = painterResource(R.drawable.rally_ambient_background_v5),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    0f to Color(0x18000000),
-                    .52f to Color(0x2405080F),
-                    1f to Color(0xA805080F)
-                )
-            )
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    listOf(contextTint.copy(alpha = if (accessibility.reducedMotion) .055f else .075f), Color.Transparent, Color.Transparent)
-                )
-            )
-        )
-        content()
-    }
-}
 
-@Composable
-fun RallyTopBar(
-    selected: RallyDestination?,
-    onHome: () -> Unit,
-    onLive: () -> Unit,
-    onLeagues: () -> Unit,
-    onHighlights: () -> Unit,
-    onWatchlist: () -> Unit,
-    onSearch: () -> Unit,
-    onSettings: () -> Unit,
-    modifier: Modifier = Modifier,
-    compactLogo: Boolean = false,
-    focus: RallyChromeFocus,
-    contentFocusRequester: FocusRequester? = null
-) {
-    Row(
-        modifier = modifier.fillMaxWidth().height(58.dp).padding(horizontal = 30.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Image(
-            painter = painterResource(if (compactLogo) R.drawable.rally_mark_ui else R.drawable.rally_wordmark_color_ui),
-            contentDescription = "Rally",
-            modifier = if (compactLogo) Modifier.size(30.dp) else Modifier.width(92.dp).height(31.dp),
-            contentScale = ContentScale.Fit
-        )
-        Spacer(Modifier.weight(1f))
-        Row(
-            modifier = Modifier
-                .clip(chromeShape)
-                .background(Color(0x5E0A101B))
-                .border(1.dp, Color(0x425A7894), chromeShape)
-                .padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RallyTopNavItem("HOME", selected == RallyDestination.HOME, onHome, focusRequester = focus.home, downFocusRequester = contentFocusRequester)
-            RallyTopNavItem("LIVE", selected == RallyDestination.LIVE, onLive, live = true, focusRequester = focus.live, downFocusRequester = contentFocusRequester)
-            RallyTopNavItem("LEAGUES", selected == RallyDestination.LEAGUES, onLeagues, focusRequester = focus.leagues, downFocusRequester = contentFocusRequester)
-            RallyTopNavItem("HIGHLIGHTS", selected == RallyDestination.HIGHLIGHTS, onHighlights, focusRequester = focus.highlights, downFocusRequester = contentFocusRequester)
-            RallyTopNavItem("MY TEAMS", selected == RallyDestination.MY_TEAMS, onWatchlist, focusRequester = focus.myTeams, downFocusRequester = contentFocusRequester)
-        }
-        Spacer(Modifier.weight(1f))
-        RallyChromeIcon(R.drawable.ic_rally_search, "Search", onSearch, focus.search, contentFocusRequester)
-        Spacer(Modifier.width(9.dp))
-        RallyChromeIcon(R.drawable.ic_rally_settings, "Settings", onSettings, focus.settings, contentFocusRequester)
-    }
-}
 
-@Composable
-private fun RallyTopNavItem(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    live: Boolean = false,
-    focusRequester: FocusRequester,
-    downFocusRequester: FocusRequester?
-) {
-    var focused by remember(label) { mutableStateOf(false) }
-    val accessibility = LocalRallyAccessibility.current
-    val active = selected || focused
-    Row(
-        Modifier
-            .height(34.dp)
-            .focusRequester(focusRequester)
-            .focusProperties { downFocusRequester?.let { down = it } }
-            .onFocusChanged { focused = it.isFocused }
-            .rallyFocusScale(focused, AppleTvTheme.ButtonFocusScale)
-            .clip(navShape)
-            .background(
-                when {
-                    focused -> Color(0xB0233449)
-                    selected -> Color(0x781A293C)
-                    else -> Color.Transparent
-                }
-            )
-            .border(
-                width = if (focused && accessibility.highContrastFocus) 3.dp else if (focused) 1.5.dp else 1.dp,
-                color = when {
-                    focused -> Color(0xD6B9D8EA)
-                    selected -> Color(0x3D7A94AF)
-                    else -> Color.Transparent
-                },
-                shape = navShape
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 15.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (live) {
-            Box(Modifier.size(6.dp).clip(CircleShape).background(AppleTvTheme.LiveRed))
-            Spacer(Modifier.width(7.dp))
-        }
-        Text(
-            text = label,
-            color = if (active) AppleTvTheme.OffWhite else AppleTvTheme.TextSecondary,
-            fontSize = 11.sp,
-            fontFamily = RallyBodyFont,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-            letterSpacing = 1.sp
-        )
-    }
-}
 
-@Composable
-private fun RallyChromeIcon(
-    icon: Int,
-    label: String,
-    onClick: () -> Unit,
-    focusRequester: FocusRequester,
-    downFocusRequester: FocusRequester?
-) {
-    var focused by remember(label) { mutableStateOf(false) }
-    val accessibility = LocalRallyAccessibility.current
-    Box(
-        Modifier
-            .size(36.dp)
-            .focusRequester(focusRequester)
-            .focusProperties { downFocusRequester?.let { down = it } }
-            .onFocusChanged { focused = it.isFocused }
-            .rallyFocusScale(focused, AppleTvTheme.ButtonFocusScale)
-            .clip(navShape)
-            .background(if (focused) Color(0xB0233449) else Color.Transparent)
-            .border(if (focused && accessibility.highContrastFocus) 3.dp else if (focused) 1.5.dp else 1.dp, if (focused) Color(0xFFF2FAFF) else Color.Transparent, navShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(icon),
-            contentDescription = label,
-            modifier = Modifier.size(20.dp),
-            colorFilter = ColorFilter.tint(AppleTvTheme.OffWhite)
-        )
-    }
-}
 
 @Composable
 fun RallyPanel(
@@ -265,7 +76,7 @@ fun RallyPanel(
             .background(if (focused) AppleTvTheme.GlassPanelFocusedGradient else AppleTvTheme.GlassPanelGradient)
             .border(
                 if (focused) 2.dp else 1.dp,
-                if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894),
+                if (focused) AppleTvTheme.GlassBorderFocused else Color(0x385A7894),
                 AppleTvTheme.CardShape
             ),
         content = content
@@ -303,14 +114,14 @@ fun RallyControlButton(
             .border(
                 width = if (focused && accessibility.highContrastFocus) 3.dp else if (focused) 1.5.dp else 1.dp,
                 color = when {
-                    focused -> Color(0xD6B9D8EA)
+                    focused -> AppleTvTheme.GlassBorderFocused
                     primary -> Color(0xD6FFFFFF)
                     else -> AppleTvTheme.GlassBorder
                 },
                 shape = AppleTvTheme.ButtonShape
             )
             .clickable(enabled = enabled && !loading) {
-                if (actionGate.tryAcquire("activate")) currentOnClick()
+                if (actionGate.tryAcquire(label)) currentOnClick()
             }
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -333,7 +144,9 @@ fun RallyControlButton(
             fontFamily = RallyBodyFont,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = .35.sp,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
         )
     }
 }

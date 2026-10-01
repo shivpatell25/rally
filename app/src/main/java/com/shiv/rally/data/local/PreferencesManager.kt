@@ -214,6 +214,24 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
             sharedPreferences.edit().putStringSet("favorite_teams", value).apply()
         }
 
+    var savedEventIds: Set<String>
+        get() = sharedPreferences.getStringSet("saved_event_ids", emptySet()) ?: emptySet()
+        set(value) = sharedPreferences.edit().putStringSet("saved_event_ids", value.filter(String::isNotBlank).toSet()).apply()
+
+    fun toggleSavedEvent(eventId: String): Boolean {
+        if (eventId.isBlank()) return false
+        val saved = savedEventIds.toMutableSet()
+        val isSaved = if (eventId in saved) {
+            saved.remove(eventId)
+            false
+        } else {
+            saved += eventId
+            true
+        }
+        savedEventIds = saved
+        return isSaved
+    }
+
     var liveGameAlertsEnabled: Boolean
         get() = sharedPreferences.getBoolean("live_game_alerts_enabled", true)
         set(value) = sharedPreferences.edit().putBoolean("live_game_alerts_enabled", value).apply()

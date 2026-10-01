@@ -4,9 +4,8 @@ package com.shiv.rally.presentation.search
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,11 +27,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,11 +45,12 @@ import com.shiv.rally.domain.model.FavoriteTeam
 import com.shiv.rally.domain.model.IptvChannel
 import com.shiv.rally.domain.model.SportEvent
 import com.shiv.rally.domain.model.StremioStreamOption
-import com.shiv.rally.presentation.theme.AppleTvTheme
-import com.shiv.rally.presentation.common.rallyFocusScale
+import com.shiv.rally.presentation.common.RallyTvPalette
+import com.shiv.rally.presentation.common.RallyTvRule
+import com.shiv.rally.presentation.common.rallyTvFocus
+import com.shiv.rally.presentation.theme.RallyBodyFont
+import com.shiv.rally.presentation.theme.RallyDisplayFont
 import kotlinx.coroutines.delay
-
-private val searchPanel = RoundedCornerShape(10.dp)
 
 @Composable
 fun SearchScreen(
@@ -65,94 +65,195 @@ fun SearchScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val fallbackFocus = remember { FocusRequester() }
     val searchFocus = initialFocusRequester ?: fallbackFocus
-    BackHandler(onBack = onBack)
-    LaunchedEffect(Unit) { delay(120); runCatching { searchFocus.requestFocus() } }
+    var fieldFocused by remember { mutableStateOf(false) }
+    val playableStreams = state.addonStreams.filter { it.isDirectPlayable }
+    val hasResults = state.events.isNotEmpty() || state.favoriteTeams.isNotEmpty() ||
+        state.leagues.isNotEmpty() || state.channels.isNotEmpty() || playableStreams.isNotEmpty()
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 42.dp, vertical = 22.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("RALLY · GLOBAL SEARCH", color = AppleTvTheme.RallyCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                Spacer(Modifier.height(4.dp))
-                Text("Search", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black, letterSpacing = (-.6).sp)
-                Text("Games, favorite teams, leagues, channels and addon streams", color = AppleTvTheme.TextSecondary, fontSize = 13.sp)
-            }
-            SearchButton("‹ Back", onBack)
-        }
-        Spacer(Modifier.height(18.dp))
+    BackHandler(onBack = onBack)
+    LaunchedEffect(searchFocus) { delay(120); runCatching { searchFocus.requestFocus() } }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 66.dp, vertical = 26.dp)) {
+        Text(
+            "SEARCH",
+            color = RallyTvPalette.Subtle,
+            fontFamily = RallyBodyFont,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.8.sp
+        )
+        Spacer(Modifier.height(7.dp))
+        Text(
+            "Find your game.",
+            color = RallyTvPalette.Text,
+            fontFamily = RallyDisplayFont,
+            fontSize = 32.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            "Games, teams, leagues, channels and streams.",
+            color = RallyTvPalette.Muted,
+            fontFamily = RallyBodyFont,
+            fontSize = 14.sp
+        )
+        Spacer(Modifier.height(24.dp))
         OutlinedTextField(
             value = state.query,
             onValueChange = viewModel::setQuery,
             singleLine = true,
-            placeholder = { androidx.compose.material3.Text("Team, game, league or channel") },
-            modifier = Modifier.fillMaxWidth().height(62.dp).focusRequester(searchFocus),
-            shape = searchPanel,
+            placeholder = {
+                androidx.compose.material3.Text(
+                    "Search Rally TV",
+                    fontFamily = RallyBodyFont,
+                    color = RallyTvPalette.Subtle
+                )
+            },
+            textStyle = TextStyle(fontFamily = RallyBodyFont, fontSize = 17.sp),
+            modifier = Modifier.fillMaxWidth().height(60.dp)
+                .onFocusChanged { fieldFocused = it.isFocused }
+                .focusRequester(searchFocus)
+                .rallyTvFocus(fieldFocused),
+            shape = RoundedCornerShape(4.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = AppleTvTheme.RallyCyan,
-                unfocusedBorderColor = Color(0x35FFFFFF),
-                focusedContainerColor = AppleTvTheme.Graphite,
-                unfocusedContainerColor = Color(0xB80A101B)
+                focusedTextColor = RallyTvPalette.Text,
+                unfocusedTextColor = RallyTvPalette.Text,
+                cursorColor = RallyTvPalette.Accent,
+                focusedBorderColor = RallyTvPalette.Accent,
+                unfocusedBorderColor = RallyTvPalette.Divider,
+                focusedContainerColor = RallyTvPalette.FocusSurface,
+                unfocusedContainerColor = RallyTvPalette.BackgroundSoft
             )
         )
-        Spacer(Modifier.height(18.dp))
-        TvLazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 50.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            if (state.query.isBlank()) item("prompt") { SearchHint("Start typing to search every source.") }
-            if (state.isSearching) item("loading") { SearchHint("Searching…") }
-            if (state.events.isNotEmpty()) {
-                item("events-title") { SearchTitle("Games") }
-                items(state.events, key = { "event:${it.id}" }) { event -> SearchResultRow(event.name, "${event.league} · ${event.gameStatusDetail.orEmpty()}") { onEvent(event) } }
+        Spacer(Modifier.height(22.dp))
+        RallyTvRule()
+        TvLazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 48.dp)
+        ) {
+            if (state.query.isBlank()) {
+                item("prompt") {
+                    SearchHint(if (state.isIndexReady) "Search across Rally TV." else "Preparing search…")
+                }
+            } else {
+                if (state.isSearching) item("loading") { SearchHint("Searching…") }
+                if (state.events.isNotEmpty()) {
+                    item("events-title") { SearchTitle("GAMES") }
+                    items(state.events, key = { "event:${it.id}" }) { event ->
+                        SearchResultRow(event.name, listOfNotNull(event.league, event.gameStatusDetail?.takeIf { it.isNotBlank() }).joinToString(" · ")) { onEvent(event) }
+                    }
+                }
+                if (state.favoriteTeams.isNotEmpty()) {
+                    item("teams-title") { SearchTitle("MY RALLY") }
+                    items(state.favoriteTeams, key = { "team:${it.league}:${it.id}" }) { team ->
+                        SearchResultRow(team.name, "Following · ${team.league}") { onTeam(team) }
+                    }
+                }
+                if (state.leagues.isNotEmpty()) {
+                    item("leagues-title") { SearchTitle("LEAGUES") }
+                    items(state.leagues, key = { "league:$it" }) { league ->
+                        SearchResultRow(league, "League Center") { onLeague(league) }
+                    }
+                }
+                if (state.channels.isNotEmpty()) {
+                    item("channels-title") { SearchTitle("LIVE TV") }
+                    items(state.channels, key = { "channel:${it.id}" }) { channel ->
+                        ChannelSearchRow(channel) { onPlay(channel.id) }
+                    }
+                }
+                if (playableStreams.isNotEmpty()) {
+                    item("addons-title") { SearchTitle("STREAMS") }
+                    items(playableStreams, key = { "stream:${it.streamUrl}" }) { stream ->
+                        StreamSearchRow(stream) { onPlay(stream.streamUrl) }
+                    }
+                }
+                if (!state.isSearching && !hasResults) {
+                    item("empty") { SearchHint("No results found. Try a different search.") }
+                }
             }
-            if (state.favoriteTeams.isNotEmpty()) {
-                item("teams-title") { SearchTitle("My Teams") }
-                items(state.favoriteTeams, key = { "team:${it.league}:${it.id}" }) { team -> SearchResultRow(team.name, "Favorite · ${team.league}") { onTeam(team) } }
-            }
-            if (state.leagues.isNotEmpty()) {
-                item("leagues-title") { SearchTitle("Leagues") }
-                items(state.leagues, key = { "league:$it" }) { league -> SearchResultRow(league, "League Center") { onLeague(league) } }
-            }
-            if (state.channels.isNotEmpty()) {
-                item("channels-title") { SearchTitle("Live TV") }
-                items(state.channels, key = { "channel:${it.id}" }) { channel -> ChannelSearchRow(channel) { onPlay(channel.id) } }
-            }
-            val playableAddonStreams = state.addonStreams.filter { it.isDirectPlayable }
-            if (playableAddonStreams.isNotEmpty()) {
-                item("addons-title") { SearchTitle("Streams") }
-                items(playableAddonStreams, key = { "stream:${it.streamUrl}" }) { stream -> StreamSearchRow(stream) { onPlay(stream.streamUrl) } }
-            }
-            val noResults = state.query.isNotBlank() && !state.isSearching && state.events.isEmpty() && state.favoriteTeams.isEmpty() && state.leagues.isEmpty() && state.channels.isEmpty() && state.addonStreams.isEmpty()
-            if (noResults) item("empty") { SearchHint("No results found.") }
         }
     }
 }
 
-@Composable private fun ChannelSearchRow(channel: IptvChannel, onClick: () -> Unit) {
+@Composable
+private fun ChannelSearchRow(channel: IptvChannel, onClick: () -> Unit) {
     val now = channel.guide?.now?.title
     val next = channel.guide?.next?.title
-    SearchResultRow(channel.name, listOfNotNull(now?.let { "Now · $it" }, next?.let { "Next · $it" }, channel.category.takeIf { now == null }).joinToString("   "), onClick)
+    SearchResultRow(
+        channel.name,
+        listOfNotNull(now?.let { "Now · $it" }, next?.let { "Next · $it" }, channel.category.takeIf { now == null })
+            .joinToString("   "),
+        onClick
+    )
 }
 
-@Composable private fun StreamSearchRow(stream: StremioStreamOption, onClick: () -> Unit) {
+@Composable
+private fun StreamSearchRow(stream: StremioStreamOption, onClick: () -> Unit) {
     SearchResultRow(stream.title, listOfNotNull(stream.quality, stream.bitrate).joinToString(" · ").ifBlank { "Adaptive" }, onClick)
 }
 
-@Composable private fun SearchTitle(title: String) { Text(title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp, bottom = 2.dp)) }
-@Composable private fun SearchHint(text: String) { Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) { Text(text, color = AppleTvTheme.TextSecondary, fontSize = 16.sp) } }
+@Composable
+private fun SearchTitle(title: String) {
+    Text(
+        title,
+        color = RallyTvPalette.Muted,
+        fontFamily = RallyBodyFont,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.4.sp,
+        modifier = Modifier.padding(top = 23.dp, bottom = 9.dp)
+    )
+}
 
-@Composable private fun SearchResultRow(title: String, subtitle: String, onClick: () -> Unit) {
-    var focused by remember(title, subtitle) { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().height(70.dp).onFocusChanged { focused = it.isFocused }.rallyFocusScale(focused, AppleTvTheme.ButtonFocusScale).clip(searchPanel).background(if (focused) Color(0xE6172437) else Color(0xB80A101B)).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894), searchPanel).clickable(onClick = onClick).padding(horizontal = 17.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = if (focused) AppleTvTheme.RallyCyan else Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, color = AppleTvTheme.TextSecondary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        Text("›", color = if (focused) AppleTvTheme.RallyCyan else Color.White, fontSize = 22.sp)
+@Composable
+private fun SearchHint(text: String) {
+    Box(Modifier.fillMaxWidth().height(110.dp), contentAlignment = Alignment.CenterStart) {
+        Text(text, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 15.sp)
     }
 }
 
-@Composable private fun SearchButton(label: String, onClick: () -> Unit) {
+@Composable
+private fun SearchResultRow(title: String, subtitle: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    Box(Modifier.onFocusChanged { focused = it.isFocused }.rallyFocusScale(focused, AppleTvTheme.ButtonFocusScale).clip(RoundedCornerShape(8.dp)).background(if (focused) AppleTvTheme.SurfaceFocused else AppleTvTheme.SurfaceRaised).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else AppleTvTheme.GlassBorder, RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(horizontal = 19.dp, vertical = 10.dp)) {
-        Text(label, color = if (focused) AppleTvTheme.RallyCyan else Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    Column {
+        Row(
+            Modifier.fillMaxWidth().height(58.dp)
+                .onFocusChanged { focused = it.isFocused }
+                .rallyTvFocus(focused)
+                .background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+                .clickable(onClick = onClick)
+                .focusable()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                title,
+                color = RallyTvPalette.Text,
+                fontFamily = RallyBodyFont,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1.5f)
+            )
+            Spacer(Modifier.width(20.dp))
+            Text(
+                subtitle,
+                color = if (focused) RallyTvPalette.Text else RallyTvPalette.Muted,
+                fontFamily = RallyBodyFont,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(16.dp))
+            Text(
+                "›",
+                color = if (focused) RallyTvPalette.Accent else RallyTvPalette.Subtle,
+                fontFamily = RallyBodyFont,
+                fontSize = 20.sp
+            )
+        }
+        RallyTvRule()
     }
 }

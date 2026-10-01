@@ -56,6 +56,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -83,7 +86,7 @@ class ScoreSaverViewModel @Inject constructor(
 @Composable
 fun RallyScoreSaverHost(
     enabled: Boolean,
-    interactionTick: Long,
+    interactionEvents: Flow<Long>,
     currentRoute: String,
     onDismiss: () -> Unit,
     viewModel: ScoreSaverViewModel = hiltViewModel()
@@ -92,11 +95,16 @@ fun RallyScoreSaverHost(
     val events by viewModel.events.collectAsStateWithLifecycle()
     var clockTime by remember { mutableStateOf(java.time.Instant.now()) }
     val allowed = enabled && !currentRoute.startsWith("player/") && !currentRoute.startsWith("multiview")
-    LaunchedEffect(enabled, interactionTick, currentRoute) {
+    LaunchedEffect(enabled, currentRoute, interactionEvents) {
         visible = false
         if (allowed) {
-            delay(SCORE_SAVER_IDLE_MS)
-            visible = true
+            interactionEvents
+                .onStart { emit(0L) }
+                .collectLatest {
+                    visible = false
+                    delay(SCORE_SAVER_IDLE_MS)
+                    visible = true
+                }
         }
     }
     if (!visible || !allowed) return
@@ -118,14 +126,14 @@ fun RallyScoreSaverHost(
             .thenBy { it.startTime }
     ).take(4)
     Box(
-        Modifier.fillMaxSize().background(Color(0xFF030609)).focusRequester(focus).focusable()
+        Modifier.fillMaxSize().background(RallyTvPalette.Background).focusRequester(focus).focusable()
             .onPreviewKeyEvent {
                 visible = false
                 onDismiss()
                 true
             }
     ) {
-        Image(painterResource(R.drawable.rally_ambient_background_v5), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = .24f)
+        RallyTvBackdrop { }
         Column(Modifier.fillMaxSize().padding(horizontal = 54.dp, vertical = 42.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Image(painterResource(R.drawable.rally_wordmark_color_ui), "Rally", Modifier.width(126.dp).height(44.dp), contentScale = ContentScale.Fit)
@@ -148,8 +156,9 @@ fun RallyScoreSaverHost(
 @Composable
 private fun ScoreSaverCard(event: SportEvent, modifier: Modifier) {
     val live = event.status == EventStatus.LIVE || event.status == EventStatus.HALFTIME
+    val final = event.status == EventStatus.FINISHED
     Column(
-        modifier.height(150.dp).background(Color(0xC7101822), saverShape).border(1.dp, AppleTvTheme.GlassBorder, saverShape).padding(14.dp),
+        modifier.height(150.dp).background(RallyTvPalette.BackgroundSoft, saverShape).border(1.dp, AppleTvTheme.GlassBorder, saverShape).padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -157,11 +166,11 @@ private fun ScoreSaverCard(event: SportEvent, modifier: Modifier) {
                 Box(Modifier.size(6.dp).background(AppleTvTheme.LiveRed, CircleShape))
                 Spacer(Modifier.width(6.dp))
             }
-            Text(if (live) "LIVE" else saverTime.format(event.startTime), color = if (live) AppleTvTheme.LiveRed else AppleTvTheme.TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text(if (live) "LIVE" else if (final) "FINAL" else saverTime.format(event.startTime), color = if (live) AppleTvTheme.LiveRed else AppleTvTheme.TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(event.awayTeamBadge ?: event.awayTeam?.logoUrl, null, Modifier.size(34.dp), contentScale = ContentScale.Fit)
-            Text(if (live) "${event.scoreAway ?: "–"}  –  ${event.scoreHome ?: "–"}" else "VS", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(if (live || final) "${event.scoreAway ?: "–"}  –  ${event.scoreHome ?: "–"}" else "VS", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             AsyncImage(event.homeTeamBadge ?: event.homeTeam?.logoUrl, null, Modifier.size(34.dp), contentScale = ContentScale.Fit)
         }
         Text("${formatTeamDisplayName(event.awayTeam?.name)} · ${formatTeamDisplayName(event.homeTeam?.name)}", color = Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

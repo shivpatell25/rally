@@ -2,14 +2,11 @@
 
 package com.shiv.rally.presentation.league
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,11 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -40,16 +34,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.foundation.lazy.list.TvLazyColumn
+import androidx.tv.foundation.lazy.list.itemsIndexed
 import androidx.tv.material3.Text
-import com.shiv.rally.presentation.common.RallyPagedRow
+import com.shiv.rally.domain.model.EventStatus
+import com.shiv.rally.presentation.common.RallyTvActionButton
+import com.shiv.rally.presentation.common.RallyTvPalette
+import com.shiv.rally.presentation.common.RallyTvRule
+import com.shiv.rally.presentation.common.rallyTvFocus
 import com.shiv.rally.presentation.home.formatLeagueDisplayName
-import com.shiv.rally.presentation.home.getLeagueBackdrop
 import com.shiv.rally.presentation.home.getLeagueLogoResource
-import com.shiv.rally.presentation.theme.AppleTvTheme
-import com.shiv.rally.presentation.common.rallyFocusScale
+import com.shiv.rally.presentation.theme.RallyBodyFont
+import com.shiv.rally.presentation.theme.RallyDisplayFont
 import kotlinx.coroutines.delay
-
-private val directoryShape = RoundedCornerShape(10.dp)
 
 @Composable
 fun LeaguesScreen(
@@ -58,28 +55,41 @@ fun LeaguesScreen(
     onLeague: (String) -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    when (val current = state) {
-        LeaguesUiState.Loading -> LeagueDirectoryMessage("Loading leagues…")
-        is LeaguesUiState.Error -> LeagueDirectoryMessage(current.message)
-        is LeaguesUiState.Success -> {
-            val fallbackFocus = remember { FocusRequester() }
-            val firstFocus = initialFocusRequester ?: fallbackFocus
-            LaunchedEffect(current.leagues.size) { delay(120); runCatching { firstFocus.requestFocus() } }
-            Column(Modifier.fillMaxSize().padding(start = 30.dp, end = 30.dp, top = 12.dp, bottom = 18.dp)) {
-                Column(Modifier.height(74.dp)) {
-                    Text("LEAGUES", color = AppleTvTheme.RallyCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                    Text("Every sport. One starting point.", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black, letterSpacing = (-.6).sp)
-                    Text("Five leagues at a time. Open one for games, standings, and channels.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
+    val firstFocus = initialFocusRequester ?: remember { FocusRequester() }
+    Column(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 25.dp)) {
+        Text("BROWSE / LEAGUES", color = RallyTvPalette.Accent, fontFamily = RallyBodyFont, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp)
+        Spacer(Modifier.height(12.dp))
+        Text("Leagues", color = RallyTvPalette.Text, fontFamily = RallyDisplayFont, fontSize = 35.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+        RallyTvRule()
+        when (val current = state) {
+            LeaguesUiState.Loading -> LeagueDirectoryMessage("Loading leagues…")
+            is LeaguesUiState.Error -> Column(Modifier.fillMaxWidth().padding(22.dp)) {
+                Text(current.message, color = RallyTvPalette.Muted, fontSize = 14.sp)
+                Spacer(Modifier.height(12.dp))
+                RallyTvActionButton("Try again", viewModel::load, focusRequester = firstFocus)
+                LaunchedEffect(Unit) { delay(120); runCatching { firstFocus.requestFocus() } }
+            }
+            is LeaguesUiState.Success -> {
+                LaunchedEffect(current.leagues.size) {
+                    if (current.leagues.isNotEmpty()) {
+                        delay(120)
+                        runCatching { firstFocus.requestFocus() }
+                    }
                 }
-                Spacer(Modifier.height(16.dp))
-                RallyPagedRow(
-                    items = current.leagues,
-                    key = { it.league },
-                    firstFocusRequester = firstFocus,
-                    spacing = 12.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) { item, modifier, width ->
-                    LeagueDirectoryCard(item, { onLeague(item.league) }, modifier, width)
+                if (current.leagues.isEmpty()) {
+                    LeagueDirectoryMessage("No leagues are available right now.")
+                } else {
+                    TvLazyColumn(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                        itemsIndexed(current.leagues, key = { _, item -> item.league }) { index, item ->
+                            LeagueDirectoryRow(
+                                item = item,
+                                modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier,
+                                onClick = { onLeague(item.league) }
+                            )
+                            RallyTvRule()
+                        }
+                    }
                 }
             }
         }
@@ -87,51 +97,41 @@ fun LeaguesScreen(
 }
 
 @Composable
-private fun LeagueDirectoryCard(item: LeagueDirectoryItem, onClick: () -> Unit, modifier: Modifier = Modifier, width: androidx.compose.ui.unit.Dp) {
+private fun LeagueDirectoryRow(item: LeagueDirectoryItem, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember(item.league) { mutableStateOf(false) }
-    Box(modifier.width(width).height(235.dp).onFocusChanged { focused = it.isFocused }.rallyFocusScale(focused).clip(directoryShape).background(Color(0xC20A101B)).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894), directoryShape).clickable(onClick = onClick)) {
-        Image(painterResource(getLeagueBackdrop(item.league)), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x2E05080F), Color(0xE605080F)))))
-        val leagueLogo = remember(item.league) { getLeagueLogoResource(item.league) }
-        Column(
-            Modifier.fillMaxSize().padding(15.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("LEAGUE CENTER", color = AppleTvTheme.TextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-                if (item.events.any { it.status == com.shiv.rally.domain.model.EventStatus.LIVE || it.status == com.shiv.rally.domain.model.EventStatus.HALFTIME }) {
-                    Text("● LIVE", color = AppleTvTheme.LiveRed, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            if (leagueLogo != null) {
-                Image(
-                    painter = painterResource(leagueLogo),
-                    contentDescription = null,
-                    modifier = Modifier.size(78.dp),
-                    contentScale = ContentScale.Fit
-                )
+    val logo = remember(item.league) { getLeagueLogoResource(item.league) }
+    val liveCount = item.events.count { it.status == EventStatus.LIVE || it.status == EventStatus.HALFTIME }
+    Row(
+        modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }.rallyTvFocus(focused)
+            .background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+            if (logo != null) {
+                androidx.compose.foundation.Image(painterResource(logo), null, Modifier.size(40.dp), contentScale = ContentScale.Fit)
             } else {
-                Text(
-                    when (item.league.uppercase()) {
-                        "NCAAF" -> "CFB"
-                        "NCAAB" -> "CBB"
-                        else -> item.league.uppercase().take(5)
-                    },
-                    color = AppleTvTheme.OffWhite,
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 1.sp
-                )
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(formatLeagueDisplayName(item.league).uppercase(), color = Color.White, fontSize = 14.sp, lineHeight = 17.sp, fontWeight = FontWeight.Black, letterSpacing = .5.sp)
-                Text(if (item.events.isEmpty()) "OPEN LEAGUE CENTER" else "${item.events.size} GAMES", color = if (focused) AppleTvTheme.RallyCyan else AppleTvTheme.TextSecondary, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
+                Text(item.league.uppercase().take(4), color = RallyTvPalette.Accent, fontFamily = RallyDisplayFont, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
             }
         }
+        Spacer(Modifier.width(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(formatLeagueDisplayName(item.league), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(item.league.uppercase(), color = RallyTvPalette.Subtle, fontFamily = RallyBodyFont, fontSize = 12.sp)
+        }
+        if (liveCount > 0) {
+            Text("●  $liveCount LIVE", color = RallyTvPalette.Live, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(28.dp))
+        }
+        Text(if (item.events.isEmpty()) "EXPLORE" else "${item.events.size} GAMES", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(20.dp))
+        Text("→", color = if (focused) RallyTvPalette.Accent else RallyTvPalette.Subtle, fontFamily = RallyBodyFont, fontSize = 20.sp)
     }
 }
 
-@Composable private fun LeagueDirectoryMessage(message: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(message, color = AppleTvTheme.TextSecondary, fontSize = 16.sp) }
+@Composable
+private fun LeagueDirectoryMessage(message: String) {
+    Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) {
+        Text(message, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 16.sp)
+    }
 }

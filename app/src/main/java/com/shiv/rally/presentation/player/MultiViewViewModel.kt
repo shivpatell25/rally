@@ -26,7 +26,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.time.Instant
+import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.withContext
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -47,6 +55,12 @@ data class MultiViewUiState(
     val slots: List<MultiViewSlot> = emptyList(),
     val focusedSlotIndex: Int = 0,
     val audioSlotIndex: Int = 0,
+    val audioFollowsFocus: Boolean = true,
+    val statsTileEnabled: Boolean = false,
+    val statsGames: List<SportEvent> = emptyList(),
+    val statsLoading: Boolean = false,
+    val statsError: String? = null,
+    val statsUpdatedAt: Instant? = null,
     val layoutMode: MultiViewLayoutMode = MultiViewLayoutMode.AUTO,
     val availableLiveEvents: List<SportEvent> = emptyList(),
     val availableChannels: List<IptvChannel> = emptyList(),
@@ -72,6 +86,10 @@ class MultiViewViewModel @Inject constructor(
     private val ioDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
+    private var refreshJob: Job? = null
+    private var statsJob: Job? = null
+    private var statsRefreshPending = false
+    private var active = false
     private val slotJobs = ConcurrentHashMap<String, Job>()
 
     private val _uiState = MutableStateFlow(
@@ -124,8 +142,8 @@ class MultiViewViewModel @Inject constructor(
 
             // Scenario 1: Multiple events specified (e.g. from Home Screen Multi-View selector)
             if (!initialEventIds.isNullOrEmpty()) {
-                val eventsToLoad = initialEventIds.take(4).mapNotNull { id ->
-                    liveEvents.find { it.id == id } ?: sportsRepository.getEventById(id)
+                val eventsToLoad = initialEventIds.distinct().take(4).mapNotNull { id ->
+                    liveEvents.find { it.id == id } ?: safeEvent(id)
                 }
                 if (eventsToLoad.isNotEmpty()) {
                     loadMultipleEvents(eventsToLoad, channels)
@@ -136,7 +154,7 @@ class MultiViewViewModel @Inject constructor(
             // Scenario 2: Single initial event or channel (e.g. from PlayerScreen "+ Multi View")
             if (initialChannelId != null || initialEventId != null) {
                 val event = if (initialEventId != null) {
-                    liveEvents.find { it.id == initialEventId } ?: sportsRepository.getEventById(initialEventId)
+                    liveEvents.find { it.id == initialEventId } ?: safeEvent(initialEventId)
                 } else null
 
                 val channel = if (initialChannelId != null) {
@@ -175,7 +193,7 @@ class MultiViewViewModel @Inject constructor(
         val initialSlots = events.map { event ->
             MultiViewSlot(
                 event = event,
-                title = "${event.awayTeam?.abbreviation ?: ""} @ ${event.homeTeam?.abbreviation ?: ""}",
+                title = multiViewTitle(event),
                 subtitle = event.league,
                 scoreText = if (event.scoreAway != null && event.scoreHome != null) "${event.scoreAway} - ${event.scoreHome}" else null,
                 statusText = event.gameStatusDetail ?: if (event.status == EventStatus.LIVE) "LIVE" else "",
@@ -190,17 +208,124 @@ class MultiViewViewModel @Inject constructor(
             )
         }
 
-        // Concurrently resolve stream URLs for each slot
-        val resolvedSlots = events.mapIndexed { index, event ->
-            viewModelScope.async(ioDispatcher) {
-                val slot = resolveSlot(event = event, channel = null, fallbackChannelId = null, allChannels = allChannels)
-                slot.copy(slotId = initialSlots.getOrNull(index)?.slotId ?: slot.slotId)
+        events.forEachIndexed { index, event ->
+            resolveIntoSlot(initialSlots[index].slotId) {
+                resolveSlot(event = event, channel = null, fallbackChannelId = null, allChannels = allChannels)
             }
-        }.awaitAll()
-
-        withContext(Dispatchers.Main) {
-            _uiState.value = _uiState.value.copy(slots = resolvedSlots)
         }
+    }
+
+    private suspend fun safeEvent(id: String): SportEvent? = try {
+        sportsRepository.getEventById(id)
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { null }
+
+    fun setActive(value: Boolean) {
+        if (active == value) return
+        active = value
+        refreshJob?.cancel()
+        if (!value) { statsRefreshPending = false; statsJob?.cancel(); _uiState.value = _uiState.value.copy(statsLoading = false); return }
+        refreshJob = viewModelScope.launch {
+            while (isActive) {
+                if (_uiState.value.statsTileEnabled) refreshStats()
+                else refreshScores()
+                delay(30_000)
+            }
+        }
+    }
+
+    private suspend fun refreshScores() {
+        val live = try { sportsRepository.getLiveEvents() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { return }
+        val byId = live.associateBy { it.id }
+        withContext(Dispatchers.Main) {
+            val state = _uiState.value
+            _uiState.value = state.copy(availableLiveEvents = live, slots = state.slots.map { slot ->
+                byId[slot.event?.id]?.let { slot.withEvent(it) } ?: slot
+            })
+        }
+    }
+
+    private fun MultiViewSlot.withEvent(event: SportEvent) = copy(
+        event = event, title = multiViewTitle(event), subtitle = event.league,
+        scoreText = if (event.scoreAway != null && event.scoreHome != null) "${event.scoreAway} – ${event.scoreHome}" else null,
+        statusText = event.gameStatusDetail
+    )
+
+    fun addStatsTile() {
+        val state = _uiState.value
+        if (state.statsTileEnabled || state.slots.isEmpty()) return
+        val replace = state.pickerTargetSlotIndex
+        if (replace != null) {
+            if (state.slots.size <= 1 || replace !in state.slots.indices) return
+            removeSlot(replace)
+        }
+        else if (state.slots.size >= 4) return
+        if (_uiState.value.slots.isEmpty()) return
+        closePicker()
+        _uiState.value = _uiState.value.copy(statsTileEnabled = true, focusedSlotIndex = _uiState.value.slots.size)
+        refreshStats()
+    }
+
+    fun removeStatsTile() {
+        statsRefreshPending = false
+        statsJob?.cancel()
+        _uiState.value = _uiState.value.copy(statsTileEnabled = false, statsLoading = false,
+            focusedSlotIndex = _uiState.value.focusedSlotIndex.coerceAtMost((_uiState.value.slots.size - 1).coerceAtLeast(0)))
+    }
+
+    fun refreshStats() {
+        if (!_uiState.value.statsTileEnabled) return
+        if (statsJob?.isActive == true) { statsRefreshPending = true; return }
+        statsRefreshPending = false
+        statsJob = viewModelScope.launch(ioDispatcher) {
+            val state = _uiState.value
+            val signature = state.slots.map { Triple(it.slotId, it.event?.id, it.sourcePlaybackTarget to it.channel?.id) }
+            withContext(Dispatchers.Main) { _uiState.value = _uiState.value.copy(statsLoading = true, statsError = null) }
+            try {
+                val today = LocalDate.now(redZoneTimeZone)
+                val failed = AtomicBoolean(false)
+                val redZone = if (state.slots.any { it.isRedZone() }) {
+                    try { redZoneGamesForDay(sportsRepository.getEventsForDate("NFL", today), today) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { failed.set(true); redZoneGamesForDay(state.statsGames, today) }
+                } else emptyList()
+                val games = multiviewStatsGames(state.slots, redZone)
+                val gate = Semaphore(2)
+                val detailed = games.map { game -> async {
+                    gate.withPermit {
+                        try { sportsRepository.getEventSummary(game) }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) {
+                            failed.set(true)
+                            state.statsGames.find { it.id == game.id } ?: game
+                        }
+                    }
+                } }.awaitAll()
+                withContext(Dispatchers.Main) {
+                    val current = _uiState.value
+                    if (current.statsTileEnabled && current.slots.map { Triple(it.slotId, it.event?.id, it.sourcePlaybackTarget to it.channel?.id) } == signature) {
+                        val details = detailed.associateBy { it.id }
+                        _uiState.value = current.copy(statsGames = detailed, statsLoading = false,
+                            statsError = if (failed.get()) "Some player stats could not be updated. Retry to refresh." else null,
+                            statsUpdatedAt = Instant.now(),
+                            slots = current.slots.map { slot -> details[slot.event?.id]?.let { slot.withEvent(it) } ?: slot })
+                    } else {
+                        _uiState.value = current.copy(statsLoading = false)
+                        statsRefreshPending = current.statsTileEnabled
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                withContext(Dispatchers.Main) { _uiState.value = _uiState.value.copy(statsLoading = false,
+                    statsError = "Player stats could not be updated. Retry to refresh.") }
+            }
+        }.also { job -> job.invokeOnCompletion {
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                if (statsRefreshPending && _uiState.value.statsTileEnabled) refreshStats()
+            }
+        } }
     }
 
     private suspend fun resolveSlot(
@@ -213,29 +338,38 @@ class MultiViewViewModel @Inject constructor(
         var resolvedHeaders: Map<String, String>? = null
         var resolvedChannel: IptvChannel? = channel
         var resolvedEvent: SportEvent? = event
+        // A stream added from Live TV can still carry a game identity. Use
+        // explicit matchup/EPG evidence, never a generic network-name guess.
+        if (resolvedEvent == null && channel != null && !MultiViewSlot(channel = channel, title = channel.name).isRedZone()) {
+            val guide = channel.guide ?: try { iptvRepository.getChannelGuide(channel.id) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+            resolvedChannel = if (guide != null) channel.copy(guide = guide) else channel
+            resolvedEvent = inferEventForChannel(channel, guide, _uiState.value.availableLiveEvents)
+        }
         var selectedSourceId: String? = null
         var sourcePlaybackTarget: String? = channel?.id ?: fallbackChannelId
         var sourceTitle: String? = channel?.name
         var sourceQuality: String? = null
 
         val title = when {
-            event != null -> "${event.awayTeam?.abbreviation ?: ""} @ ${event.homeTeam?.abbreviation ?: ""}"
+            resolvedEvent != null -> multiViewTitle(resolvedEvent)
             channel != null -> channel.name
             !fallbackChannelId.isNullOrBlank() -> fallbackChannelId
             else -> "Live Stream"
         }
 
         val subtitle = when {
-            event != null -> event.league
+            resolvedEvent != null -> resolvedEvent.league
             channel != null -> channel.category.ifEmpty { "Sports" }
             else -> null
         }
 
-        val scoreText = if (event != null && event.scoreAway != null && event.scoreHome != null) {
-            "${event.scoreAway} - ${event.scoreHome}"
+        val scoreText = if (resolvedEvent != null && resolvedEvent.scoreAway != null && resolvedEvent.scoreHome != null) {
+            "${resolvedEvent.scoreAway} - ${resolvedEvent.scoreHome}"
         } else null
 
-        val statusText = event?.gameStatusDetail ?: if (event?.status == EventStatus.LIVE) "LIVE" else ""
+        val statusText = resolvedEvent?.gameStatusDetail ?: if (resolvedEvent?.status == EventStatus.LIVE) "LIVE" else ""
 
         try {
             // Case A: Direct channel ID or fallbackChannelId provided
@@ -265,7 +399,8 @@ class MultiViewViewModel @Inject constructor(
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             runCatching { android.util.Log.e("MultiViewViewModel", "Error resolving stream for $title: ${e.message}", e) }
             return MultiViewSlot(
                 event = resolvedEvent,
@@ -314,15 +449,24 @@ class MultiViewViewModel @Inject constructor(
 
     fun setFocusedSlot(index: Int) {
         val currentSlots = _uiState.value.slots
-        if (index in currentSlots.indices) {
-            _uiState.value = _uiState.value.copy(focusedSlotIndex = index)
+        if (index in 0 until (currentSlots.size + if (_uiState.value.statsTileEnabled) 1 else 0)) {
+            val state = _uiState.value
+            _uiState.value = state.copy(focusedSlotIndex = index,
+                audioSlotIndex = if (state.audioFollowsFocus && index in currentSlots.indices) index else state.audioSlotIndex)
         }
     }
 
     fun setAudioSlot(index: Int) {
         if (index in _uiState.value.slots.indices) {
-            _uiState.value = _uiState.value.copy(audioSlotIndex = index)
+            _uiState.value = _uiState.value.copy(audioSlotIndex = index, audioFollowsFocus = false)
         }
+    }
+
+    fun toggleAudioFollowsFocus() {
+        val state = _uiState.value
+        val follows = !state.audioFollowsFocus
+        _uiState.value = state.copy(audioFollowsFocus = follows,
+            audioSlotIndex = if (follows && state.focusedSlotIndex in state.slots.indices) state.focusedSlotIndex else state.audioSlotIndex)
     }
 
     fun promoteSlot(index: Int) {
@@ -333,7 +477,7 @@ class MultiViewViewModel @Inject constructor(
         val updated = state.slots.toMutableList().apply { add(0, removeAt(index)) }
         _uiState.value = state.copy(
             slots = updated,
-            focusedSlotIndex = updated.indexOfFirst { it.slotId == focusedId }.coerceAtLeast(0),
+            focusedSlotIndex = if (state.statsTileEnabled && state.focusedSlotIndex == state.slots.size) updated.size else updated.indexOfFirst { it.slotId == focusedId }.coerceAtLeast(0),
             audioSlotIndex = updated.indexOfFirst { it.slotId == audioId }.coerceAtLeast(0)
         )
     }
@@ -351,7 +495,7 @@ class MultiViewViewModel @Inject constructor(
         }
         _uiState.value = state.copy(
             slots = updated,
-            focusedSlotIndex = updated.indexOfFirst { it.slotId == focusedId }.coerceAtLeast(0),
+            focusedSlotIndex = if (state.statsTileEnabled && state.focusedSlotIndex == state.slots.size) updated.size else updated.indexOfFirst { it.slotId == focusedId }.coerceAtLeast(0),
             audioSlotIndex = updated.indexOfFirst { it.slotId == audioId }.coerceAtLeast(0)
         )
     }
@@ -361,7 +505,7 @@ class MultiViewViewModel @Inject constructor(
     }
 
     fun openPickerForAdd() {
-        if (_uiState.value.slots.size >= 4) return
+        if (_uiState.value.slots.size + (if (_uiState.value.statsTileEnabled) 1 else 0) >= 4) return
         _uiState.value = _uiState.value.copy(
             isPickerOpen = true,
             pickerTargetSlotIndex = null
@@ -369,6 +513,7 @@ class MultiViewViewModel @Inject constructor(
     }
 
     fun openPickerForSwap(slotIndex: Int) {
+        if (slotIndex !in _uiState.value.slots.indices) return
         _uiState.value = _uiState.value.copy(
             isPickerOpen = true,
             pickerTargetSlotIndex = slotIndex
@@ -482,11 +627,11 @@ class MultiViewViewModel @Inject constructor(
 
     fun addSlotFromEvent(event: SportEvent) {
         val currentSlots = _uiState.value.slots
-        if (currentSlots.size >= 4) return
+        if (currentSlots.size + (if (_uiState.value.statsTileEnabled) 1 else 0) >= 4) return
 
         val newSlot = MultiViewSlot(
             event = event,
-            title = "${event.awayTeam?.abbreviation ?: ""} @ ${event.homeTeam?.abbreviation ?: ""}",
+            title = multiViewTitle(event),
             subtitle = event.league,
             scoreText = if (event.scoreAway != null && event.scoreHome != null) "${event.scoreAway} - ${event.scoreHome}" else null,
             statusText = event.gameStatusDetail ?: if (event.status == EventStatus.LIVE) "LIVE" else "",
@@ -510,7 +655,7 @@ class MultiViewViewModel @Inject constructor(
 
     fun addSlotFromChannel(channel: IptvChannel) {
         val currentSlots = _uiState.value.slots
-        if (currentSlots.size >= 4) return
+        if (currentSlots.size + (if (_uiState.value.statsTileEnabled) 1 else 0) >= 4) return
 
         val newSlot = MultiViewSlot(
             channel = channel,
@@ -541,7 +686,7 @@ class MultiViewViewModel @Inject constructor(
             event = event,
             channel = null,
             streamUrl = "",
-            title = "${event.awayTeam?.abbreviation ?: ""} @ ${event.homeTeam?.abbreviation ?: ""}",
+            title = multiViewTitle(event),
             subtitle = event.league,
             scoreText = if (event.scoreAway != null && event.scoreHome != null) "${event.scoreAway} - ${event.scoreHome}" else null,
             statusText = event.gameStatusDetail ?: if (event.status == EventStatus.LIVE) "LIVE" else "",
@@ -621,7 +766,9 @@ class MultiViewViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             slots = updated,
             focusedSlotIndex = newFocused,
-            audioSlotIndex = updated.indexOfFirst { it.slotId == audioSlotId }.takeIf { it >= 0 } ?: 0
+            audioSlotIndex = if (_uiState.value.audioFollowsFocus && newFocused in updated.indices) newFocused
+                else updated.indexOfFirst { it.slotId == audioSlotId }.takeIf { it >= 0 } ?: 0,
+            statsTileEnabled = _uiState.value.statsTileEnabled && updated.isNotEmpty()
         )
     }
 
@@ -667,16 +814,27 @@ class MultiViewViewModel @Inject constructor(
     private fun resolveIntoSlot(slotId: String, resolver: suspend () -> MultiViewSlot) {
         slotJobs.remove(slotId)?.cancel()
         slotJobs[slotId] = viewModelScope.launch(ioDispatcher) {
-            val resolved = resolver().copy(slotId = slotId)
+            val seed = _uiState.value.slots.find { it.slotId == slotId } ?: return@launch
+            val resolved = try { resolver().copy(slotId = slotId) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { seed.copy(isLoading = false, error = "Unable to connect. Choose another source or retry.") }
             withContext(Dispatchers.Main) {
                 val index = _uiState.value.slots.indexOfFirst { it.slotId == slotId }
                 if (index >= 0) {
                     val updated = _uiState.value.slots.toMutableList()
                     updated[index] = resolved
                     _uiState.value = _uiState.value.copy(slots = updated)
+                    if (_uiState.value.statsTileEnabled) refreshStats()
                 }
             }
         }
+    }
+
+    fun reportPlaybackError(slotId: String, error: String?) {
+        val state = _uiState.value
+        val index = state.slots.indexOfFirst { it.slotId == slotId }
+        if (index < 0 || state.slots[index].error == error) return
+        _uiState.value = state.copy(slots = state.slots.mapIndexed { i, slot -> if (i == index) slot.copy(error = error) else slot })
     }
 
     fun updateSlotSpecs(slotId: String, res: String?, fps: String?) {

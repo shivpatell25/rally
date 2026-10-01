@@ -8,6 +8,8 @@ import com.shiv.rally.data.alerts.GameAlertManager
 import com.shiv.rally.domain.model.GameAlert
 import com.shiv.rally.domain.model.EventStatus
 import com.shiv.rally.domain.model.SportEvent
+import com.shiv.rally.domain.model.matchesFavoriteTeams
+import com.shiv.rally.domain.model.favoriteTeamKey
 import com.shiv.rally.domain.model.FavoriteTeam
 import com.shiv.rally.domain.repository.SportsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,6 +23,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import com.shiv.rally.presentation.highlights.HighlightItem
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
@@ -38,6 +45,8 @@ class HomeViewModel @Inject constructor(
     private var loadJob: Job? = null
     private var refreshJob: Job? = null
     private var redZoneJob: Job? = null
+    private var highlightsJob: Job? = null
+    private var highlightsFetchedAt = 0L
     private var lastEvents: List<SportEvent> = emptyList()
     private var appliedSportsOrder = preferencesManager.sportsOrder
     private var appliedEnabledLeagues = preferencesManager.enabledLeagues
@@ -75,9 +84,10 @@ class HomeViewModel @Inject constructor(
                 val (successState, loadedEvents) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                     val allEvents = sportsRepository.getRecentEvents()
                     val liveEvents = allEvents.filter {
-                        it.status == EventStatus.LIVE || it.status == EventStatus.HALFTIME
+                        (it.status == EventStatus.LIVE || it.status == EventStatus.HALFTIME) &&
+                            !it.gameStatusDetail.orEmpty().contains("delay", ignoreCase = true)
                     }
-                    val upcomingEvents = allEvents.filter { it.status == EventStatus.NOT_STARTED }
+                    val upcomingEvents = allEvents.filter { it.status == EventStatus.NOT_STARTED }.sortedBy { it.startTime }
 
                     val favoriteTeams = preferencesManager.favoriteTeams.map { it.lowercase().trim() }
                     val favoriteProfiles = preferencesManager.favoriteTeamProfiles.toMutableList()
@@ -90,9 +100,7 @@ class HomeViewModel @Inject constructor(
                         val home = event.homeTeam?.name?.lowercase() ?: ""
                         val away = event.awayTeam?.name?.lowercase() ?: ""
                         return favoriteTeams.any { fav -> home.contains(fav) || away.contains(fav) } ||
-                            favoriteProfiles.any { profile ->
-                                event.homeTeam?.id == profile.id || event.awayTeam?.id == profile.id
-                            }
+                            event.matchesFavoriteTeams(favoriteProfiles)
                     }
 
                     // Migrate legacy name-only favorites as matching teams appear in schedules.
@@ -180,17 +188,23 @@ class HomeViewModel @Inject constructor(
                         ordinaryUpcoming != null -> HomeHeroMode.UPCOMING
                         else -> HomeHeroMode.EMPTY
                     }
-                    val featured = if (heroMode == HomeHeroMode.FINAL_RECAP && baseFeatured != null) {
+                    val featured = if (baseFeatured != null) {
                         runCatching { sportsRepository.getEventSummary(baseFeatured) }.getOrDefault(baseFeatured)
                     } else baseFeatured
-                    val favoriteEvents = allEvents.filter(::isFavoriteTeam).sortedWith(
+                    // The detailed summary may be newer than the scoreboard snapshot.
+                    // Publish that same game snapshot throughout Home in one state update.
+                    val displayEvents = allEvents.map { event ->
+                        if (featured != null && event.id == featured.id) featured else event
+                    }
+                    val displayById = displayEvents.associateBy { it.id }
+                    val favoriteEvents = displayEvents.filter(::isFavoriteTeam).sortedWith(
                         compareByDescending<SportEvent> { it.status == EventStatus.LIVE || it.status == EventStatus.HALFTIME }
                             .thenBy { it.startTime }
                     )
 
                     // Group events by league for per-sport shelves
                     val enabledLeagues = preferencesManager.enabledLeagues
-                    val groupedEvents = allEvents
+                    val groupedEvents = displayEvents
                         .groupBy { it.league }
                         .filter { enabledLeagues.isEmpty() || it.key in enabledLeagues }
                         .filter { it.value.isNotEmpty() }
@@ -208,20 +222,27 @@ class HomeViewModel @Inject constructor(
                     HomeUiState.Success(
                         featuredEvent = featured,
                         heroMode = heroMode,
-                        liveEvents = prioritizedLiveEvents,
-                        startingSoon = startingSoon,
-                        upcomingEvents = upcomingEvents.take(20),
+                        liveEvents = prioritizedLiveEvents.mapNotNull { displayById[it.id] }
+                            .filter { it.status == EventStatus.LIVE || it.status == EventStatus.HALFTIME },
+                        startingSoon = startingSoon.mapNotNull { displayById[it.id] }
+                            .filter { it.status == EventStatus.NOT_STARTED },
+                        upcomingEvents = upcomingEvents.mapNotNull { displayById[it.id] }
+                            .filter { it.status == EventStatus.NOT_STARTED }.take(20),
                         leagueShelves = leagueShelves,
                         favoriteTeams = favoriteProfiles.distinctBy { "${it.league}:${it.id}" },
                         favoriteEvents = favoriteEvents,
-                        redZoneChannelId = (_uiState.value as? HomeUiState.Success)?.redZoneChannelId
-                    ) to allEvents
+                        savedEventIds = preferencesManager.savedEventIds,
+                        redZoneChannelId = (_uiState.value as? HomeUiState.Success)?.redZoneChannelId,
+                        recentHighlights = (_uiState.value as? HomeUiState.Success)?.recentHighlights.orEmpty(),
+                        highlightsLoading = (_uiState.value as? HomeUiState.Success)?.highlightsLoading ?: true
+                    ) to displayEvents
                 }
 
                 _uiState.value = successState
-                val favoriteIds = successState.favoriteTeams.mapTo(mutableSetOf()) { it.id }
+                if (successState.liveEvents.isEmpty()) loadRecentHighlights()
+                val favoriteIds = successState.favoriteTeams.mapTo(mutableSetOf()) { favoriteTeamKey(it.league, it.id) }
                 if (preferencesManager.liveGameAlertsEnabled) {
-                    gameAlertManager.evaluate(lastEvents, loadedEvents, favoriteIds).forEach { _alerts.tryEmit(it) }
+                    gameAlertManager.evaluate(lastEvents, loadedEvents, favoriteIds, preferencesManager.savedEventIds).forEach { _alerts.tryEmit(it) }
                 }
                 lastEvents = loadedEvents
                 loadRedZoneInBackground()
@@ -236,6 +257,32 @@ class HomeViewModel @Inject constructor(
     fun refresh() {
         _uiState.value = HomeUiState.Loading
         loadData(force = true)
+    }
+
+    private fun loadRecentHighlights() {
+        if (highlightsJob?.isActive == true) return
+        if (System.currentTimeMillis() - highlightsFetchedAt < 600_000L) return
+        highlightsJob = viewModelScope.launch {
+            val clips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val gate = Semaphore(2)
+                val events = runCatching { sportsRepository.getRecentCompletedEvents() }.getOrDefault(emptyList()).take(8)
+                val detailed = events.map { event -> async { gate.withPermit {
+                    runCatching { sportsRepository.getEventSummary(event) }.getOrDefault(event)
+                } } }.awaitAll()
+                val playable = detailed.flatMap { event -> event.highlightClips.filter { !it.streamUrl.isNullOrBlank() }.map { HighlightItem(event, it) } }
+                // Lead with different games, then allow additional clips on later pages.
+                (playable.distinctBy { it.event.id } + playable).distinctBy { it.clip.id }.take(12)
+            }
+            val current = _uiState.value as? HomeUiState.Success ?: return@launch
+            _uiState.value = current.copy(recentHighlights = clips, highlightsLoading = false)
+            highlightsFetchedAt = System.currentTimeMillis() - if (clips.isEmpty()) 540_000L else 0L
+        }
+    }
+
+    fun toggleEventAlert(eventId: String) {
+        preferencesManager.toggleSavedEvent(eventId)
+        val current = _uiState.value
+        if (current is HomeUiState.Success) _uiState.value = current.copy(savedEventIds = preferencesManager.savedEventIds)
     }
 
     /** Refreshes preference-backed shelves without replacing the dashboard with a loading screen. */
@@ -318,7 +365,10 @@ sealed class HomeUiState {
         val leagueShelves: List<EventShelfData>,
         val favoriteTeams: List<FavoriteTeam> = emptyList(),
         val favoriteEvents: List<SportEvent> = emptyList(),
-        val redZoneChannelId: String? = null
+        val savedEventIds: Set<String> = emptySet(),
+        val redZoneChannelId: String? = null,
+        val recentHighlights: List<HighlightItem> = emptyList(),
+        val highlightsLoading: Boolean = true
     ) : HomeUiState()
     data class Error(val message: String) : HomeUiState()
 }

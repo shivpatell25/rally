@@ -9,6 +9,7 @@ import com.shiv.rally.domain.repository.IptvRepository
 import com.shiv.rally.domain.repository.SportsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,12 +37,14 @@ class LeagueHubViewModel @Inject constructor(
             _uiState.value = runCatching {
                 val hub = sportsRepository.getLeagueHub(league)
                 val redZone = if (league.equals("NFL", true)) {
-                    iptvRepository.getChannels().firstOrNull {
+                    try { iptvRepository.getChannels().firstOrNull {
                         it.name.contains("nfl", true) && (it.name.contains("redzone", true) || it.name.contains("red zone", true))
-                    }?.let { channel -> channel.copy(guide = iptvRepository.getChannelGuide(channel.id)) }
+                    }?.let { channel -> channel.copy(guide = iptvRepository.getChannelGuide(channel.id)) } }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
                 } else null
                 LeagueHubUiState.Success(hub, redZone)
-            }.getOrElse { LeagueHubUiState.Error(it.message ?: "League data is unavailable") }
+            }.getOrElse { if (it is CancellationException) throw it else LeagueHubUiState.Error(it.message ?: "League data is unavailable") }
         }
     }
 }

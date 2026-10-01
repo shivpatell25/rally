@@ -2,7 +2,8 @@
 
 Rally is an independent sports interface and is not affiliated with, endorsed by, or sponsored by ESPN, Apple, Stremio, any sports league, team, broadcaster, IPTV operator, or device manufacturer.
 
-- Schedules, scores, statistics, artwork, and highlights are requested from publicly reachable sports feeds.
+- Rally uses ESPN's publicly reachable sports APIs as its sports-data provider for schedules, scores, box scores, player data, play-by-play, scoring moments, and available highlight metadata. Rally does not integrate a licensed sports streaming provider.
+- ESPN highlight clips play only when the feed supplies a playable clip URL. Play timestamps describe game events; they are not seek positions in user-configured IPTV streams.
 - IPTV support is a client for Stalker/Ministra portals configured by the user.
 - Stremio support queries addon manifests configured by the user.
 - Rally does not include provider credentials, subscriptions, channels, or stream catalogs.

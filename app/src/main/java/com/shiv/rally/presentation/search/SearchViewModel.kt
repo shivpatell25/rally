@@ -46,6 +46,9 @@ class SearchViewModel @Inject constructor(
                 emptyList()
             }
             _uiState.value = _uiState.value.copy(isIndexReady = true)
+            withContext(Dispatchers.Main) {
+                if (_uiState.value.query.isNotBlank()) setQuery(_uiState.value.query)
+            }
         }
     }
 
@@ -87,7 +90,9 @@ class SearchViewModel @Inject constructor(
                 val teamResults = preferencesManager.favoriteTeamProfiles.filter {
                     it.name.contains(normalized, true) || it.abbreviation.contains(normalized, true) || it.league.contains(normalized, true)
                 }.take(12)
-                val leagues = preferencesManager.sportsOrder.filter { it.contains(normalized, true) }.take(8)
+                val leagues = preferencesManager.sportsOrder.filter {
+                    it.contains(normalized, true) || com.shiv.rally.presentation.home.formatLeagueDisplayName(it).contains(normalized, true)
+                }.take(8)
                 LocalResults(eventResults, teamResults, leagues)
             }
             val channels = channelResults.await()

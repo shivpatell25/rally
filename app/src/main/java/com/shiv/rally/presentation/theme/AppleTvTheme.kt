@@ -21,30 +21,30 @@ object AppleTvTheme {
     val RallyLime = Color(0xFFEAFB78)
     val RallyMint = Color(0xFFB8F3C7)
     val RallyCyan = Color(0xFF6FCFF6)
-    val DeepNavy = Color(0xFF05080F)
-    val Slate = Color(0xFF0F1724)
-    val Graphite = Color(0xFF202834)
+    val DeepNavy = Color(0xFF050507)
+    val Slate = Color(0xFF111418)
+    val Graphite = Color(0xFF24282C)
     val OffWhite = Color(0xFFF5F7FA)
 
     val DarkBackground = DeepNavy
     val BackgroundDark = DarkBackground
     val DarkBackgroundElevated = Slate
-    val GlassSurface = Color(0xA60A101B)
-    val GlassSurfaceSubtle = Color(0x8608101A)
-    val GlassSurfaceHover = Color(0xD2172437)
-    val GlassSurfaceFocused = Color(0xE0172437)
-    val GlassSurfaceDefault = Color(0x940A101B)
+    val GlassSurface = Color(0xA611161C)
+    val GlassSurfaceSubtle = Color(0x860E1318)
+    val GlassSurfaceHover = Color(0xD2293038)
+    val GlassSurfaceFocused = Color(0xE0293038)
+    val GlassSurfaceDefault = Color(0x9411161C)
     val GlassSurfaceHeavy = Color(0xC805080F)
-    val GlassBorder = Color(0x596B89A5)
+    val GlassBorder = Color(0x59858D96)
     val Divider = Color(0x1FF5F7FA)
-    val SurfaceBase = Color(0xFF0A101B)
-    val SurfaceRaised = Color(0xFF111B2A)
-    val SurfaceFocused = Color(0xFF172437)
-    val GlassBorderFocused = RallyCyan
+    val SurfaceBase = Color(0xFF11161C)
+    val SurfaceRaised = Color(0xFF1B2229)
+    val SurfaceFocused = Color(0xFF293038)
+    val GlassBorderFocused = Color(0xFFD1D7DD)
 
     // Apple System Accent Tints
-    val AccentBlue = RallyCyan
-    val AccentGreen = RallyCyan
+    val AccentBlue = Color(0xFFD1D7DD)
+    val AccentGreen = Color(0xFFD1D7DD)
     val AccentRed = Color(0xFFFF3B30)
     val LiveRed = Color(0xFFFF453A)
     val AccentOrange = Color(0xFFFF9500)
@@ -68,9 +68,9 @@ object AppleTvTheme {
 
     // 3. Borders
     val CardBorderUnfocused = BorderStroke(1.dp, GlassBorder)
-    val CardBorderFocused = BorderStroke(2.dp, RallyCyan)
+    val CardBorderFocused = BorderStroke(1.dp, GlassBorderFocused)
     val ButtonBorderUnfocused = BorderStroke(0.dp, Color.Transparent)
-    val ButtonBorderFocused = BorderStroke(2.dp, RallyCyan)
+    val ButtonBorderFocused = BorderStroke(1.dp, GlassBorderFocused)
 
     // 4. Gradients (Lightweight, GPU-friendly scrims)
     val HeroGradient = Brush.verticalGradient(
@@ -80,7 +80,7 @@ object AppleTvTheme {
     )
 
     val ScreenGradient = Brush.verticalGradient(
-        0.0f to Color(0xFF0C1522),
+        0.0f to Color(0xFF08090B),
         0.42f to Slate,
         1.0f to DeepNavy
     )
@@ -92,15 +92,15 @@ object AppleTvTheme {
     )
 
     val GlassPanelGradient = Brush.verticalGradient(
-        0.0f to Color(0xB8172437),
-        0.18f to Color(0xA40E1927),
-        1.0f to Color(0x90070D16)
+        0.0f to Color(0xB8242A31),
+        0.18f to Color(0xA4171D23),
+        1.0f to Color(0x900E1318)
     )
 
     val GlassPanelFocusedGradient = Brush.verticalGradient(
-        0.0f to Color(0xD0223349),
-        0.24f to Color(0xBC17283C),
-        1.0f to Color(0xA80A121E)
+        0.0f to Color(0xD0343B43),
+        0.24f to Color(0xBC262D35),
+        1.0f to Color(0xA8161D24)
     )
 
     // 5. Typography Tokens (Optimized for 10-foot TV viewing)

@@ -3,13 +3,13 @@
 package com.shiv.rally.presentation.watchlist
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,9 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -39,23 +40,25 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.shiv.rally.domain.model.EventStatus
 import com.shiv.rally.domain.model.FavoriteTeam
 import com.shiv.rally.domain.model.SportEvent
 import com.shiv.rally.presentation.common.RallyPagedRow
+import com.shiv.rally.presentation.common.RallyTvActionButton
+import com.shiv.rally.presentation.common.RallyTvPalette
+import com.shiv.rally.presentation.common.RallyTvRule
+import com.shiv.rally.presentation.common.rallyTvFocus
 import com.shiv.rally.presentation.home.formatLeagueDisplayName
 import com.shiv.rally.presentation.home.formatTeamDisplayName
-import com.shiv.rally.presentation.home.getSportBackdrop
-import com.shiv.rally.presentation.theme.AppleTvTheme
-import com.shiv.rally.presentation.common.rallyFocusScale
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.graphics.Brush
+import com.shiv.rally.presentation.home.matchupTeamName
+import com.shiv.rally.presentation.theme.RallyBodyFont
+import com.shiv.rally.presentation.theme.RallyDisplayFont
+import kotlinx.coroutines.delay
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.delay
-import androidx.compose.runtime.LaunchedEffect
 
-private val watchShape = RoundedCornerShape(10.dp)
+private val teamGameTime = DateTimeFormatter.ofPattern("MMM d · h:mm a").withZone(ZoneId.systemDefault())
+private val watchShape = RoundedCornerShape(4.dp)
 
 @Composable
 fun WatchlistScreen(
@@ -68,15 +71,21 @@ fun WatchlistScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     when (val current = state) {
         WatchlistUiState.Loading -> WatchMessage("Loading your watchlist…")
-        is WatchlistUiState.Error -> WatchMessage(current.message)
-        is WatchlistUiState.Success -> MyTeamsContent(current, onTeam, onEvent, onManage, initialFocusRequester)
+        is WatchlistUiState.Error -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            val firstFocus = initialFocusRequester ?: remember { FocusRequester() }
+            LaunchedEffect(Unit) { delay(100); runCatching { firstFocus.requestFocus() } }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(current.message, color = RallyTvPalette.Muted, fontSize = 14.sp)
+                Spacer(Modifier.height(14.dp))
+                RallyTvActionButton("Try again", viewModel::load, focusRequester = firstFocus)
+            }
+        }
+        is WatchlistUiState.Success -> MyRallyContent(current, onTeam, onEvent, onManage, initialFocusRequester)
     }
 }
 
-private val teamGameTime = DateTimeFormatter.ofPattern("MMM d · h:mm a").withZone(ZoneId.systemDefault())
-
 @Composable
-private fun MyTeamsContent(
+private fun MyRallyContent(
     current: WatchlistUiState.Success,
     onTeam: (FavoriteTeam) -> Unit,
     onEvent: (SportEvent) -> Unit,
@@ -85,45 +94,81 @@ private fun MyTeamsContent(
 ) {
     val fallbackFocus = remember { FocusRequester() }
     val firstFocus = initialFocusRequester ?: fallbackFocus
-    val gamesFocus = remember { FocusRequester() }
-    LaunchedEffect(current.teams.size) { delay(100); runCatching { firstFocus.requestFocus() } }
-    Column(Modifier.fillMaxSize().padding(start = 30.dp, end = 30.dp, top = 12.dp, bottom = 14.dp)) {
-        Column(Modifier.height(70.dp)) {
-            Text("MY TEAMS", color = AppleTvTheme.RallyCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            Text("Your teams. Their next moments.", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black, letterSpacing = (-.6).sp)
-            Text("Only favorites receive a dedicated Rally team page.", color = AppleTvTheme.TextSecondary, fontSize = 11.sp)
+    val teamGamesFocus = remember { FocusRequester() }
+    val savedEventsFocus = remember { FocusRequester() }
+    val hasContent = current.teams.isNotEmpty() || current.teamEvents.isNotEmpty() || current.savedEvents.isNotEmpty()
+
+    LaunchedEffect(current.teams.size, current.teamEvents.size, current.savedEvents.size) {
+        delay(100)
+        runCatching { firstFocus.requestFocus() }
+    }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 54.dp, vertical = 18.dp)) {
+        Text("MY RALLY", color = RallyTvPalette.Accent, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+        Spacer(Modifier.height(5.dp))
+        Text("Your teams and games", color = RallyTvPalette.Text, fontFamily = RallyDisplayFont, fontSize = 31.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        Text("Followed teams, their schedule, and games you saved.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 14.sp)
+        if (hasContent) {
+            Spacer(Modifier.height(10.dp))
+            RallyTvActionButton("Manage teams", onManage)
         }
-        Spacer(Modifier.height(10.dp))
-        if (current.teams.isEmpty()) {
-            EmptyTeamsCard(Modifier.focusRequester(firstFocus), onManage)
+        Spacer(Modifier.height(18.dp))
+
+        if (!hasContent) {
+            EmptyWatchlist(Modifier.focusRequester(firstFocus), onManage)
         } else {
-            MyTeamsSectionTitle("FOLLOWING", "Five teams per page")
-            Spacer(Modifier.height(4.dp))
-            RallyPagedRow(
-                items = current.teams,
-                key = { "${it.league}:${it.id}" },
-                firstFocusRequester = firstFocus,
-                downFocusRequester = if (current.events.isNotEmpty()) gamesFocus else null,
-                spacing = 10.dp
-            ) { team, modifier, width ->
-                TeamWatchCard(team, modifier, width) { onTeam(team) }
-            }
-            Spacer(Modifier.height(12.dp))
-            MyTeamsSectionTitle("GAMES FOR YOU", "Live games and the next scheduled matchups")
-            Spacer(Modifier.height(4.dp))
-            if (current.events.isNotEmpty()) {
+
+            if (current.teams.isNotEmpty()) {
+                WatchlistSectionTitle("FOLLOWED TEAMS", "Open a team")
+                Spacer(Modifier.height(6.dp))
                 RallyPagedRow(
-                    items = current.events,
+                    items = current.teams,
+                    key = { "${it.league}:${it.id}" },
+                    firstFocusRequester = firstFocus,
+                    downFocusRequester = when {
+                        current.teamEvents.isNotEmpty() -> teamGamesFocus
+                        current.savedEvents.isNotEmpty() -> savedEventsFocus
+                        else -> null
+                    },
+                    spacing = 8.dp
+                ) { team, modifier, width ->
+                    TeamWatchItem(team, modifier, width) { onTeam(team) }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+
+            if (current.teamEvents.isNotEmpty()) {
+                WatchlistSectionTitle("TEAM GAMES", "Schedule for followed teams")
+                Spacer(Modifier.height(6.dp))
+                RallyPagedRow(
+                    items = current.teamEvents,
                     key = { it.id },
-                    firstFocusRequester = gamesFocus,
-                    upFocusRequester = firstFocus,
-                    spacing = 10.dp
+                    firstFocusRequester = if (current.teams.isEmpty()) firstFocus else teamGamesFocus,
+                    upFocusRequester = firstFocus.takeIf { current.teams.isNotEmpty() },
+                    downFocusRequester = savedEventsFocus.takeIf { current.savedEvents.isNotEmpty() },
+                    spacing = 8.dp
                 ) { event, modifier, width ->
-                    MyTeamsEventCard(event, modifier, width) { onEvent(event) }
+                    WatchEventItem(event, modifier, width) { onEvent(event) }
                 }
-            } else {
-                Box(Modifier.fillMaxWidth().height(138.dp).clip(watchShape).background(Color(0x990A101B)).border(1.dp, Color(0x385A7894), watchShape), contentAlignment = Alignment.Center) {
-                    Text("No favorite-team games are scheduled in the current feed.", color = AppleTvTheme.TextSecondary, fontSize = 12.sp)
+                Spacer(Modifier.height(16.dp))
+            }
+
+            if (current.savedEvents.isNotEmpty()) {
+                WatchlistSectionTitle("SAVED EVENTS", "Games saved individually")
+                Spacer(Modifier.height(6.dp))
+                RallyPagedRow(
+                    items = current.savedEvents,
+                    key = { it.id },
+                    firstFocusRequester = if (current.teams.isEmpty() && current.teamEvents.isEmpty()) firstFocus else savedEventsFocus,
+                    upFocusRequester = when {
+                        current.teamEvents.isNotEmpty() -> teamGamesFocus
+                        current.teams.isNotEmpty() -> firstFocus
+                        else -> null
+                    },
+                    spacing = 8.dp
+                ) { event, modifier, width ->
+                    WatchEventItem(event, modifier, width) { onEvent(event) }
                 }
             }
         }
@@ -131,85 +176,78 @@ private fun MyTeamsContent(
 }
 
 @Composable
-private fun MyTeamsSectionTitle(title: String, subtitle: String) {
-    Row(Modifier.fillMaxWidth().height(17.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
-        Spacer(Modifier.width(9.dp))
-        Text(subtitle, color = AppleTvTheme.TextTertiary, fontSize = 8.sp)
+private fun WatchlistSectionTitle(title: String, subtitle: String) {
+    Column {
+        Text(title, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Text(subtitle, color = RallyTvPalette.Subtle, fontFamily = RallyBodyFont, fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
+        RallyTvRule()
     }
 }
 
 @Composable
-private fun TeamWatchCard(team: FavoriteTeam, modifier: Modifier, width: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+private fun TeamWatchItem(team: FavoriteTeam, modifier: Modifier, width: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
     var focused by remember(team.id) { mutableStateOf(false) }
-    Row(modifier.width(width).height(90.dp).onFocusChanged { focused = it.isFocused }.rallyFocusScale(focused).clip(watchShape).background(if (focused) Color(0xE6172437) else Color(0xB80A101B)).border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894), watchShape).clickable(onClick = onClick).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(50.dp), contentAlignment = Alignment.Center) {
-            Text(team.abbreviation.take(3), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            AsyncImage(team.logoUrl, team.name, Modifier.size(44.dp), contentScale = ContentScale.Fit)
-        }
-        Spacer(Modifier.width(9.dp))
-        Column(Modifier.weight(1f)) {
-            Text(team.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(formatLeagueDisplayName(team.league), color = AppleTvTheme.TextSecondary, fontSize = 8.sp)
-            Text("TEAM CENTER  ›", color = AppleTvTheme.RallyCyan, fontSize = 7.sp, fontWeight = FontWeight.Bold, letterSpacing = .5.sp)
-        }
-    }
-}
-
-@Composable
-private fun MyTeamsEventCard(event: SportEvent, modifier: Modifier, width: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
-    var focused by remember(event.id) { mutableStateOf(false) }
-    val live = event.status == com.shiv.rally.domain.model.EventStatus.LIVE || event.status == com.shiv.rally.domain.model.EventStatus.HALFTIME
-    Box(
-        modifier.width(width).height(138.dp).onFocusChanged { focused = it.isFocused }
-            .rallyFocusScale(focused)
-            .clip(watchShape).background(Color(0xB80A101B))
-            .border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894), watchShape)
-            .clickable(onClick = onClick)
-    ) {
-        Image(painterResource(getSportBackdrop(event)), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color(0x4505080F), 1f to Color(0xF205080F))))
-        Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Text(if (live) "● LIVE" else teamGameTime.format(event.startTime).uppercase(), color = if (live) AppleTvTheme.LiveRed else AppleTvTheme.RallyCyan, fontSize = 7.sp, fontWeight = FontWeight.Black)
-            Column {
-                Text(formatTeamDisplayName(event.awayTeam?.name), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("at ${formatTeamDisplayName(event.homeTeam?.name)}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(formatLeagueDisplayName(event.league), color = AppleTvTheme.TextSecondary, fontSize = 7.sp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyTeamsCard(modifier: Modifier, onManage: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
     Row(
-        modifier.fillMaxWidth().height(190.dp).onFocusChanged { focused = it.isFocused }
-            .clip(watchShape).background(if (focused) Color(0xD6172437) else Color(0xA80A101B))
-            .border(if (focused) 2.dp else 1.dp, if (focused) AppleTvTheme.RallyCyan else Color(0x385A7894), watchShape)
-            .clickable(onClick = onManage).padding(24.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier.width(width).height(78.dp).onFocusChanged { focused = it.isFocused }.rallyTvFocus(focused)
+            .clip(watchShape).background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+            .clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        AsyncImage(team.logoUrl, team.name, Modifier.size(38.dp), contentScale = ContentScale.Fit)
+        Spacer(Modifier.width(10.dp))
         Column {
-            Text("MAKE RALLY YOURS", color = AppleTvTheme.RallyCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-            Text("Choose favorite teams to build this page.", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Text(matchupTeamName(team.name, team.league), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(3.dp))
+            Text(formatLeagueDisplayName(team.league), color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text("CHOOSE TEAMS  ›", color = if (focused) AppleTvTheme.RallyCyan else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun WatchMessage(message: String, action: (() -> Unit)? = null) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(message, color = AppleTvTheme.TextSecondary, fontSize = 16.sp)
-            action?.let {
-                Spacer(Modifier.height(14.dp))
-                Box(Modifier.clip(watchShape).background(AppleTvTheme.OffWhite).border(1.dp, Color(0xB8FFFFFF), watchShape).clickable(onClick = it).padding(horizontal = 18.dp, vertical = 10.dp)) {
-                    Text("Choose Teams", color = AppleTvTheme.DeepNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+private fun WatchEventItem(event: SportEvent, modifier: Modifier, width: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    var focused by remember(event.id) { mutableStateOf(false) }
+    val live = event.status == EventStatus.LIVE || event.status == EventStatus.HALFTIME
+    Column(
+        modifier.width(width).height(112.dp).onFocusChanged { focused = it.isFocused }.rallyTvFocus(focused)
+            .clip(watchShape).background(if (focused) RallyTvPalette.FocusSurface else Color.Transparent)
+            .clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(formatLeagueDisplayName(event.league), color = RallyTvPalette.Subtle, fontFamily = RallyBodyFont, fontSize = 10.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.width(6.dp))
+            Text(if (live) "LIVE" else if (event.status == EventStatus.FINISHED) "FINAL" else teamGameTime.format(event.startTime).uppercase(), color = if (live) RallyTvPalette.Live else RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(event.awayTeamBadge ?: event.awayTeam?.logoUrl, null, Modifier.size(22.dp), contentScale = ContentScale.Fit)
+            Spacer(Modifier.width(7.dp))
+            Text(formatTeamDisplayName(event.awayTeam?.name), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            event.scoreAway?.takeIf { event.status !in setOf(EventStatus.NOT_STARTED, EventStatus.CANCELED) }?.let { Text(it.toString(), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 13.sp) }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(event.homeTeamBadge ?: event.homeTeam?.logoUrl, null, Modifier.size(22.dp), contentScale = ContentScale.Fit)
+            Spacer(Modifier.width(7.dp))
+            Text(formatTeamDisplayName(event.homeTeam?.name), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            event.scoreHome?.takeIf { event.status !in setOf(EventStatus.NOT_STARTED, EventStatus.CANCELED) }?.let { Text(it.toString(), color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 13.sp) }
+        }
+    }
+}
+
+@Composable
+private fun EmptyWatchlist(modifier: Modifier, onManage: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 42.dp), horizontalAlignment = Alignment.Start) {
+        Text("Nothing in My Rally yet", color = RallyTvPalette.Text, fontFamily = RallyDisplayFont, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Text("Follow a team or save a game from its event detail page.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 14.sp)
+        Spacer(Modifier.height(18.dp))
+        RallyTvActionButton("Choose teams", onManage, modifier = modifier, primary = true)
+    }
+}
+
+@Composable
+private fun WatchMessage(message: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(message, color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 16.sp)
     }
 }

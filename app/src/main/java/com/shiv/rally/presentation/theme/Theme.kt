@@ -13,11 +13,11 @@ import androidx.compose.ui.unit.sp
 import com.shiv.rally.R
 
 val RallyDisplayFont = FontFamily(
-    Font(R.font.sora_variable, FontWeight.Normal),
-    Font(R.font.sora_variable, FontWeight.Medium),
-    Font(R.font.sora_variable, FontWeight.SemiBold),
-    Font(R.font.sora_variable, FontWeight.Bold),
-    Font(R.font.sora_variable, FontWeight.Black)
+    Font(R.font.inter_variable, FontWeight.Normal),
+    Font(R.font.inter_variable, FontWeight.Medium),
+    Font(R.font.inter_variable, FontWeight.SemiBold),
+    Font(R.font.inter_variable, FontWeight.Bold),
+    Font(R.font.inter_variable, FontWeight.Black)
 )
 
 val RallyBodyFont = FontFamily(
@@ -30,7 +30,7 @@ val RallyBodyFont = FontFamily(
 @OptIn(ExperimentalTvMaterial3Api::class)
 private val DarkColorScheme = darkColorScheme(
     primary = AppleTvTheme.OffWhite,
-    secondary = AppleTvTheme.RallyCyan,
+    secondary = AppleTvTheme.AccentBlue,
     tertiary = AppleTvTheme.AccentOrange,
     surface = AppleTvTheme.DarkBackgroundElevated,
     surfaceVariant = AppleTvTheme.Graphite,
@@ -50,9 +50,9 @@ private val AppleTvTypography = Typography(
     bodyLarge = TextStyle(fontFamily = RallyBodyFont, fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal),
     bodyMedium = TextStyle(fontFamily = RallyBodyFont, fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal),
     bodySmall = TextStyle(fontFamily = RallyBodyFont, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal),
-    labelLarge = TextStyle(fontFamily = RallyBodyFont, fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold),
-    labelMedium = TextStyle(fontFamily = RallyBodyFont, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold),
-    labelSmall = TextStyle(fontFamily = RallyBodyFont, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.45.sp)
+    labelLarge = TextStyle(fontFamily = RallyBodyFont, fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .7.sp),
+    labelMedium = TextStyle(fontFamily = RallyBodyFont, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .9.sp),
+    labelSmall = TextStyle(fontFamily = RallyBodyFont, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
 )
 
 @OptIn(ExperimentalTvMaterial3Api::class)

@@ -5,14 +5,23 @@ Rally is a sports-first Android TV app. It combines ESPN schedules and live data
 
 ## Features
 
-- Live and upcoming NFL, NBA, MLB, NHL, soccer, and college events
+- Near-black Rally interface with the official wordmark and ambient flare, contained pill navigation, and restrained D-pad focus
+- Home, Live, Schedule, Leagues, Highlights, My Rally, Search, and Settings; Search and Settings use the separate header actions
+- Home combines a stadium-backed team-and-score hero, live matchup cards or recent highlights, and four Starting Soon events that expand into schedule rows as you move down to Browse by Sport
+- Schedule presents date and sport filters with couch-readable event rows
+- Event detail uses a stadium-backed matchup hero, Overview/Stats/Lineups/Plays/Highlights/Sources tabs, team/game/player panels, and a watchlist action
+- My Rally combines followed teams, saved events, and upcoming games
+- ESPN-backed scores, box scores, player data, play-by-play, scoring moments, and available highlight clips
 - Automatic matching between events and IPTV channels
 - Stalker/Ministra and Xtream Codes IPTV provider support
 - Stremio addon stream discovery and source switching
-- Full-screen playback, statistics Game View, and up to four-stream Multi-View
-- Searchable IPTV channel browser
-- Local caching for channels, manifests, streams, and sports data
-- D-pad navigation designed for Android TV and Google TV
+- Split Game View pairs live video with score, status, source/quality metadata, current drive, stats, and leaders
+- Game View controls include play/pause, restart, full screen, source selection, audio, captions, and Multi-View; the full-screen overlay also provides diagnostics
+- Full-screen Media3 playback, audio and caption track selection, and up to four-stream Multi-View
+- Multi-View supports focused or pinned audio, gap-free four-stream immersive playback, and a Player Stats tile grouped by game, including the RedZone afternoon slate with duplicate-game removal
+- ESPN highlight playback when the feed provides a playable clip URL; scoring-moment timestamps do not seek IPTV broadcasts
+- Searchable live channels, events, teams, leagues, and configured streams
+- Local caching for channels, manifests, streams, and ESPN sports data
 - Signed in-app update checks backed by GitHub Releases and Android's system installer
 
 ## Architecture
@@ -59,8 +68,12 @@ The application is tuned for memory-constrained TV devices:
 - Local backdrops bypass the network image pipeline
 - Image, player, and Multi-View buffers are bounded
 - Background work is lifecycle-aware or application-scoped
-- Multi-View streams are capped at 720p, 30 fps, and 2.5 Mbps per slot
+- Adaptive Multi-View streams are capped at 720p and 2.5 Mbps for two streams, or 480p and 1.2 Mbps for three or four streams, with a 30 fps limit when suitable source variants are available
 - Release builds enable R8 code shrinking and resource shrinking
+
+## Verification
+
+The redesign passes 88 unit tests and six playback/navigation tests on both the emulator and a physical Chromecast. No crashes were recorded during those checks. Home animation performance still needs work: the Chromecast recorded 21.28% delayed frames across six warmed Home transitions. See the [audit summary and screenshots](docs/qa/2026-09-30/README.md) for coverage and remaining release checks.
 
 ## Data and privacy and credits
 

@@ -1,0 +1,23 @@
+{
+  "tests": 88,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "lint": {
+    "Error": 0,
+    "Warning": 113
+  },
+  "emulator": {
+    "tests": 6,
+    "failures": 0,
+    "runtime_seconds": 96.465,
+    "crash_log_bytes": 0
+  },
+  "optimized_release": {
+    "navigation_smoke_check": "passed",
+    "real_highlight_playback": "passed",
+    "highlight_title_and_recent_highlights_label": "passed",
+    "crash_log_bytes": 0,
+    "signing": "local emulator QA key; production APK unsigned"
+  }
+}
