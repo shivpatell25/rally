@@ -24,9 +24,9 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        // Beta 9 adds M3U playlists and final Home / Game View polish.
-        versionCode = 10
-        versionName = "1.0-beta9"
+        // Beta 10 adds the Apple TV port and final cross-platform release.
+        versionCode = 11
+        versionName = "1.0-beta10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

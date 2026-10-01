@@ -1,0 +1,367 @@
+import AVKit
+import Observation
+import SwiftUI
+
+@MainActor @Observable final class PlaybackSession {
+  let player = AVPlayer()
+  var loading = true
+  var playing = false
+  var error: String?
+  var elapsed: Double = 0
+  var duration: Double = 0
+  var sourceTitle = "Source"
+  var quality = "Auto"
+  var resolution = ""
+  var bitrate = ""
+  var fps = ""
+  var codecs = ""
+  var audioTracks: [AVMediaSelectionOption] = []
+  var captionTracks: [AVMediaSelectionOption] = []
+  var selectedAudio: String?
+  var selectedCaption: String?
+  private(set) var target: String = ""
+  private(set) var headers: [String: String] = [:]
+  private var observation: NSKeyValueObservation?
+  @ObservationIgnored nonisolated(unsafe) private var timeToken: Any?
+  @ObservationIgnored nonisolated(unsafe) private var endToken: NSObjectProtocol?
+  @ObservationIgnored nonisolated(unsafe) private var stallToken: NSObjectProtocol?
+  @ObservationIgnored nonisolated(unsafe) private var interruptionToken: NSObjectProtocol?
+  private var resumeAfterInterruption = false
+  private var wantsPlayback = false
+  private var sceneSuspended = false
+  private var audioInterrupted = false
+  private var proxy: HeaderMediaProxy?
+  @ObservationIgnored private var playlistPermission: PlaylistMediaPermission?
+  @ObservationIgnored private var audioGroup: AVMediaSelectionGroup?
+  @ObservationIgnored private var captionGroup: AVMediaSelectionGroup?
+  private var generation = 0
+  private var started = Date()
+  private var settings: SettingsStore?
+  private var firstFrame = false
+  private var lastRemoteTransport = Date.distantPast
+  enum RemoteTransport { case play, pause, toggle }
+  func remoteTransport(_ action: RemoteTransport) {
+    // tvOS can deliver a Siri Remote transport event through SwiftUI and Now Playing.
+    // Apply it once so one press never pauses and immediately resumes the stream.
+    guard Date().timeIntervalSince(lastRemoteTransport) > 0.25 else { return }
+    lastRemoteTransport = Date()
+    switch action {
+    case .play: resume()
+    case .pause: pause()
+    case .toggle: toggle()
+    }
+  }
+  var seekable: Bool { player.currentItem?.seekableTimeRanges.isEmpty == false }
+  var isLive: Bool { !duration.isFinite || duration == 0 }
+  var bufferedSeconds: Double {
+    guard let ranges = player.currentItem?.loadedTimeRanges else { return 0 }
+    return ranges.map { max(0, CMTimeRangeGetEnd($0.timeRangeValue).seconds - elapsed) }.max() ?? 0
+  }
+  init() {
+    player.automaticallyWaitsToMinimizeStalling = true
+    timeToken = player.addPeriodicTimeObserver(
+      forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main
+    ) { [weak self] time in Task { @MainActor in self?.tick(time) } }
+    endToken = NotificationCenter.default.addObserver(
+      forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main
+    ) { [weak self] notification in
+      Task { @MainActor in
+        guard notification.object as? AVPlayerItem === self?.player.currentItem else { return }
+        self?.playing = false
+      }
+    }
+    interruptionToken = NotificationCenter.default.addObserver(
+      forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+    ) { [weak self] notification in
+      let type = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
+      let options =
+        (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
+      Task { @MainActor in
+        guard let self else { return }
+        if type == AVAudioSession.InterruptionType.began.rawValue {
+          self.resumeAfterInterruption = self.wantsPlayback
+          self.audioInterrupted = true
+          self.player.pause()
+          self.playing = false
+        } else {
+          self.audioInterrupted = false
+          if self.resumeAfterInterruption
+            && AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume)
+          {
+            self.resume()
+          } else {
+            self.wantsPlayback = false
+          }
+          self.resumeAfterInterruption = false
+        }
+      }
+    }
+    stallToken = NotificationCenter.default.addObserver(
+      forName: .AVPlayerItemPlaybackStalled, object: nil, queue: .main
+    ) { [weak self] notification in
+      Task { @MainActor in
+        guard notification.object as? AVPlayerItem === self?.player.currentItem, let self else {
+          return
+        }
+        self.settings?.recordHealth(self.target, success: false, stalled: true)
+        RallyDiagnostics.shared.record("Playback", code: "Buffering interruption")
+      }
+    }
+  }
+  func open(
+    _ target: String, event: SportEvent?, candidate: StreamCandidate? = nil, container: AppContainer
+  ) async {
+    generation += 1
+    let revision = generation
+    loading = true
+    wantsPlayback = true
+    error = nil
+    firstFrame = false
+    resolution = ""
+    bitrate = ""
+    fps = ""
+    codecs = ""
+    audioTracks = []
+    captionTracks = []
+    selectedAudio = nil
+    selectedCaption = nil
+    started = Date()
+    settings = container.settings
+    self.target = candidate?.id ?? target
+    sourceTitle = candidate?.title ?? (event?.compactMatchup ?? "Live TV")
+    headers = candidate?.headers ?? [:]
+    player.pause()
+    observation = nil
+    proxy?.stop()
+    proxy = nil
+    playlistPermission = nil
+    do {
+      let resolved: URL
+      var isPlaylistChannel = false
+      if let channel = candidate?.channel {
+        resolved = try await container.iptv.streamUrl(forChannelId: channel.id)
+        isPlaylistChannel = container.settings.provider == .m3u
+        headers.merge(try await container.iptv.streamHeaders(forChannelId: channel.id)) {
+          _, latest in latest
+        }
+        if channel.id.hasPrefix("stalker:") {
+          headers["Cookie"] = "mac=\(container.settings.macAddress); stb_lang=en"
+          headers["Authorization"] = StreamHeaders.normalizedBearerToken(
+            container.settings.authToken)
+        }
+      } else if let direct = URL(string: target), ["http", "https"].contains(direct.scheme ?? "") {
+        resolved = direct
+      } else {
+        resolved = try await container.iptv.streamUrl(forChannelId: target)
+        if let name = try await container.iptv.channels().first(where: { $0.id == target })?.name {
+          sourceTitle = name
+        }
+        isPlaylistChannel = container.settings.provider == .m3u
+        headers.merge(try await container.iptv.streamHeaders(forChannelId: target)) { _, latest in
+          latest
+        }
+        if target.hasPrefix("stalker:") {
+          headers["Cookie"] = "mac=\(container.settings.macAddress); stb_lang=en"
+          headers["Authorization"] = StreamHeaders.normalizedBearerToken(
+            container.settings.authToken)
+        }
+      }
+      guard revision == generation, !Task.isCancelled else { return }
+      if isPlaylistChannel && resolved.scheme?.lowercased() == "http" {
+        playlistPermission = PlaylistMediaPermission(resolved)
+      }
+      let probe = await container.http.preflight(url: resolved, headers: headers, timeout: 3)
+      guard revision == generation, !Task.isCancelled else { return }
+      guard probe.passed else { throw URLError(.cannotConnectToHost) }
+      var media = resolved
+      if !headers.isEmpty || resolved.scheme?.lowercased() == "http" {
+        let proxy = HeaderMediaProxy(headers: headers)
+        self.proxy = proxy
+        media = try await proxy.start(resolved)
+      }
+      guard revision == generation, !Task.isCancelled else { return }
+      let asset = AVURLAsset(
+        url: media, options: [AVURLAssetHTTPUserAgentKey: headers["User-Agent"] ?? "Rally-tvOS/1.0"]
+      )
+      let item = AVPlayerItem(asset: asset)
+      item.preferredForwardBufferDuration = container.settings.lowLatencyMode ? 3 : 12
+      item.preferredMaximumResolution =
+        container.settings.adaptiveQualityEnabled ? .zero : CGSize(width: 1920, height: 1080)
+      player.replaceCurrentItem(with: item)
+      if quality != "Auto" { setQuality(quality) }
+      observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+        Task { @MainActor in
+          guard let self, revision == self.generation else { return }
+          switch item.status {
+          case .readyToPlay:
+            self.loading = false
+            self.error = nil
+            if self.wantsPlayback && !self.sceneSuspended && !self.audioInterrupted {
+              self.player.play()
+            }
+            await self.loadTracks(asset)
+          case .failed:
+            self.loading = false
+            self.error = "This source could not be played. Try another source or retry."
+            self.settings?.recordHealth(self.target, success: false)
+            RallyDiagnostics.shared.record("Playback", code: "Source failed")
+          default: break
+          }
+        }
+      }
+      if wantsPlayback && !sceneSuspended && !audioInterrupted { player.play() }
+    } catch {
+      guard revision == generation else { return }
+      loading = false
+      playlistPermission = nil
+      self.error = "Couldn’t open this source. Check your provider connection and retry."
+    }
+  }
+  func pause() {
+    wantsPlayback = false
+    player.pause()
+    playing = false
+  }
+  func resume() {
+    wantsPlayback = true
+    if !sceneSuspended && !audioInterrupted { player.play() }
+    playing = player.rate > 0
+  }
+  func suspendForScene() {
+    sceneSuspended = true
+    player.pause()
+    playing = false
+  }
+  func restoreForScene() {
+    sceneSuspended = false
+    if wantsPlayback && !audioInterrupted { player.play() }
+    playing = player.rate > 0
+  }
+  func toggle() { playing ? pause() : resume() }
+  func restart() {
+    guard let range = player.currentItem?.seekableTimeRanges.first?.timeRangeValue else { return }
+    player.seek(to: range.start, toleranceBefore: .zero, toleranceAfter: .zero)
+    resume()
+  }
+  func liveEdge() {
+    guard let range = player.currentItem?.seekableTimeRanges.last?.timeRangeValue else { return }
+    player.seek(
+      to: CMTimeSubtract(CMTimeRangeGetEnd(range), CMTime(seconds: 1, preferredTimescale: 600)))
+    resume()
+  }
+  func seek(_ seconds: Double) {
+    guard let range = player.currentItem?.seekableTimeRanges.last?.timeRangeValue else { return }
+    let next = min(CMTimeRangeGetEnd(range).seconds, max(range.start.seconds, elapsed + seconds))
+    player.seek(to: CMTime(seconds: next, preferredTimescale: 600))
+  }
+  func setQuality(_ label: String) {
+    quality = label
+    guard let item = player.currentItem else { return }
+    let heights = ["Auto": 0, "2160p": 2160, "1080p": 1080, "720p": 720, "480p": 480]
+    let height = heights[label] ?? 0
+    item.preferredMaximumResolution = CGSize(
+      width: CGFloat(height) * 16 / 9, height: CGFloat(height))
+    item.preferredPeakBitRate = height == 480 ? 1_200_000 : height == 720 ? 2_500_000 : 0
+  }
+  func selectAudio(_ option: AVMediaSelectionOption?) {
+    if let group = audioGroup {
+      player.currentItem?.select(option, in: group)
+      selectedAudio = option?.displayName
+    }
+  }
+  func selectCaption(_ option: AVMediaSelectionOption?) {
+    if let group = captionGroup {
+      player.currentItem?.select(option, in: group)
+      selectedCaption = option?.displayName
+    }
+  }
+  func setMultiViewCaps(count: Int) {
+    player.currentItem?.preferredMaximumResolution =
+      count >= 3 ? CGSize(width: 854, height: 480) : CGSize(width: 1280, height: 720)
+    player.currentItem?.preferredPeakBitRate = count >= 3 ? 1_200_000 : 2_500_000
+    player.currentItem?.preferredForwardBufferDuration = 6
+  }
+  func stop() {
+    generation += 1
+    wantsPlayback = false
+    player.pause()
+    player.replaceCurrentItem(with: nil)
+    observation = nil
+    proxy?.stop()
+    proxy = nil
+    playlistPermission = nil
+    playing = false
+  }
+  private func loadTracks(_ asset: AVAsset) async {
+    let audio = try? await asset.loadMediaSelectionGroup(for: .audible)
+    let caption = try? await asset.loadMediaSelectionGroup(for: .legible)
+    guard player.currentItem?.asset === asset else { return }
+    audioGroup = audio
+    captionGroup = caption
+    audioTracks = audio?.options ?? []
+    captionTracks = caption?.options ?? []
+    if let audio {
+      selectedAudio =
+        player.currentItem?.currentMediaSelection.selectedMediaOption(in: audio)?.displayName
+    }
+    if let caption {
+      selectedCaption =
+        player.currentItem?.currentMediaSelection.selectedMediaOption(in: caption)?.displayName
+    }
+    if let track = try? await asset.loadTracks(withMediaType: .video).first {
+      let frameRate = (try? await track.load(.nominalFrameRate)) ?? 0
+      fps = frameRate > 0 ? String(format: "%.1f fps", frameRate) : ""
+      if let formats = try? await track.load(.formatDescriptions) {
+        codecs = formats.map { description in
+          let code = CMFormatDescriptionGetMediaSubType(description)
+          return String(
+            bytes: [
+              UInt8((code >> 24) & 255), UInt8((code >> 16) & 255), UInt8((code >> 8) & 255),
+              UInt8(code & 255),
+            ], encoding: .ascii) ?? "Unknown"
+        }.joined(separator: ", ")
+      }
+    }
+  }
+  private func tick(_ time: CMTime) {
+    elapsed = time.seconds.isFinite ? time.seconds : 0
+    duration = player.currentItem?.duration.seconds ?? 0
+    playing = player.rate > 0
+    if playing && !firstFrame {
+      firstFrame = true
+      settings?.recordHealth(
+        target, success: true, startup: Int(Date().timeIntervalSince(started) * 1000))
+    }
+    if let event = player.currentItem?.accessLog()?.events.last {
+      bitrate = String(format: "%.1f Mbps", event.observedBitrate / 1_000_000)
+      if fps.isEmpty { fps = "\(event.numberOfDroppedVideoFrames) dropped frames" }
+    }
+    if let size = player.currentItem?.presentationSize, size.height > 0 {
+      resolution = "\(Int(size.width)) × \(Int(size.height))"
+    }
+  }
+  deinit {
+    if let timeToken { player.removeTimeObserver(timeToken) }
+    if let endToken { NotificationCenter.default.removeObserver(endToken) }
+    if let stallToken { NotificationCenter.default.removeObserver(stallToken) }
+    if let interruptionToken { NotificationCenter.default.removeObserver(interruptionToken) }
+  }
+}
+struct RallyVideoSurface: UIViewRepresentable {
+  let player: AVPlayer
+  final class Surface: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    var videoLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+  }
+  func makeUIView(context: Context) -> Surface {
+    let view = Surface()
+    view.backgroundColor = .black
+    view.videoLayer.videoGravity = .resizeAspect
+    view.videoLayer.player = player
+    return view
+  }
+  func updateUIView(_ view: Surface, context: Context) {
+    if view.videoLayer.player !== player { view.videoLayer.player = player }
+  }
+  static func dismantleUIView(_ view: Surface, coordinator: ()) { view.videoLayer.player = nil }
+}

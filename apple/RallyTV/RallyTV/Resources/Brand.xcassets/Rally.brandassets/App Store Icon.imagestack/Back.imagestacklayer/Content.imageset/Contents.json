@@ -1,0 +1,13 @@
+{
+  "images" : [
+    {
+      "filename" : "image-1x.png",
+      "idiom" : "tv",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "com.shiv.rally.tv",
+    "version" : 1
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "info" : {
+    "author" : "com.shiv.rally.tv",
+    "version" : 1
+  },
+  "layers" : [
+    {
+      "filename" : "Front.imagestacklayer"
+    },
+    {
+      "filename" : "Back.imagestacklayer"
+    }
+  ]
+}

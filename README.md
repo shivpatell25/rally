@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/shivpatell25/rally/releases/latest">Download Rally TV Beta 9</a>
+  <a href="https://github.com/shivpatell25/rally/releases/latest">Download Rally TV Beta 10</a>
   ·
   <a href="https://github.com/shivpatell25/rally/issues">Get help</a>
 </p>
@@ -24,12 +24,12 @@ Connect a compatible TV provider or streaming add-on you already use. Rally can 
 
 ### Made for the living room
 
-Rally is designed for Android TV and Google TV, with a clear, cinematic interface made for the TV remote. Browse live matchups, jump into highlights, set up your watchlist, and move between games without juggling separate sports apps.
+Rally is designed for Android TV, Google TV, and Apple TV, with a clear, cinematic interface made for the TV remote. Browse live matchups, jump into highlights, set up your watchlist, and move between games without juggling separate sports apps.
 
 ## Get started
 
-1. Download the latest APK from [Rally TV Beta 9](https://github.com/shivpatell25/rally/releases/latest).
-2. Install it on a compatible Android TV or Google TV device using your preferred sideloading method.
+1. Download the Android APK or Apple TV IPA from the [latest Rally TV release](https://github.com/shivpatell25/rally/releases/latest).
+2. Install the APK on a compatible Android TV or Google TV device. The Apple TV IPA is unsigned and must be signed by a compatible tvOS sideloading tool during installation.
 3. Open **Settings → Sources** to connect a provider or add-on you are authorized to use.
 4. Browse the Home screen, follow your teams in **My Rally**, and start watching.
 
@@ -46,8 +46,8 @@ Rally supports Stalker/Ministra portals, Xtream Codes, M3U/M3U8 playlists, and S
 - Favorites, watchlists, reminders, search, and personalized team browsing
 - M3U/M3U8 playlist, Stalker/Ministra, Xtream Codes, and Stremio add-on support
 
-Sports schedules, scores, statistics, and highlight availability come from third-party services. Rally is independent and is not affiliated with ESPN, Stremio, any league, team, broadcaster, IPTV provider, or device manufacturer. See the [content and provider details](CONTENT_SOURCES.md) and [privacy policy](PRIVACY.md).
+Sports schedules, scores, statistics, and highlight availability come from third-party services. Rally is independent and is not affiliated with ESPN, Stremio, any league, team, broadcaster, IPTV provider, or device manufacturer. Apple TV sideloading tools may require your own Apple account or a compatible signing service; this release is not App Store or TestFlight signed. See the [content and provider details](CONTENT_SOURCES.md) and [privacy policy](PRIVACY.md).
 
 ## About this build
 
-Rally TV Beta 9 is an Android TV test release. The APK is signed with the Rally Beta test key so it can update compatible Beta 8 test installations. App availability and behavior may change as Rally develops.
+Rally TV Beta 10 is a test release for Android TV and Apple TV. The Android APK is signed with the Rally Beta test key so it can update compatible Beta 9 test installations. The Apple TV IPA is an unsigned package intended for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. App availability and behavior may change as Rally develops.

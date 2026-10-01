@@ -1,0 +1,7 @@
+build-sim/
+build/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+__pycache__/
+*.xcresult/

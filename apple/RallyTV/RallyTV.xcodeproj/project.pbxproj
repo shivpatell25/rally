@@ -1,0 +1,274 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+/* Begin PBXBuildFile section */
+		E61958D0B313D1C002D5EE1A = {isa = PBXBuildFile; fileRef = 2C7F8AFDF0380B2502B545D7; };
+		655FDEA4D2EEA507E85703BC = {isa = PBXBuildFile; fileRef = 1BB774B8B5CAFD1082998CF0; };
+		E6AE50587FABFAB82D74B54E = {isa = PBXBuildFile; fileRef = 95057B4822F6FBDC4ECC343F; };
+		DCFF87E99874E9379248A90D = {isa = PBXBuildFile; fileRef = BC66CDDAB323AE98F7C7C409; };
+		9F4394EDF002058DD6C98D33 = {isa = PBXBuildFile; fileRef = D453B27F4AA1A3EE2F0A9507; };
+		60B8172A0D297E22043DF10A = {isa = PBXBuildFile; fileRef = C5A7BBF64084BFA3E55520BB; };
+		132B76BA528D09E1D5CA612E = {isa = PBXBuildFile; fileRef = F97067318C537016C282F698; };
+		D6B8C0E50E9F3704BE829338 = {isa = PBXBuildFile; fileRef = F513DF016290E3BFA2B7476E; };
+		5329FC11CD0C87877BF652FC = {isa = PBXBuildFile; fileRef = AD66E4F8F68FF63FF19BE104; };
+		977C088500FA8A431B0B0FB0 = {isa = PBXBuildFile; fileRef = E9F679F45092B370DECC7230; };
+		3BD6C5F04BB2515A7830690A = {isa = PBXBuildFile; fileRef = F490D8633BD267317A518EBF; };
+		7275B06D3E992A4EC118DA32 = {isa = PBXBuildFile; fileRef = 1C7EF693AFA0E88518A851A9; };
+		F22DF8ACC5ABFEED16B0FB98 = {isa = PBXBuildFile; fileRef = 90E4648BA47C08BB05FD937D; };
+		2F562E90997DB1046DE27099 = {isa = PBXBuildFile; fileRef = B80A391E199696627EE954C7; };
+		EE08C6831320AAF28A3B5DEE = {isa = PBXBuildFile; fileRef = 8EFF83E4B9C64512BEDC1E57; };
+		ADA2004298E1896C8E3D113D = {isa = PBXBuildFile; fileRef = 9FF544C7F5633B073554D63A; };
+		DF45D835EB074C0E7A12DA66 = {isa = PBXBuildFile; fileRef = 205C14600CE52FAA0A0C54EF; };
+		4DA949B3FF3CFB907E8C8C18 = {isa = PBXBuildFile; fileRef = F366168D2E28109C625825DD; };
+		1ECE6E4E2C47A6E295146508 = {isa = PBXBuildFile; fileRef = 43E03360C8F9D37026DA38B3; };
+		E3E0D7AD4574016B7F510CAD = {isa = PBXBuildFile; fileRef = C2C9F5B264EC21CA6E7D34CA; };
+		27B0147E6EDEB2EC0756338C = {isa = PBXBuildFile; fileRef = 0CDA8F56169CD5511F49A3B3; };
+		49FFC87AF5EDFD693AD5F9BE = {isa = PBXBuildFile; fileRef = 71A61C5C96C0E79F806456B6; };
+		567F3FC9C17B9ACEEECB00EE = {isa = PBXBuildFile; fileRef = CE752B6315AED0A69C5AA2ED; };
+		2ADBE363477E10DADA4A98E2 = {isa = PBXBuildFile; fileRef = CF3FAE58121F7BBA420C4A30; };
+		B615B82401DA6E496C56B4BB = {isa = PBXBuildFile; fileRef = EB043167984C959788AC822A; };
+		122BA9736E9DDC94BB24E6AF = {isa = PBXBuildFile; fileRef = 8DF77290DEB210E89EBF8B8D; };
+		A5837A51D20A3A7BFCAE4164 = {isa = PBXBuildFile; fileRef = 5B400D458056664F1676275C; };
+		3A7BAF7F4CE8109B237DCD65 = {isa = PBXBuildFile; fileRef = 958A8D5EBB6BF4DEE43D8A74; };
+		05B34ED8F1787BCAE6108873 = {isa = PBXBuildFile; fileRef = 9F496904E21008BB8FEC3EA6; };
+		C653201604304400E3D802C2 = {isa = PBXBuildFile; fileRef = BB3F242EB966962D97D32550; };
+		F86BBB96125DFBFFA66FED3A = {isa = PBXBuildFile; fileRef = 4F0CA827AE0670B364324566; };
+		279E38243F56F3240421730C = {isa = PBXBuildFile; fileRef = AD20DDE8DCD646B8DFA777D3; };
+		18EA5BC98EE60D95488B384B = {isa = PBXBuildFile; fileRef = 42222E915E553EB61F354995; };
+		A48655585A6AF0E3B259F6E2 = {isa = PBXBuildFile; fileRef = F3774E112ABC9E4BF754B9AC; };
+		DA3770E6DE9CE4E9C654B931 = {isa = PBXBuildFile; fileRef = DC5E41B2B9C0F0ED03E08D00; };
+		39A53CE062B00548587A5144 = {isa = PBXBuildFile; fileRef = B2DE717153F095D61B189F27; };
+		BD752B9F7FCA6F7F2F097065 = {isa = PBXBuildFile; fileRef = E7D90DE505D51694F5539A29; };
+		E6278A937E71811A202B8148 = {isa = PBXBuildFile; fileRef = 5C643EE724E951677B02F47B; };
+		AC19831AD30BBBA1131509D9 = {isa = PBXBuildFile; fileRef = 3D1AF151E723916819F9FC0F; };
+		821CF4A1DE775AAB435CCCB0 = {isa = PBXBuildFile; fileRef = FDA2F337655E1EC607B1F822; };
+		5199FCC975657EEDEE0091B1 = {isa = PBXBuildFile; fileRef = F9FA47CCF9B53808336E521C; };
+		9AA7FBF9A19C16957EBF7AD0 = {isa = PBXBuildFile; fileRef = 978C82F94C6A97BF97831F11; };
+		BED10897360C041582DEE393 = {isa = PBXBuildFile; fileRef = B53C52A3B484233BFB0867C3; };
+		872A4800125F3684040C5347 = {isa = PBXBuildFile; fileRef = 6A2824977CF1AF483C246673; };
+		7005DFA2E0BAC55043B046F0 = {isa = PBXBuildFile; fileRef = 821D0D16884153AA366B5E90; };
+		2C4B16B694A323CD1046DF4F = {isa = PBXBuildFile; fileRef = A8666655CF79DDFB048EF8E5; };
+		F9E2E6758FD90E56463F858E = {isa = PBXBuildFile; fileRef = 3945DFFDDE82ECF936813D5A; };
+		46D2F1D50F05E0528298C189 = {isa = PBXBuildFile; fileRef = 88E40B0C714A47F1C084AADA; };
+		F7DE6AEEB5D8D8D21C0ABAD0 = {isa = PBXBuildFile; fileRef = 660D59CD0CF33A00AC719CD3; };
+		026CD215BEC023FE24E2CA15 = {isa = PBXBuildFile; fileRef = F70B01A241E2CD2E20EF7B19; };
+		909B14872085354BD8CE4DA9 = {isa = PBXBuildFile; fileRef = A3FE48441A412ACB45F77D0E; };
+		2FDF887FC48BB0694C735DC7 = {isa = PBXBuildFile; fileRef = C2322FEC3613BF3A3D9FFA43; };
+		F5593BC65861C343DEC6A287 = {isa = PBXBuildFile; fileRef = C8C2511465091170374BE772; };
+		80DE6EC23639CF9D1A020E46 = {isa = PBXBuildFile; fileRef = 8CA6EA7BA57C866A50A657C4; };
+		C69B745C03A270E5503BEE7A = {isa = PBXBuildFile; fileRef = 76CC3550B7E7764A66409AB3; };
+		4071776A3132E98E77962EC1 = {isa = PBXBuildFile; fileRef = C3FF58DA5A9467D12C220F23; };
+		CE6D40BDB3E3929A653F1BDA = {isa = PBXBuildFile; fileRef = 615446C42F3F6FE4D033F330; };
+		0BDA5097C29E7986BA0FF0E0 = {isa = PBXBuildFile; fileRef = BE8E7150556B35B2B83FC614; };
+		995F69BE330ADB12C00B7BC4 = {isa = PBXBuildFile; fileRef = AC6A654DBE7A11F19FACE696; };
+		38698AB415B110EB5F49F55F = {isa = PBXBuildFile; fileRef = E389A247720A7C6A95A9988C; };
+		0470CA1879D342E0F5815BFC = {isa = PBXBuildFile; fileRef = 82CB35C4C63AC12DBB36640B; };
+		14DD8AC189C578E7A4D902D5 = {isa = PBXBuildFile; fileRef = A08AF9A13D7FD581F49510B4; };
+		4583FB8483E90119FFB84EC4 = {isa = PBXBuildFile; fileRef = CC0E9310C92E060F8FFD1F44; };
+		CD2A4DBD83A30A10F3D43CA9 = {isa = PBXBuildFile; fileRef = B1FC8BCA4DD39C18377FCA81; };
+		C54D44CF9E1A765EE2472FF1 = {isa = PBXBuildFile; fileRef = 0212AD7A6CED6F771A7C49AA; };
+		838F550CA796CED9FAE0DF0B = {isa = PBXBuildFile; fileRef = B41D500388423EC76DF7BA97; };
+		694A64B98D167E789B81E96D = {isa = PBXBuildFile; fileRef = 1B3DFB324A4B305792BB5B7D; };
+		D6FA3FC600B3229ACC109CF5 = {isa = PBXBuildFile; fileRef = 403778984120D471614A6FC8; };
+		53600635C15A345F661CA2C4 = {isa = PBXBuildFile; fileRef = B72143040B029B5A567EC372; };
+		985A181273882F8A05122C2C = {isa = PBXBuildFile; fileRef = CF87E384AA34FD96D6CDDB2D; };
+		CB4D8D38DF521253F9DF0ADA = {isa = PBXBuildFile; fileRef = 5F4670B1337A0D8C72C96CF5; };
+		971883FF6CD8EF2F99EA89A1 = {isa = PBXBuildFile; fileRef = 6745649A8E370925B641F1C7; };
+		F818F59828CE97E7B08D4CF2 = {isa = PBXBuildFile; fileRef = 86E53CD41DAC72316AE7F39A; };
+		59CC26ADC1FB151491EE8C05 = {isa = PBXBuildFile; fileRef = A11BCB306B6E1DDB96EC9A1C; };
+		815AE03A22CDD7BDDEE6ABDB = {isa = PBXBuildFile; fileRef = 5A0CFC7736141A6E5B77A991; };
+		4D1633832EF655F9D0837396 = {isa = PBXBuildFile; fileRef = F185333EE41B9E35220E3BBD; };
+		93E568EAAFA04F30CAF98CA0 = {isa = PBXBuildFile; fileRef = E8333A5C0E66E4D99DE49826; };
+		7770D78F0867C36CA9D8C980 = {isa = PBXBuildFile; fileRef = 2FFCAAB0CAB382F3D2875EBC; };
+		3331392234C3BD07DB6A7621 = {isa = PBXBuildFile; fileRef = 5866387EE730F29116EB2162; };
+		9C87442F3735DEC28E55288F = {isa = PBXBuildFile; fileRef = 06CCF905E5994AB592412932; };
+		648E87D790BDB89454D5B568 = {isa = PBXBuildFile; fileRef = E771ACC88A538625F4125C92; };
+		7C504345276C3FEDD2BD82FB = {isa = PBXBuildFile; fileRef = C97DF1AF2B46D19D6C7445DD; };
+		3C4204158C9BE82524C38DA2 = {isa = PBXBuildFile; fileRef = 2289A1E82598F04DFA674960; };
+		6DEDEE5AAFF895E02CA73674 = {isa = PBXBuildFile; fileRef = 07F5CAC80D29A28E1E48421E; };
+		2A8AD5EBE581EA0278776648 = {isa = PBXBuildFile; fileRef = A06CB9BAFB7E6954D4914F20; };
+		BE4408A4E22E34CAD3F9689E = {isa = PBXBuildFile; fileRef = 034F8F6EA35C9E5030534D02; };
+		567828A8953EE2B54AC3FB51 = {isa = PBXBuildFile; fileRef = 7470615B47E1F6D366D2CDBC; };
+		821B95F7007B8E49AB15E9A1 = {isa = PBXBuildFile; fileRef = 54537ED18C1FD56075718DC0; };
+		7D2FEFE2823CE7095FA205E4 = {isa = PBXBuildFile; fileRef = F1C23BA0619B26EED37992AF; };
+		0FB1AF213F1C5F902C7F106D = {isa = PBXBuildFile; fileRef = 9CE572029F71D88A9244463D; };
+/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+		79FF2AAE171E0A3802FFFAA3 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RallyTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		EDCC00D3E89A8B309765F433 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RallyTVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2C7F8AFDF0380B2502B545D7 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StremioDTOs.swift; path = StremioDTOs.swift; sourceTree = "<group>"; };
+		1BB774B8B5CAFD1082998CF0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StremioRepositoryImpl.swift; path = StremioRepositoryImpl.swift; sourceTree = "<group>"; };
+		95057B4822F6FBDC4ECC343F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppContainer.swift; path = AppContainer.swift; sourceTree = "<group>"; };
+		BC66CDDAB323AE98F7C7C409 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyRoute.swift; path = RallyRoute.swift; sourceTree = "<group>"; };
+		D453B27F4AA1A3EE2F0A9507 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyStore.swift; path = RallyStore.swift; sourceTree = "<group>"; };
+		C5A7BBF64084BFA3E55520BB = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyTVApp.swift; path = RallyTVApp.swift; sourceTree = "<group>"; };
+		F97067318C537016C282F698 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = RootView.swift; sourceTree = "<group>"; };
+		F513DF016290E3BFA2B7476E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TVOSFixtures.swift; path = TVOSFixtures.swift; sourceTree = "<group>"; };
+		AD66E4F8F68FF63FF19BE104 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyComparisonBar.swift; path = RallyComparisonBar.swift; sourceTree = "<group>"; };
+		E9F679F45092B370DECC7230 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyDesign.swift; path = RallyDesign.swift; sourceTree = "<group>"; };
+		F490D8633BD267317A518EBF = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyMedia.swift; path = RallyMedia.swift; sourceTree = "<group>"; };
+		1C7EF693AFA0E88518A851A9 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EventScreen.swift; path = EventScreen.swift; sourceTree = "<group>"; };
+		90E4648BA47C08BB05FD937D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SourcePicker.swift; path = SourcePicker.swift; sourceTree = "<group>"; };
+		B80A391E199696627EE954C7 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GameViewScreen.swift; path = GameViewScreen.swift; sourceTree = "<group>"; };
+		8EFF83E4B9C64512BEDC1E57 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeScreen.swift; path = HomeScreen.swift; sourceTree = "<group>"; };
+		9FF544C7F5633B073554D63A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LeagueScreens.swift; path = LeagueScreens.swift; sourceTree = "<group>"; };
+		205C14600CE52FAA0A0C54EF = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HighlightsScreen.swift; path = HighlightsScreen.swift; sourceTree = "<group>"; };
+		F366168D2E28109C625825DD = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveScreen.swift; path = LiveScreen.swift; sourceTree = "<group>"; };
+		43E03360C8F9D37026DA38B3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MultiViewScreen.swift; path = MultiViewScreen.swift; sourceTree = "<group>"; };
+		C2C9F5B264EC21CA6E7D34CA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyRallyScreen.swift; path = MyRallyScreen.swift; sourceTree = "<group>"; };
+		0CDA8F56169CD5511F49A3B3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ScheduleScreen.swift; path = ScheduleScreen.swift; sourceTree = "<group>"; };
+		71A61C5C96C0E79F806456B6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SearchScreen.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
+		CE752B6315AED0A69C5AA2ED = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PersonalizationTransfer.swift; path = PersonalizationTransfer.swift; sourceTree = "<group>"; };
+		CF3FAE58121F7BBA420C4A30 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsScreen.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
+		EB043167984C959788AC822A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = M3uIptvRepository.swift; path = M3uIptvRepository.swift; sourceTree = "<group>"; };
+		8DF77290DEB210E89EBF8B8D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = M3uPlaylistParser.swift; path = M3uPlaylistParser.swift; sourceTree = "<group>"; };
+		5B400D458056664F1676275C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StalkerAPI.swift; path = StalkerAPI.swift; sourceTree = "<group>"; };
+		958A8D5EBB6BF4DEE43D8A74 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StalkerIptvRepository.swift; path = StalkerIptvRepository.swift; sourceTree = "<group>"; };
+		9F496904E21008BB8FEC3EA6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = XtreamAPI.swift; path = XtreamAPI.swift; sourceTree = "<group>"; };
+		BB3F242EB966962D97D32550 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = XtreamIptvRepository.swift; path = XtreamIptvRepository.swift; sourceTree = "<group>"; };
+		4F0CA827AE0670B364324566 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EventStatus.swift; path = EventStatus.swift; sourceTree = "<group>"; };
+		AD20DDE8DCD646B8DFA777D3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Favorites.swift; path = Favorites.swift; sourceTree = "<group>"; };
+		42222E915E553EB61F354995 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GameAlert.swift; path = GameAlert.swift; sourceTree = "<group>"; };
+		F3774E112ABC9E4BF754B9AC = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GameDetails.swift; path = GameDetails.swift; sourceTree = "<group>"; };
+		DC5E41B2B9C0F0ED03E08D00 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IptvChannel.swift; path = IptvChannel.swift; sourceTree = "<group>"; };
+		B2DE717153F095D61B189F27 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SportEvent.swift; path = SportEvent.swift; sourceTree = "<group>"; };
+		E7D90DE505D51694F5539A29 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Streams.swift; path = Streams.swift; sourceTree = "<group>"; };
+		5C643EE724E951677B02F47B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Team.swift; path = Team.swift; sourceTree = "<group>"; };
+		3D1AF151E723916819F9FC0F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EspnEndpoints.swift; path = EspnEndpoints.swift; sourceTree = "<group>"; };
+		FDA2F337655E1EC607B1F822 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HTTPClient.swift; path = HTTPClient.swift; sourceTree = "<group>"; };
+		F9FA47CCF9B53808336E521C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JSONValue.swift; path = JSONValue.swift; sourceTree = "<group>"; };
+		978C82F94C6A97BF97831F11 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NetworkPolicy.swift; path = NetworkPolicy.swift; sourceTree = "<group>"; };
+		B53C52A3B484233BFB0867C3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ScopedHTTPTransport.swift; path = ScopedHTTPTransport.swift; sourceTree = "<group>"; };
+		6A2824977CF1AF483C246673 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HeaderMediaProxy.swift; path = HeaderMediaProxy.swift; sourceTree = "<group>"; };
+		821D0D16884153AA366B5E90 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackProfile.swift; path = PlaybackProfile.swift; sourceTree = "<group>"; };
+		A8666655CF79DDFB048EF8E5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaybackSession.swift; path = PlaybackSession.swift; sourceTree = "<group>"; };
+		3945DFFDDE82ECF936813D5A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlayerState.swift; path = PlayerState.swift; sourceTree = "<group>"; };
+		88E40B0C714A47F1C084AADA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyNowPlaying.swift; path = RallyNowPlaying.swift; sourceTree = "<group>"; };
+		660D59CD0CF33A00AC719CD3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EspnSportsRepository.swift; path = EspnSportsRepository.swift; sourceTree = "<group>"; };
+		F70B01A241E2CD2E20EF7B19 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IptvRepository.swift; path = IptvRepository.swift; sourceTree = "<group>"; };
+		A3FE48441A412ACB45F77D0E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SportsRepository.swift; path = SportsRepository.swift; sourceTree = "<group>"; };
+		C2322FEC3613BF3A3D9FFA43 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StremioRepository.swift; path = StremioRepository.swift; sourceTree = "<group>"; };
+		C8C2511465091170374BE772 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GameAlertEvaluator.swift; path = GameAlertEvaluator.swift; sourceTree = "<group>"; };
+		8CA6EA7BA57C866A50A657C4 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MatcherService.swift; path = MatcherService.swift; sourceTree = "<group>"; };
+		76CC3550B7E7764A66409AB3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyDiagnostics.swift; path = RallyDiagnostics.swift; sourceTree = "<group>"; };
+		C3FF58DA5A9467D12C220F23 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SelectBestStream.swift; path = SelectBestStream.swift; sourceTree = "<group>"; };
+		615446C42F3F6FE4D033F330 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StreamHealth.swift; path = StreamHealth.swift; sourceTree = "<group>"; };
+		BE8E7150556B35B2B83FC614 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChannelStore.swift; path = ChannelStore.swift; sourceTree = "<group>"; };
+		AC6A654DBE7A11F19FACE696 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeychainSecrets.swift; path = KeychainSecrets.swift; sourceTree = "<group>"; };
+		E389A247720A7C6A95A9988C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ScheduleDiskCache.swift; path = ScheduleDiskCache.swift; sourceTree = "<group>"; };
+		82CB35C4C63AC12DBB36640B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsStore.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		A08AF9A13D7FD581F49510B4 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BundleArt.swift; path = BundleArt.swift; sourceTree = "<group>"; };
+		CC0E9310C92E060F8FFD1F44 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Diagnostics.swift; path = Diagnostics.swift; sourceTree = "<group>"; };
+		B1FC8BCA4DD39C18377FCA81 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Formatting.swift; path = Formatting.swift; sourceTree = "<group>"; };
+		0212AD7A6CED6F771A7C49AA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PortalUrlNormalizer.swift; path = PortalUrlNormalizer.swift; sourceTree = "<group>"; };
+		B41D500388423EC76DF7BA97 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QualityParsing.swift; path = QualityParsing.swift; sourceTree = "<group>"; };
+		1B3DFB324A4B305792BB5B7D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StreamHeaders.swift; path = StreamHeaders.swift; sourceTree = "<group>"; };
+		403778984120D471614A6FC8 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TextMatching.swift; path = TextMatching.swift; sourceTree = "<group>"; };
+		B72143040B029B5A567EC372 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = XtreamUrlBuilder.swift; path = XtreamUrlBuilder.swift; sourceTree = "<group>"; };
+		CF87E384AA34FD96D6CDDB2D = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = "Brand.xcassets"; path = "Brand.xcassets"; sourceTree = "<group>"; };
+		5F4670B1337A0D8C72C96CF5 = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = "hero_landscape_baseball_rally.jpg"; path = "hero_landscape_baseball_rally.jpg"; sourceTree = "<group>"; };
+		6745649A8E370925B641F1C7 = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = "hero_landscape_basketball_rally.jpg"; path = "hero_landscape_basketball_rally.jpg"; sourceTree = "<group>"; };
+		86E53CD41DAC72316AE7F39A = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = "hero_landscape_football_rally.jpg"; path = "hero_landscape_football_rally.jpg"; sourceTree = "<group>"; };
+		A11BCB306B6E1DDB96EC9A1C = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = "hero_landscape_hockey_rally.jpg"; path = "hero_landscape_hockey_rally.jpg"; sourceTree = "<group>"; };
+		5A0CFC7736141A6E5B77A991 = {isa = PBXFileReference; lastKnownFileType = image.jpeg; name = "hero_landscape_soccer_rally.jpg"; path = "hero_landscape_soccer_rally.jpg"; sourceTree = "<group>"; };
+		F185333EE41B9E35220E3BBD = {isa = PBXFileReference; lastKnownFileType = file; name = "inter_variable.ttf"; path = "inter_variable.ttf"; sourceTree = "<group>"; };
+		E8333A5C0E66E4D99DE49826 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_epl.png"; path = "league_mark_epl.png"; sourceTree = "<group>"; };
+		2FFCAAB0CAB382F3D2875EBC = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_laliga.png"; path = "league_mark_laliga.png"; sourceTree = "<group>"; };
+		5866387EE730F29116EB2162 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_mlb.png"; path = "league_mark_mlb.png"; sourceTree = "<group>"; };
+		06CCF905E5994AB592412932 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_mls.png"; path = "league_mark_mls.png"; sourceTree = "<group>"; };
+		E771ACC88A538625F4125C92 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_nba.png"; path = "league_mark_nba.png"; sourceTree = "<group>"; };
+		C97DF1AF2B46D19D6C7445DD = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_nfl.png"; path = "league_mark_nfl.png"; sourceTree = "<group>"; };
+		2289A1E82598F04DFA674960 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_nhl.png"; path = "league_mark_nhl.png"; sourceTree = "<group>"; };
+		07F5CAC80D29A28E1E48421E = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_seriea.png"; path = "league_mark_seriea.png"; sourceTree = "<group>"; };
+		A06CB9BAFB7E6954D4914F20 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "league_mark_ucl.png"; path = "league_mark_ucl.png"; sourceTree = "<group>"; };
+		034F8F6EA35C9E5030534D02 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "rally_mark_ui.png"; path = "rally_mark_ui.png"; sourceTree = "<group>"; };
+		7470615B47E1F6D366D2CDBC = {isa = PBXFileReference; lastKnownFileType = image.png; name = "rally_tv_background_v8.png"; path = "rally_tv_background_v8.png"; sourceTree = "<group>"; };
+		54537ED18C1FD56075718DC0 = {isa = PBXFileReference; lastKnownFileType = image.png; name = "rally_wordmark_color_ui.png"; path = "rally_wordmark_color_ui.png"; sourceTree = "<group>"; };
+		F1C23BA0619B26EED37992AF = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeUITests.swift; path = HomeUITests.swift; sourceTree = "<group>"; };
+		9CE572029F71D88A9244463D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RallyParityTests.swift; path = RallyParityTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+/* Begin PBXFrameworksBuildPhase section */
+		90CC1F3504A67B00A51D3125 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+/* Begin PBXGroup section */
+		3E55646611CD630C6193ABD5 = {isa = PBXGroup; children = (CCA0830C60C76FCED73CB985, 8C1969BC5989E871C77EB3CC); sourceTree = "<group>"; };
+		8C1969BC5989E871C77EB3CC = {isa = PBXGroup; children = (79FF2AAE171E0A3802FFFAA3, EDCC00D3E89A8B309765F433, D6E5521E73C6C6B1C0BC59B8); name = Products; sourceTree = "<group>"; };
+		CCA0830C60C76FCED73CB985 = {isa = PBXGroup; children = (FF0C2725EAD8086E735D55C8, 212B3758D9A02E43B3111A45, 2625B19A6B390D8C4F30FAE1, C5B28E5CCA9CFEE55D355041, 5FF8860964DE295378D9B308, 2EF8F0E24CF3B2CF4F874B47, 54E934032E17FB6B7412D430, E42E5B755B5A097DF3BACED8, 7BA3030B92539D8D4D76C85A, EB0A10EDC9F395D000EBECBA, 6583544CD97A006B19F394B0, D18ACBF7E51B979A07DD6983, E6B7E66C1FC7F94E6494B8A2, 01566A88450C16408BC41188, 0FF66D20CE6F5E628470716B, CE42C2028028D79BBC79D939, 537589441B76EA165F23EABC, 0E1CA4F567D784B3AEA3C57F, 381D43D705F254AFBEB4CBA0, AACC3D916C9BF74FFEC54711, 58DA840CC0A312D88F6FA6BF, B6346D3B3FFCEA4422AAA296, 955079C25BF80F42254021BD, 1C7B9027AD17B850663ECB2A, 6DCDC93B5B6582D62CA635A0, 492F6F6D812530E45586FBC3); path = RallyTV; sourceTree = "<group>"; };
+		FF0C2725EAD8086E735D55C8 = {isa = PBXGroup; children = (2C7F8AFDF0380B2502B545D7, 1BB774B8B5CAFD1082998CF0); name = Stremio; path = Addons/Stremio; sourceTree = "<group>"; };
+		212B3758D9A02E43B3111A45 = {isa = PBXGroup; children = (95057B4822F6FBDC4ECC343F, BC66CDDAB323AE98F7C7C409, D453B27F4AA1A3EE2F0A9507, C5A7BBF64084BFA3E55520BB, F97067318C537016C282F698, F513DF016290E3BFA2B7476E); name = App; path = App; sourceTree = "<group>"; };
+		2625B19A6B390D8C4F30FAE1 = {isa = PBXGroup; children = (AD66E4F8F68FF63FF19BE104, E9F679F45092B370DECC7230, F490D8633BD267317A518EBF); name = DesignSystem; path = DesignSystem; sourceTree = "<group>"; };
+		C5B28E5CCA9CFEE55D355041 = {isa = PBXGroup; children = (1C7EF693AFA0E88518A851A9, 90E4648BA47C08BB05FD937D); name = Event; path = Features/Event; sourceTree = "<group>"; };
+		5FF8860964DE295378D9B308 = {isa = PBXGroup; children = (B80A391E199696627EE954C7); name = GameView; path = Features/GameView; sourceTree = "<group>"; };
+		2EF8F0E24CF3B2CF4F874B47 = {isa = PBXGroup; children = (8EFF83E4B9C64512BEDC1E57); name = Home; path = Features/Home; sourceTree = "<group>"; };
+		54E934032E17FB6B7412D430 = {isa = PBXGroup; children = (9FF544C7F5633B073554D63A); name = Leagues; path = Features/Leagues; sourceTree = "<group>"; };
+		E42E5B755B5A097DF3BACED8 = {isa = PBXGroup; children = (205C14600CE52FAA0A0C54EF, F366168D2E28109C625825DD); name = Live; path = Features/Live; sourceTree = "<group>"; };
+		7BA3030B92539D8D4D76C85A = {isa = PBXGroup; children = (43E03360C8F9D37026DA38B3); name = Multiview; path = Features/Multiview; sourceTree = "<group>"; };
+		EB0A10EDC9F395D000EBECBA = {isa = PBXGroup; children = (C2C9F5B264EC21CA6E7D34CA); name = MyRally; path = Features/MyRally; sourceTree = "<group>"; };
+		6583544CD97A006B19F394B0 = {isa = PBXGroup; children = (0CDA8F56169CD5511F49A3B3); name = Schedule; path = Features/Schedule; sourceTree = "<group>"; };
+		D18ACBF7E51B979A07DD6983 = {isa = PBXGroup; children = (71A61C5C96C0E79F806456B6); name = Search; path = Features/Search; sourceTree = "<group>"; };
+		E6B7E66C1FC7F94E6494B8A2 = {isa = PBXGroup; children = (CE752B6315AED0A69C5AA2ED, CF3FAE58121F7BBA420C4A30); name = Settings; path = Features/Settings; sourceTree = "<group>"; };
+		01566A88450C16408BC41188 = {isa = PBXGroup; children = (EB043167984C959788AC822A, 8DF77290DEB210E89EBF8B8D); name = M3u; path = IPTV/M3u; sourceTree = "<group>"; };
+		0FF66D20CE6F5E628470716B = {isa = PBXGroup; children = (5B400D458056664F1676275C, 958A8D5EBB6BF4DEE43D8A74); name = Stalker; path = IPTV/Stalker; sourceTree = "<group>"; };
+		CE42C2028028D79BBC79D939 = {isa = PBXGroup; children = (9F496904E21008BB8FEC3EA6, BB3F242EB966962D97D32550); name = Xtream; path = IPTV/Xtream; sourceTree = "<group>"; };
+		537589441B76EA165F23EABC = {isa = PBXGroup; children = (4F0CA827AE0670B364324566, AD20DDE8DCD646B8DFA777D3, 42222E915E553EB61F354995, F3774E112ABC9E4BF754B9AC, DC5E41B2B9C0F0ED03E08D00, B2DE717153F095D61B189F27, E7D90DE505D51694F5539A29, 5C643EE724E951677B02F47B); name = Models; path = Models; sourceTree = "<group>"; };
+		0E1CA4F567D784B3AEA3C57F = {isa = PBXGroup; children = (3D1AF151E723916819F9FC0F, FDA2F337655E1EC607B1F822, F9FA47CCF9B53808336E521C, 978C82F94C6A97BF97831F11, B53C52A3B484233BFB0867C3); name = Networking; path = Networking; sourceTree = "<group>"; };
+		381D43D705F254AFBEB4CBA0 = {isa = PBXGroup; children = (6A2824977CF1AF483C246673, 821D0D16884153AA366B5E90, A8666655CF79DDFB048EF8E5, 3945DFFDDE82ECF936813D5A, 88E40B0C714A47F1C084AADA); name = Player; path = Player; sourceTree = "<group>"; };
+		AACC3D916C9BF74FFEC54711 = {isa = PBXGroup; children = (660D59CD0CF33A00AC719CD3, F70B01A241E2CD2E20EF7B19, A3FE48441A412ACB45F77D0E, C2322FEC3613BF3A3D9FFA43); name = Repositories; path = Repositories; sourceTree = "<group>"; };
+		58DA840CC0A312D88F6FA6BF = {isa = PBXGroup; children = (CF87E384AA34FD96D6CDDB2D, 5F4670B1337A0D8C72C96CF5, 6745649A8E370925B641F1C7, 86E53CD41DAC72316AE7F39A, A11BCB306B6E1DDB96EC9A1C, 5A0CFC7736141A6E5B77A991, F185333EE41B9E35220E3BBD, E8333A5C0E66E4D99DE49826, 2FFCAAB0CAB382F3D2875EBC, 5866387EE730F29116EB2162, 06CCF905E5994AB592412932, E771ACC88A538625F4125C92, C97DF1AF2B46D19D6C7445DD, 2289A1E82598F04DFA674960, 07F5CAC80D29A28E1E48421E, A06CB9BAFB7E6954D4914F20, 034F8F6EA35C9E5030534D02, 7470615B47E1F6D366D2CDBC, 54537ED18C1FD56075718DC0); name = Resources; path = Resources; sourceTree = "<group>"; };
+		B6346D3B3FFCEA4422AAA296 = {isa = PBXGroup; children = (C8C2511465091170374BE772, 8CA6EA7BA57C866A50A657C4, 76CC3550B7E7764A66409AB3, C3FF58DA5A9467D12C220F23, 615446C42F3F6FE4D033F330); name = Services; path = Services; sourceTree = "<group>"; };
+		955079C25BF80F42254021BD = {isa = PBXGroup; children = (BE8E7150556B35B2B83FC614, AC6A654DBE7A11F19FACE696, E389A247720A7C6A95A9988C, 82CB35C4C63AC12DBB36640B); name = Storage; path = Storage; sourceTree = "<group>"; };
+		1C7B9027AD17B850663ECB2A = {isa = PBXGroup; children = (9CE572029F71D88A9244463D); name = Tests; path = Tests; sourceTree = "<group>"; };
+		6DCDC93B5B6582D62CA635A0 = {isa = PBXGroup; children = (F1C23BA0619B26EED37992AF); name = UITests; path = UITests; sourceTree = "<group>"; };
+		492F6F6D812530E45586FBC3 = {isa = PBXGroup; children = (A08AF9A13D7FD581F49510B4, CC0E9310C92E060F8FFD1F44, B1FC8BCA4DD39C18377FCA81, 0212AD7A6CED6F771A7C49AA, B41D500388423EC76DF7BA97, 1B3DFB324A4B305792BB5B7D, 403778984120D471614A6FC8, B72143040B029B5A567EC372); name = Utilities; path = Utilities; sourceTree = "<group>"; };
+/* End PBXGroup section */
+/* Begin PBXNativeTarget section */
+		25A032BF8F1420BF22455466 = {isa = PBXNativeTarget; buildConfigurationList = A2092533F0850847C9FB62FB; buildPhases = (2417611DF74148A96329FB10, 90CC1F3504A67B00A51D3125, 07E8A157C6BEA824C4FA8990); buildRules = (); dependencies = (); name = RallyTV; productName = RallyTV; productReference = 79FF2AAE171E0A3802FFFAA3; productType = "com.apple.product-type.application"; };
+		4B0048361990D87D93818B04 = {isa = PBXNativeTarget; buildConfigurationList = C3872083A6B6B47D96AA2CA4; buildPhases = (6998E64058C6FB4E670AD11A, 90CC1F3504A67B00A51D3125); buildRules = (); dependencies = (934D9CD60841ABCEA816A500); name = RallyTVUITests; productName = RallyTVUITests; productReference = EDCC00D3E89A8B309765F433; productType = "com.apple.product-type.bundle.ui-testing"; };
+/* End PBXNativeTarget section */
+/* Begin PBXTargetDependency section */
+		934D9CD60841ABCEA816A500 = {isa = PBXTargetDependency; target = 25A032BF8F1420BF22455466; targetProxy = 0AD7106CAC948143042275A0; };
+/* End PBXTargetDependency section */
+/* Begin PBXContainerItemProxy section */
+		0AD7106CAC948143042275A0 = {isa = PBXContainerItemProxy; containerPortal = 6F41779B9D7F82A795B29D08; proxyType = 1; remoteGlobalIDString = 25A032BF8F1420BF22455466; remoteInfo = RallyTV; };
+/* End PBXContainerItemProxy section */
+/* Begin PBXProject section */
+		6F41779B9D7F82A795B29D08 = {isa = PBXProject; attributes = {LastUpgradeCheck = 2700; TargetAttributes = {25A032BF8F1420BF22455466 = {CreatedOnToolsVersion = 27.0; }; 4B0048361990D87D93818B04 = {CreatedOnToolsVersion = 27.0; }; }; }; buildConfigurationList = 3D59A5380EBD5A1E1BB4A452; compatibilityVersion = "Xcode 16.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 3E55646611CD630C6193ABD5; productRefGroup = 8C1969BC5989E871C77EB3CC; projectDirPath = ""; projectRoot = ""; targets = (25A032BF8F1420BF22455466, 4B0048361990D87D93818B04, D04DCB6CAEF7C16FFF48458C); };
+/* End PBXProject section */
+/* Begin PBXSourcesBuildPhase section */
+		2417611DF74148A96329FB10 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (E61958D0B313D1C002D5EE1A, 655FDEA4D2EEA507E85703BC, E6AE50587FABFAB82D74B54E, DCFF87E99874E9379248A90D, 9F4394EDF002058DD6C98D33, 60B8172A0D297E22043DF10A, 132B76BA528D09E1D5CA612E, D6B8C0E50E9F3704BE829338, 5329FC11CD0C87877BF652FC, 977C088500FA8A431B0B0FB0, 3BD6C5F04BB2515A7830690A, 7275B06D3E992A4EC118DA32, F22DF8ACC5ABFEED16B0FB98, 2F562E90997DB1046DE27099, EE08C6831320AAF28A3B5DEE, ADA2004298E1896C8E3D113D, DF45D835EB074C0E7A12DA66, 4DA949B3FF3CFB907E8C8C18, 1ECE6E4E2C47A6E295146508, E3E0D7AD4574016B7F510CAD, 27B0147E6EDEB2EC0756338C, 49FFC87AF5EDFD693AD5F9BE, 567F3FC9C17B9ACEEECB00EE, 2ADBE363477E10DADA4A98E2, B615B82401DA6E496C56B4BB, 122BA9736E9DDC94BB24E6AF, A5837A51D20A3A7BFCAE4164, 3A7BAF7F4CE8109B237DCD65, 05B34ED8F1787BCAE6108873, C653201604304400E3D802C2, F86BBB96125DFBFFA66FED3A, 279E38243F56F3240421730C, 18EA5BC98EE60D95488B384B, A48655585A6AF0E3B259F6E2, DA3770E6DE9CE4E9C654B931, 39A53CE062B00548587A5144, BD752B9F7FCA6F7F2F097065, E6278A937E71811A202B8148, AC19831AD30BBBA1131509D9, 821CF4A1DE775AAB435CCCB0, 5199FCC975657EEDEE0091B1, 9AA7FBF9A19C16957EBF7AD0, BED10897360C041582DEE393, 872A4800125F3684040C5347, 7005DFA2E0BAC55043B046F0, 2C4B16B694A323CD1046DF4F, F9E2E6758FD90E56463F858E, 46D2F1D50F05E0528298C189, F7DE6AEEB5D8D8D21C0ABAD0, 026CD215BEC023FE24E2CA15, 909B14872085354BD8CE4DA9, 2FDF887FC48BB0694C735DC7, F5593BC65861C343DEC6A287, 80DE6EC23639CF9D1A020E46, C69B745C03A270E5503BEE7A, 4071776A3132E98E77962EC1, CE6D40BDB3E3929A653F1BDA, 0BDA5097C29E7986BA0FF0E0, 995F69BE330ADB12C00B7BC4, 38698AB415B110EB5F49F55F, 0470CA1879D342E0F5815BFC, 14DD8AC189C578E7A4D902D5, 4583FB8483E90119FFB84EC4, CD2A4DBD83A30A10F3D43CA9, C54D44CF9E1A765EE2472FF1, 838F550CA796CED9FAE0DF0B, 694A64B98D167E789B81E96D, D6FA3FC600B3229ACC109CF5, 53600635C15A345F661CA2C4); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+/* Begin PBXResourcesBuildPhase section */
+		07E8A157C6BEA824C4FA8990 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (985A181273882F8A05122C2C, CB4D8D38DF521253F9DF0ADA, 971883FF6CD8EF2F99EA89A1, F818F59828CE97E7B08D4CF2, 59CC26ADC1FB151491EE8C05, 815AE03A22CDD7BDDEE6ABDB, 4D1633832EF655F9D0837396, 93E568EAAFA04F30CAF98CA0, 7770D78F0867C36CA9D8C980, 3331392234C3BD07DB6A7621, 9C87442F3735DEC28E55288F, 648E87D790BDB89454D5B568, 7C504345276C3FEDD2BD82FB, 3C4204158C9BE82524C38DA2, 6DEDEE5AAFF895E02CA73674, 2A8AD5EBE581EA0278776648, BE4408A4E22E34CAD3F9689E, 567828A8953EE2B54AC3FB51, 821B95F7007B8E49AB15E9A1); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+/* Begin PBXSourcesBuildPhase section */
+		6998E64058C6FB4E670AD11A = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (7D2FEFE2823CE7095FA205E4); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+/* Begin XCBuildConfiguration section */
+		0AE3D3D817795CE7FA77C1BD = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; GCC_C_LANGUAGE_STANDARD = gnu17; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; MTL_FAST_MATH = YES; ONLY_ACTIVE_ARCH = YES; SDKROOT = appletvos; }; name = Debug; };
+		BEB962F8AAB269278A4A8885 = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ANALYZER_NONNULL = YES; CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; GCC_C_LANGUAGE_STANDARD = gnu17; MTL_FAST_MATH = YES; SDKROOT = appletvos; }; name = Release; };
+		F12F48228D9675BC2F6782AF = {isa = XCBuildConfiguration; buildSettings = {DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE; ONLY_ACTIVE_ARCH = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; ASSETCATALOG_COMPILER_APPICON_NAME = Rally; CODE_SIGN_STYLE = Automatic; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = 10; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = Rally; INFOPLIST_FILE = RallyTV/App/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("@executable_path/Frameworks"); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.shiv.rally.tv; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "appletvos appletvsimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 3; TVOS_DEPLOYMENT_TARGET = 17.0;}; name = Debug; };
+		AED9437AB3A11F293E5E5E92 = {isa = XCBuildConfiguration; buildSettings = {COPY_PHASE_STRIP = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; MTL_ENABLE_DEBUG_INFO = NO; SWIFT_OPTIMIZATION_LEVEL = "-O"; ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES; ASSETCATALOG_COMPILER_APPICON_NAME = Rally; CODE_SIGN_STYLE = Automatic; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = 10; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = Rally; INFOPLIST_FILE = RallyTV/App/Info.plist; LD_RUNPATH_SEARCH_PATHS = ("@executable_path/Frameworks"); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.shiv.rally.tv; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "appletvos appletvsimulator"; SUPPORTS_MACCATALYST = NO; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 3; TVOS_DEPLOYMENT_TARGET = 17.0;}; name = Release; };
+		AFD9BC3D23FF62368F2778CF = {isa = XCBuildConfiguration; buildSettings = {DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ONLY_ACTIVE_ARCH = YES; CODE_SIGN_STYLE = Automatic; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; LD_RUNPATH_SEARCH_PATHS = ("@executable_path/Frameworks", "@loader_path/Frameworks"); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.shiv.rally.tv.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "appletvos appletvsimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 3; TEST_TARGET_NAME = RallyTV; TVOS_DEPLOYMENT_TARGET = 17.0;}; name = Debug; };
+		F459F5D3921B916753A5D1AD = {isa = XCBuildConfiguration; buildSettings = {DEBUG_INFORMATION_FORMAT = dwarf-with-dsym; SWIFT_OPTIMIZATION_LEVEL = "-O"; CODE_SIGN_STYLE = Automatic; COPY_PHASE_STRIP = NO; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = YES; LD_RUNPATH_SEARCH_PATHS = ("@executable_path/Frameworks", "@loader_path/Frameworks"); MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = com.shiv.rally.tv.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; SUPPORTED_PLATFORMS = "appletvos appletvsimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 3; TEST_TARGET_NAME = RallyTV; TVOS_DEPLOYMENT_TARGET = 17.0;}; name = Release; };
+/* End XCBuildConfiguration section */
+/* Begin XCConfigurationList section */
+		3D59A5380EBD5A1E1BB4A452 = {isa = XCConfigurationList; buildConfigurations = (0AE3D3D817795CE7FA77C1BD, BEB962F8AAB269278A4A8885); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A2092533F0850847C9FB62FB = {isa = XCConfigurationList; buildConfigurations = (F12F48228D9675BC2F6782AF, AED9437AB3A11F293E5E5E92); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		C3872083A6B6B47D96AA2CA4 = {isa = XCConfigurationList; buildConfigurations = (AFD9BC3D23FF62368F2778CF, F459F5D3921B916753A5D1AD); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+D6E5521E73C6C6B1C0BC59B8 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = RallyTVTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+D04DCB6CAEF7C16FFF48458C = {isa = PBXNativeTarget; buildConfigurationList = 6C19228FF65E0D46E59B4A04; buildPhases = (8B41B30075CDA374EDFAA841, 5408B3051C10D8BBFEDEAAAC); buildRules = (); dependencies = (D92813C2CC9C0BDD6083A33E); name = RallyTVTests; productName = RallyTVTests; productReference = D6E5521E73C6C6B1C0BC59B8; productType = "com.apple.product-type.bundle.unit-test"; };
+8B41B30075CDA374EDFAA841 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0FB1AF213F1C5F902C7F106D); runOnlyForDeploymentPostprocessing = 0; };
+5408B3051C10D8BBFEDEAAAC = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+D92813C2CC9C0BDD6083A33E = {isa = PBXTargetDependency; target = 25A032BF8F1420BF22455466; targetProxy = 2D119A0D1CB486984C3D84BE; };
+2D119A0D1CB486984C3D84BE = {isa = PBXContainerItemProxy; containerPortal = 6F41779B9D7F82A795B29D08; proxyType = 1; remoteGlobalIDString = 25A032BF8F1420BF22455466; remoteInfo = RallyTV; };
+6C19228FF65E0D46E59B4A04 = {isa = XCConfigurationList; buildConfigurations = (DF0EF2161623C301A3DE2572, E24425A5DD85A3CD622D3612); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+DF0EF2161623C301A3DE2572 = {isa = XCBuildConfiguration; buildSettings = {GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = com.shiv.rally.tv.tests; SWIFT_VERSION = 5.0; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; TARGETED_DEVICE_FAMILY = 3; TVOS_DEPLOYMENT_TARGET = 17.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RallyTV.app/RallyTV"; BUNDLE_LOADER = "$(TEST_HOST)"; LD_RUNPATH_SEARCH_PATHS = ("@executable_path/Frameworks", "@loader_path/Frameworks"); }; name = Debug; };
+E24425A5DD85A3CD622D3612 = {isa = XCBuildConfiguration; buildSettings = {GENERATE_INFOPLIST_FILE = YES; PRODUCT_NAME = "$(TARGET_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = com.shiv.rally.tv.tests; SWIFT_VERSION = 5.0; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; TARGETED_DEVICE_FAMILY = 3; TVOS_DEPLOYMENT_TARGET = 17.0; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RallyTV.app/RallyTV"; BUNDLE_LOADER = "$(TEST_HOST)"; LD_RUNPATH_SEARCH_PATHS = ("@executable_path/Frameworks", "@loader_path/Frameworks"); }; name = Release; };
+	};
+	rootObject = 6F41779B9D7F82A795B29D08;
+}

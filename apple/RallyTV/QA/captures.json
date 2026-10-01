@@ -1,0 +1,387 @@
+[
+  {
+    "file": "event-highlights.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894509.355,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "event-lineups.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894502.738,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "event-overview.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894498.048,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "event-plays.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894505.117,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "event-sources.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894507.269,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "event-stats.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894500.486,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "fullscreen-controls.png",
+    "test": "RallyParityUITests/testPlayerControlsSourceAndFullscreen()",
+    "captureTimestamp": 1790896410.625,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "game-view.png",
+    "test": "RallyParityUITests/testPlayerControlsSourceAndFullscreen()",
+    "captureTimestamp": 1790896372.648,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "highlights.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894474.378,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "home-compact-focused.png",
+    "test": "RallyParityUITests/testHomePagedRailAndGuideComposition()",
+    "captureTimestamp": 1790894519.985,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "home-guide.png",
+    "test": "RallyParityUITests/testHomePagedRailAndGuideComposition()",
+    "captureTimestamp": 1790894521.433,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "home-highlight-playing.png",
+    "test": "RallyParityUITests/testNoLiveUsesRealHighlightCards()",
+    "captureTimestamp": 1790894657.025,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "home-no-live-guide.png",
+    "test": "RallyParityUITests/testNoLiveUsesRealHighlightCards()",
+    "captureTimestamp": 1790894652.436,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "home-no-live.png",
+    "test": "RallyParityUITests/testNoLiveUsesRealHighlightCards()",
+    "captureTimestamp": 1790894648.982,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "home-top.png",
+    "test": "RallyParityUITests/testHomePagedRailAndGuideComposition()",
+    "captureTimestamp": 1790894514.56,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "iptv-m3u.png",
+    "test": "RallyParityUITests/testM3uFileImportChannelBrowsingAndPlayback()",
+    "captureTimestamp": 1790896323.566,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "iptv.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894493.242,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "league-NFL.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894455.714,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "leagues.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894449.492,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "live.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894443.19,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "m3u-channel-multiview.png",
+    "test": "RallyParityUITests/testM3uFileImportChannelBrowsingAndPlayback()",
+    "captureTimestamp": 1790896367.536,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "m3u-channel-playing.png",
+    "test": "RallyParityUITests/testM3uFileImportChannelBrowsingAndPlayback()",
+    "captureTimestamp": 1790896328.034,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "multiview-2-immersive.png",
+    "test": "RallyParityUITests/testMultiviewTwoThreeFourStreamBoundsAndManagement()",
+    "captureTimestamp": 1790894592.22,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "multiview-2.png",
+    "test": "RallyParityUITests/testMultiviewTwoThreeFourStreamBoundsAndManagement()",
+    "captureTimestamp": 1790894589.528,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "multiview-3-immersive.png",
+    "test": "RallyParityUITests/testMultiviewTwoThreeFourStreamBoundsAndManagement()",
+    "captureTimestamp": 1790894611.802,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "multiview-3.png",
+    "test": "RallyParityUITests/testMultiviewTwoThreeFourStreamBoundsAndManagement()",
+    "captureTimestamp": 1790894609.009,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "multiview-4-immersive.png",
+    "test": "RallyParityUITests/testMultiviewTwoThreeFourStreamBoundsAndManagement()",
+    "captureTimestamp": 1790894631.813,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "multiview-4.png",
+    "test": "RallyParityUITests/testMultiviewTwoThreeFourStreamBoundsAndManagement()",
+    "captureTimestamp": 1790894628.723,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "multiview-immersive.png",
+    "test": "RallyParityUITests/testMultiviewStatsAndImmersive()",
+    "captureTimestamp": 1790894583.196,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "multiview-stats.png",
+    "test": "RallyParityUITests/testMultiviewStatsAndImmersive()",
+    "captureTimestamp": 1790894578.334,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "player-audio.png",
+    "test": "RallyParityUITests/testPlayerControlsSourceAndFullscreen()",
+    "captureTimestamp": 1790896395.935,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "player-captions.png",
+    "test": "RallyParityUITests/testPlayerControlsSourceAndFullscreen()",
+    "captureTimestamp": 1790896399.053,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "player-diagnostics.png",
+    "test": "RallyParityUITests/testPlayerControlsSourceAndFullscreen()",
+    "captureTimestamp": 1790896415.032,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "player-other-games.png",
+    "test": "RallyParityUITests/testPlayerControlsSourceAndFullscreen()",
+    "captureTimestamp": 1790896389.956,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "real-event-overview.png",
+    "test": "RallyParityUITests/testShippingRepositoriesAndPublishedClip()",
+    "captureTimestamp": 1790894747.235,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "real-event-stats.png",
+    "test": "RallyParityUITests/testShippingRepositoriesAndPublishedClip()",
+    "captureTimestamp": 1790894749.506,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "real-highlight-fullscreen.png",
+    "test": "RallyParityUITests/testShippingRepositoriesAndPublishedClip()",
+    "captureTimestamp": 1790894760.759,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "real-highlight-playing.png",
+    "test": "RallyParityUITests/testShippingRepositoriesAndPublishedClip()",
+    "captureTimestamp": 1790894757.276,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "real-home-guide.png",
+    "test": "RallyParityUITests/testShippingRepositoriesAndPublishedClip()",
+    "captureTimestamp": 1790894736.777,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "real-home-top.png",
+    "test": "RallyParityUITests/testShippingRepositoriesAndPublishedClip()",
+    "captureTimestamp": 1790894733.283,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "real-schedule.png",
+    "test": "RallyParityUITests/testShippingRepositoriesAndPublishedClip()",
+    "captureTimestamp": 1790894742.601,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "schedule.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894436.997,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "search.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894480.712,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings-addons.png",
+    "test": "RallyParityUITests/testSettingsRemoteSectionsAndBackups()",
+    "captureTimestamp": 1790894710.411,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings-alerts.png",
+    "test": "RallyParityUITests/testSettingsRemoteSectionsAndBackups()",
+    "captureTimestamp": 1790894715.615,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings-m3u-import.png",
+    "test": "RallyParityUITests/testM3uFileImportChannelBrowsingAndPlayback()",
+    "captureTimestamp": 1790896311.683,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "settings-m3u.png",
+    "test": "RallyParityUITests/testM3uFileImportChannelBrowsingAndPlayback()",
+    "captureTimestamp": 1790896304.942,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-playback-final.xcresult"
+  },
+  {
+    "file": "settings-my-rally.png",
+    "test": "RallyParityUITests/testSettingsRemoteSectionsAndBackups()",
+    "captureTimestamp": 1790894713.892,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings-sports.png",
+    "test": "RallyParityUITests/testSettingsRemoteSectionsAndBackups()",
+    "captureTimestamp": 1790894712.097,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings-support.png",
+    "test": "RallyParityUITests/testSettingsRemoteSectionsAndBackups()",
+    "captureTimestamp": 1790894719.001,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings-transfer.png",
+    "test": "RallyParityUITests/testSettingsRemoteSectionsAndBackups()",
+    "captureTimestamp": 1790894723.58,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings-viewing.png",
+    "test": "RallyParityUITests/testSettingsRemoteSectionsAndBackups()",
+    "captureTimestamp": 1790894717.29,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "settings.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894487.078,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "team-NFL-12.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894462.006,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  },
+  {
+    "file": "watchlist.png",
+    "test": "RallyParityUITests/testEveryDestinationAndEventTab()",
+    "captureTimestamp": 1790894468.285,
+    "source": "tvOS simulator",
+    "resultBundle": "/tmp/rally-tvos-native-acceptance.xcresult"
+  }
+]
