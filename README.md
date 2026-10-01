@@ -1,84 +1,53 @@
+<p align="center">
+  <img src="Rally_Brand_Kit/02_Wordmark/rally_wordmark_color_transparent_1024.png" alt="Rally" width="300">
+</p>
 
-<img src="Rally_Brand_Kit/02_Wordmark/rally_wordmark_color_transparent_1024.png" alt="Rally wordmark" width="320">
+<h1 align="center">Every game. Your way.</h1>
 
-Rally is a sports-first Android TV app. It combines ESPN schedules and live data with the user's Stalker/Ministra or Xtream IPTV subscription and configured Stremio addons, then presents matching streams in a cinematic, remote-first interface.
+<p align="center">
+  Rally brings live sports, scores, schedules, highlights, and the streams you already use together in one remote-first experience for Android TV.
+</p>
 
-## Features
+<p align="center">
+  <a href="https://github.com/shivpatell25/rally/releases/latest">Download Rally TV Beta 9</a>
+  ·
+  <a href="https://github.com/shivpatell25/rally/issues">Get help</a>
+</p>
 
-- Near-black Rally interface with the official wordmark and ambient flare, contained pill navigation, and restrained D-pad focus
-- Home, Live, Schedule, Leagues, Highlights, My Rally, Search, and Settings; Search and Settings use the separate header actions
-- Home combines a stadium-backed team-and-score hero, live matchup cards or recent highlights, and four Starting Soon events that expand into schedule rows as you move down to Browse by Sport
-- Schedule presents date and sport filters with couch-readable event rows
-- Event detail uses a stadium-backed matchup hero, Overview/Stats/Lineups/Plays/Highlights/Sources tabs, team/game/player panels, and a watchlist action
-- My Rally combines followed teams, saved events, and upcoming games
-- ESPN-backed scores, box scores, player data, play-by-play, scoring moments, and available highlight clips
-- Automatic matching between events and IPTV channels
-- Stalker/Ministra, Xtream Codes, and M3U/M3U8 IPTV provider support
-- Stremio addon stream discovery and source switching
-- Split Game View pairs live video with score, status, source/quality metadata, current drive, stats, and leaders
-- Game View controls include play/pause, restart, full screen, source selection, audio, captions, and Multi-View; the full-screen overlay also provides diagnostics
-- Full-screen Media3 playback, audio and caption track selection, and up to four-stream Multi-View
-- Multi-View supports focused or pinned audio, gap-free four-stream immersive playback, and a Player Stats tile grouped by game, including the RedZone afternoon slate with duplicate-game removal
-- ESPN highlight playback when the feed provides a playable clip URL; scoring-moment timestamps do not seek IPTV broadcasts
-- Searchable live channels, events, teams, leagues, and configured streams
-- Local caching for channels, manifests, streams, and ESPN sports data
-- Signed in-app update checks backed by GitHub Releases and Android's system installer
+## Your sports, all in one place
 
-## Architecture
+Open Rally to see what is live, what is coming up, and the moments you may have missed. Follow the leagues and teams you care about, browse the full schedule, or open a game for scores, stats, lineups, and play-by-play.
 
-- Presentation: Jetpack Compose, Compose for TV, MVVM, lifecycle-aware StateFlow collection
-- Domain: sports, stream, channel, quality, and matching models/use cases
-- Data: ESPN APIs, Stalker/Ministra and Xtream Codes middleware, Stremio addon APIs, Room, encrypted preferences
-- Playback: AndroidX Media3 ExoPlayer with low-memory load controls and constrained Multi-View tracks
-- Dependency injection: Hilt
+### Watch the way you want
 
-## Build
+Connect a compatible TV provider or streaming add-on you already use. Rally can organize live channels around games, switch sources during playback, and put up to four streams on screen at once. Multi-View can focus audio on the game you choose or show player stats across the games in your view.
 
-Requirements:
+### Made for the living room
 
-- Android Studio with JDK 17
-- Android SDK 34
+Rally is designed for Android TV and Google TV, with a clear, cinematic interface made for the TV remote. Browse live matchups, jump into highlights, set up your watchlist, and move between games without juggling separate sports apps.
 
-From the project root:
+## Get started
 
-```shell
-./gradlew testDebugUnitTest lintDebug assembleDebug
-```
+1. Download the latest APK from [Rally TV Beta 9](https://github.com/shivpatell25/rally/releases/latest).
+2. Install it on a compatible Android TV or Google TV device using your preferred sideloading method.
+3. Open **Settings → Sources** to connect a provider or add-on you are authorized to use.
+4. Browse the Home screen, follow your teams in **My Rally**, and start watching.
 
-For the shrunk and obfuscated release package:
+Rally supports Stalker/Ministra portals, Xtream Codes, M3U/M3U8 playlists, and Stremio add-ons. You can enter playlist or provider details in Settings; M3U/M3U8 playlists can be added by URL or imported from a file.
 
-```shell
-./gradlew assembleRelease
-```
+**Rally does not provide TV subscriptions, channels, IPTV credentials, or stream catalogs.** You must configure your own compatible services and are responsible for having permission to access their content. Availability and playback quality depend on those services and your network.
 
-Release signing is configured through the `RALLY_KEYSTORE_PATH`, `RALLY_KEYSTORE_PASSWORD`, `RALLY_KEY_ALIAS`, and `RALLY_KEY_PASSWORD` environment variables. Private signing material is never stored in Git. See [RELEASE.md](RELEASE.md) for the GitHub Releases process.
+## What Rally includes
 
-## Setup
+- Live scores, schedules, game details, team and player stats, and play-by-play
+- Recent highlights when clips are available from the sports data feed
+- Live channel matching, source selection, and full-screen playback
+- Multi-View for up to four games, with selectable audio and a player-stats view
+- Favorites, watchlists, reminders, search, and personalized team browsing
+- M3U/M3U8 playlist, Stalker/Ministra, Xtream Codes, and Stremio add-on support
 
-Open the app and choose the IPTV provider in Settings. For Stalker/Ministra, enter the portal URL and MAC address supplied by the provider. For Xtream Codes, enter the server URL, username, and password supplied by the provider. For M3U/M3U8, enter a playlist URL or choose a local playlist file, check it, then Save and Apply. Channel names, groups, logos and HTTP playback headers are retained; a single HLS manifest appears as one adaptive channel. Local playlist files must contain HTTP or HTTPS stream URLs. Provider details are runtime settings and do not require source edits. Stremio addon manifest URLs can be added from the same screen.
+Sports schedules, scores, statistics, and highlight availability come from third-party services. Rally is independent and is not affiliated with ESPN, Stremio, any league, team, broadcaster, IPTV provider, or device manufacturer. See the [content and provider details](CONTENT_SOURCES.md) and [privacy policy](PRIVACY.md).
 
-HTTP portals are supported because some legacy Stalker providers do not offer TLS. The settings screen warns when a portal is unencrypted. Prefer HTTPS whenever the provider supports it because HTTP credentials and viewing traffic can be intercepted on the network.
+## About this build
 
-## Performance profile
-
-The application is tuned for memory-constrained TV devices:
-
-- Home content appears without waiting for the IPTV catalog
-- Duplicate network loads are coalesced and short-lived caches reduce repeated requests
-- Local backdrops bypass the network image pipeline
-- Image, player, and Multi-View buffers are bounded
-- Background work is lifecycle-aware or application-scoped
-- Adaptive Multi-View streams are capped at 720p and 2.5 Mbps for two streams, or 480p and 1.2 Mbps for three or four streams, with a 30 fps limit when suitable source variants are available
-- Release builds enable R8 code shrinking and resource shrinking
-
-## Verification
-
-The redesign passes 88 unit tests and six playback/navigation tests on both the emulator and a physical Chromecast. No crashes were recorded during those checks. Home animation performance still needs work: the Chromecast recorded 21.28% delayed frames across six warmed Home transitions. See the [audit summary and screenshots](docs/qa/2026-09-30/README.md) for coverage and remaining release checks.
-
-## Data and privacy and credits
-
-The app does not ship IPTV credentials. Tokens are not written to logs, release HTTP logging is disabled, and request headers from third-party stream addons are allowlisted before playback. Users are responsible for using subscriptions and addons they are authorized to access.
-
-Credit to Jacob Halladay for testing (alpha) .ipa on Apple tvOS
-
-See the full [privacy policy](PRIVACY.md) and [content/provider disclosure](CONTENT_SOURCES.md).
+Rally TV Beta 9 is an Android TV test release. The APK is signed with the Rally Beta test key so it can update compatible Beta 8 test installations. App availability and behavior may change as Rally develops.
