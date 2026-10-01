@@ -101,7 +101,8 @@ class SelectBestStreamUseCase @Inject constructor(
                     guideTitle.isNotBlank() -> "Now playing: $guideTitle"
                     else -> match.matchBadge ?: "Unverified channel"
                 },
-                channel = channelWithGuide
+                channel = channelWithGuide,
+                headers = match.channel.streamHeaders
             )
         }
 

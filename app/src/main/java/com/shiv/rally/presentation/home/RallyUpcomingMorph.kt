@@ -30,6 +30,8 @@ import com.shiv.rally.domain.model.SportEvent
 import com.shiv.rally.presentation.common.RallyTvPalette
 import com.shiv.rally.presentation.theme.RallyBodyFont
 
+internal val CompactUpcomingHeight = 60.dp
+
 /** The same four events move from a horizontal preview into full-width guide rows.
  * Logos and text are measured before movement starts; no second screen is composed on Down.
  */
@@ -97,9 +99,9 @@ internal fun RallyUpcomingMorph(
                 }
             ) { measurables, constraints ->
                 val width = if (guide) constraints.maxWidth else compactWidth.roundToPx()
-                val rowHeight = if (guide) 34.dp.roundToPx() else 49.dp.roundToPx()
+                val rowHeight = if (guide) 34.dp.roundToPx() else CompactUpcomingHeight.roundToPx()
                 val rows = measurables.map { it.measure(Constraints.fixed(width, rowHeight)) }
-                val totalHeight = maxOf(49.dp.roundToPx(), (34.dp * events.size + (events.size - 1).dp).roundToPx())
+                val totalHeight = maxOf(CompactUpcomingHeight.roundToPx(), (34.dp * events.size + (events.size - 1).dp).roundToPx())
                 layout(constraints.maxWidth, totalHeight) {
                     val t = progress.value
                     rows.forEachIndexed { index, row ->
@@ -125,7 +127,7 @@ private fun MorphEvent(
             .drawBehind {
                 val t = progress.value
                 val width = compactWidth.toPx() + (fullWidth - compactWidth).toPx() * t
-                val height = 49.dp.toPx() + (34.dp - 49.dp).toPx() * t
+                val height = CompactUpcomingHeight.toPx() + (34.dp - CompactUpcomingHeight).toPx() * t
                 drawRoundRect(if (focused) RallyTvPalette.FocusSurface else Color(0x7310161C),
                     size = Size(width, height), cornerRadius = CornerRadius(6.dp.toPx()))
             }
@@ -136,14 +138,15 @@ private fun MorphEvent(
             AsyncImage(event.awayTeamBadge?.takeIf(String::isNotBlank) ?: event.awayTeam?.logoUrl, null, Modifier.size(28.dp), contentScale = ContentScale.Fit)
             AsyncImage(event.homeTeamBadge?.takeIf(String::isNotBlank) ?: event.homeTeam?.logoUrl, null, Modifier.size(28.dp), contentScale = ContentScale.Fit)
             val matchup = "${matchupTeamName(event.awayTeam?.name, event.league)} vs ${matchupTeamName(event.homeTeam?.name, event.league)}"
-            Text(matchup, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 9.5.sp, lineHeight = 11.sp,
+            Text(matchup, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 9.5.sp, lineHeight = 12.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.graphicsLayer { alpha = 1f - progress.value })
             Text(matchup, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 11.sp, lineHeight = 13.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.graphicsLayer { alpha = progress.value })
             Text(event.league.uppercase(), color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 8.sp,
-                lineHeight = 9.sp, letterSpacing = .5.sp,
+                lineHeight = 9.sp, letterSpacing = .2.sp,
                 modifier = Modifier.graphicsLayer { alpha = 1f - progress.value })
             Text(event.league.uppercase(), color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 9.sp,
                 lineHeight = 11.sp, letterSpacing = .6.sp,
@@ -170,16 +173,20 @@ private fun MorphEvent(
         val compactLeague = nodes[5].measure(Constraints.fixedWidth(70.dp.roundToPx()))
         val guideLeague = nodes[6].measure(Constraints.fixedWidth(88.dp.roundToPx()))
         val bell = nodes[7].measure(Constraints.fixed(27.dp.roundToPx(), 27.dp.roundToPx()))
+        val textGap = 2.dp.roundToPx()
+        val compactTextHeight = compactTitle.height + textGap + compactLeague.height
+        val compactTextY = 22.dp.roundToPx() + (away.height - compactTextHeight) / 2
+        val compactLeagueY = compactTextY + compactTitle.height + textGap
         layout(constraints.maxWidth, constraints.maxHeight) {
             val t = progress.value
             fun x(start: Dp, end: Dp) = blend(start.roundToPx(), end.roundToPx(), t)
             time.placeRelative(x(8.dp, 16.dp), x(3.dp, 10.dp))
-            away.placeRelative(x(8.dp, 128.dp), x(17.dp, 3.dp))
-            home.placeRelative(x(41.dp, 171.dp), x(17.dp, 3.dp))
-            compactTitle.placeRelative(x(76.dp, 229.dp), x(17.dp, 10.dp))
-            guideTitle.placeRelative(x(76.dp, 229.dp), x(17.dp, 10.dp))
-            compactLeague.placeRelative(x(76.dp, fullWidth - 120.dp), x(38.dp, 12.dp))
-            guideLeague.placeRelative(x(76.dp, fullWidth - 120.dp), x(38.dp, 12.dp))
+            away.placeRelative(x(8.dp, 128.dp), x(22.dp, 3.dp))
+            home.placeRelative(x(41.dp, 171.dp), x(22.dp, 3.dp))
+            compactTitle.placeRelative(x(76.dp, 229.dp), blend(compactTextY, 10.dp.roundToPx(), t))
+            guideTitle.placeRelative(x(76.dp, 229.dp), blend(compactTextY, 10.dp.roundToPx(), t))
+            compactLeague.placeRelative(x(76.dp, fullWidth - 120.dp), blend(compactLeagueY, 12.dp.roundToPx(), t))
+            guideLeague.placeRelative(x(76.dp, fullWidth - 120.dp), blend(compactLeagueY, 12.dp.roundToPx(), t))
             bell.placeRelative((fullWidth - 41.dp).roundToPx(), 3.dp.roundToPx())
         }
     }

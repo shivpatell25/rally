@@ -41,6 +41,8 @@ interface IptvRepository {
             .take(limit)
             .toList()
     suspend fun getChannelStreamUrl(channelId: String): String
+    suspend fun getChannelStreamHeaders(channelId: String): Map<String, String> = emptyMap()
+    suspend fun getChannelStreamMimeType(channelId: String): String? = null
     suspend fun getChannelGuide(channelId: String): ChannelGuide? = null
     fun clearMemoryCache() = Unit
 }

@@ -335,7 +335,7 @@ class MultiViewViewModel @Inject constructor(
         allChannels: List<IptvChannel>
     ): MultiViewSlot {
         var resolvedStreamUrl = ""
-        var resolvedHeaders: Map<String, String>? = null
+        var resolvedHeaders: Map<String, String>? = channel?.streamHeaders
         var resolvedChannel: IptvChannel? = channel
         var resolvedEvent: SportEvent? = event
         // A stream added from Live TV can still carry a game identity. Use
@@ -583,7 +583,7 @@ class MultiViewViewModel @Inject constructor(
         if (candidate == null && fallbackStream == null && fallbackChannel == null) return
         val selectedTarget = candidate?.playbackTarget ?: fallbackStream?.streamUrl ?: fallbackChannel!!.id
         val selectedChannel = candidate?.channel ?: fallbackChannel
-        val selectedHeaders = candidate?.headers ?: fallbackStream?.headers
+        val selectedHeaders = candidate?.headers ?: fallbackStream?.headers ?: selectedChannel?.streamHeaders
         val selectedTitle = candidate?.title ?: fallbackStream?.title ?: fallbackChannel?.name.orEmpty()
         val selectedQuality = candidate?.let(::sourceQualityLabel) ?: fallbackStream?.let { stream ->
             listOfNotNull(stream.quality, stream.bitrate).distinct().joinToString(" · ").ifBlank { "Adaptive" }

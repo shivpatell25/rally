@@ -131,14 +131,34 @@ class PlayerViewModelTest {
         assertEquals(event.id, state.event?.id)
     }
 
-    private fun createViewModel(handle: SavedStateHandle): PlayerViewModel = PlayerViewModel(
+    @Test
+    fun playlistChannelResolvesItsUrlAndHeadersWithoutStalkerAuthentication() = runTest(dispatcher) {
+        val playlistChannel = IptvChannel("m3u:channel", "1", "Stadium Feed", "Sports",
+            streamUrl = "https://cdn.example/feed?id=stadium", streamHeaders = mapOf("User-Agent" to "Provider Player"), streamMimeType = "application/x-mpegURL")
+        val playlistRepository = object : IptvRepository {
+            override suspend fun authenticate() = true
+            override suspend fun getChannels() = listOf(playlistChannel)
+            override suspend fun getChannelStreamUrl(channelId: String) = requireNotNull(playlistChannel.streamUrl)
+            override suspend fun getChannelStreamHeaders(channelId: String) = playlistChannel.streamHeaders
+            override suspend fun getChannelStreamMimeType(channelId: String) = playlistChannel.streamMimeType
+        }
+        val viewModel = createViewModel(SavedStateHandle(mapOf("channelId" to playlistChannel.id)), playlistRepository)
+        advanceUntilIdle()
+        val state = viewModel.uiState.value as PlayerUiState.Success
+        assertEquals(playlistChannel.streamUrl, state.streamUrl)
+        assertEquals(playlistChannel.streamHeaders, state.streamHeaders)
+        assertEquals(playlistChannel.streamMimeType, state.streamMimeType)
+        assertEquals(true, state.isExternalStream)
+    }
+
+    private fun createViewModel(handle: SavedStateHandle, repository: IptvRepository = iptvRepository): PlayerViewModel = PlayerViewModel(
         savedStateHandle = handle,
-        iptvRepository = iptvRepository,
+        iptvRepository = repository,
         sportsRepository = sportsRepository,
         matcherService = matcher,
         stremioRepository = stremioRepository,
         preferencesManager = preferences,
-        selectBestStream = SelectBestStreamUseCase(iptvRepository, stremioRepository, matcher),
+        selectBestStream = SelectBestStreamUseCase(repository, stremioRepository, matcher),
         ioDispatcher = dispatcher
     )
 }

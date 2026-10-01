@@ -539,8 +539,10 @@ private fun MultiViewSlotItem(
     var playbackError by remember(slot.slotId, slot.playbackRevision) { mutableStateOf<String?>(null) }
     var firstFrameRendered by remember(slot.slotId, slot.playbackRevision) { mutableStateOf(false) }
     var resolution by remember(slot.slotId, slot.playbackRevision) { mutableStateOf<String?>(null) }
-    val safeHeaders = remember(slot.streamHeaders) { sanitizedStreamHeaders(slot.streamHeaders) }
-    val isExternal = slot.channel == null
+    val safeHeaders = remember(slot.streamHeaders, slot.channel?.streamHeaders) {
+        sanitizedStreamHeaders(slot.streamHeaders ?: slot.channel?.streamHeaders)
+    }
+    val isExternal = slot.channel == null || slot.channel.id.startsWith("m3u:") || slot.channel.id.startsWith("xtream:")
     val initialMaxHeight = if (slotCount <= 2) 720 else 480
     val initialMaxWidth = if (slotCount <= 2) 1280 else 854
     val initialMaxBitrate = if (slotCount <= 2) 2_500_000 else 1_200_000
@@ -676,13 +678,13 @@ private fun MultiViewSlotItem(
         }
     }
 
-    LaunchedEffect(exoPlayer, slot.streamUrl, slot.playbackRevision) {
+    LaunchedEffect(exoPlayer, slot.streamUrl, slot.playbackRevision, slot.channel?.streamMimeType) {
         if (exoPlayer == null || slot.streamUrl.isBlank()) return@LaunchedEffect
         // Starting several hardware decoders on the same frame causes large CPU,
         // allocator, and network spikes on low-end Android TV devices.
         delay((slotIndex * 140L).coerceAtMost(420L))
         runCatching {
-            exoPlayer.setMediaItem(MediaItem.fromUri(Uri.parse(slot.streamUrl)))
+            exoPlayer.setMediaItem(MediaItem.Builder().setUri(Uri.parse(slot.streamUrl)).setMimeType(slot.channel?.streamMimeType).build())
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
         }.onFailure { playbackError = it.localizedMessage ?: "Unable to start stream" }

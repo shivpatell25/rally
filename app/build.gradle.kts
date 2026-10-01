@@ -24,9 +24,9 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        // Beta 8 release after the Rally TV redesign and multiview audit.
-        versionCode = 9
-        versionName = "1.0-beta8"
+        // Beta 9 adds M3U playlists and final Home / Game View polish.
+        versionCode = 10
+        versionName = "1.0-beta9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -98,6 +98,14 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
         get() = sharedPreferences.getString("xtream_password", "") ?: ""
         set(value) = sharedPreferences.edit().putString("xtream_password", value).apply()
 
+    var m3uPlaylistUrl: String
+        get() = sharedPreferences.getString("m3u_playlist_url", "").orEmpty()
+        set(value) = sharedPreferences.edit().putString("m3u_playlist_url", value.trim()).apply()
+
+    var m3uPlaylistName: String
+        get() = sharedPreferences.getString("m3u_playlist_name", "").orEmpty()
+        set(value) = sharedPreferences.edit().putString("m3u_playlist_name", value.trim()).apply()
+
     var macAddress: String
         get() {
             val saved = sharedPreferences.getString("mac_address", "").orEmpty().trim()
@@ -430,7 +438,7 @@ class PreferencesManager @Inject constructor(@ApplicationContext context: Contex
         }
 
     fun hasCredentials(): Boolean {
-        return setupComplete || portalUrl.isNotEmpty() ||
+        return setupComplete || portalUrl.isNotEmpty() || m3uPlaylistUrl.isNotEmpty() || xtreamServerUrl.isNotEmpty() ||
                 stremioAddonUrls.isNotEmpty()
     }
 

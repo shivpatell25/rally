@@ -9,6 +9,8 @@ import com.shiv.rally.BuildConfig
 import com.shiv.rally.data.update.RallyUpdateManager
 import com.shiv.rally.data.update.RallyUpdateState
 import com.shiv.rally.domain.model.IptvProvider
+import com.shiv.rally.data.remote.m3u.M3uPlaylistParser
+import com.shiv.rally.data.remote.m3u.M3uPlaylistSource
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +26,8 @@ class SettingsViewModel @Inject constructor(
     private val iptvRepository: com.shiv.rally.domain.repository.IptvRepository,
     private val preflightProbe: com.shiv.rally.data.remote.network.StreamPreflightProbe,
     private val diagnosticsStore: com.shiv.rally.data.local.RallyDiagnostics,
-    private val updateManager: RallyUpdateManager
+    private val updateManager: RallyUpdateManager,
+    private val playlistSource: M3uPlaylistSource
 ) : ViewModel() {
 
     private val _iptvProvider = MutableStateFlow(preferencesManager.iptvProvider)
@@ -44,6 +47,16 @@ class SettingsViewModel @Inject constructor(
 
     private val _xtreamPassword = MutableStateFlow(preferencesManager.xtreamPassword)
     val xtreamPassword: StateFlow<String> = _xtreamPassword.asStateFlow()
+
+    private val _m3uPlaylistUrl = MutableStateFlow(preferencesManager.m3uPlaylistUrl)
+    val m3uPlaylistUrl = _m3uPlaylistUrl.asStateFlow()
+    private val _m3uPlaylistName = MutableStateFlow(preferencesManager.m3uPlaylistName)
+    val m3uPlaylistName = _m3uPlaylistName.asStateFlow()
+    private val _playlistCheck = MutableStateFlow<String?>(null)
+    val playlistCheck = _playlistCheck.asStateFlow()
+    private val _playlistChecking = MutableStateFlow(false)
+    val playlistChecking = _playlistChecking.asStateFlow()
+    private var playlistCheckJob: kotlinx.coroutines.Job? = null
 
     private val _stremioAddonUrls = MutableStateFlow(preferencesManager.stremioAddonUrls)
     val stremioAddonUrls: StateFlow<List<String>> = _stremioAddonUrls.asStateFlow()
@@ -112,6 +125,58 @@ class SettingsViewModel @Inject constructor(
     fun updateIptvProvider(provider: IptvProvider) {
         _iptvProvider.value = provider
         _configurationError.value = null
+    }
+
+    fun updateM3uPlaylistUrl(url: String) {
+        playlistCheckJob?.cancel()
+        _m3uPlaylistUrl.value = url
+        _playlistCheck.value = null
+        _playlistChecking.value = false
+        _configurationError.value = null
+    }
+
+    fun updateM3uPlaylistName(name: String) {
+        _m3uPlaylistName.value = name
+    }
+
+    fun selectM3uFile(uri: String, name: String) {
+        updateM3uPlaylistUrl(uri)
+        updateM3uPlaylistName(name.removeSuffix(".m3u8").removeSuffix(".m3u"))
+        _iptvProvider.value = IptvProvider.M3U
+    }
+
+    fun reportPlaylistImportError() {
+        _configurationError.value = "This file could not be opened. Choose the playlist again."
+    }
+
+    fun reportPlaylistPickerUnavailable() {
+        _configurationError.value = "A file picker is unavailable on this TV. Enter a playlist URL instead."
+    }
+
+    fun checkPlaylist() {
+        if (_playlistChecking.value) return
+        val url = _m3uPlaylistUrl.value.trim()
+        val name = _m3uPlaylistName.value.trim()
+        if (!M3uPlaylistParser.isSupportedSource(url)) {
+            _playlistCheck.value = "Enter a valid HTTP or HTTPS playlist URL, or choose a playlist file."
+            return
+        }
+        _playlistChecking.value = true
+        _playlistCheck.value = null
+        playlistCheckJob = viewModelScope.launch {
+            try {
+                val channels = kotlinx.coroutines.withContext(Dispatchers.IO) { playlistSource.load(url, name) }
+                _playlistCheck.value = "Ready · ${channels.size} ${if (channels.size == 1) "channel" else "channels"}. Save and Apply to use this playlist."
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _playlistCheck.value = when (error) {
+                    is IllegalArgumentException -> error.message
+                    is SecurityException -> "File access expired. Choose the playlist again."
+                    else -> "Unable to load the playlist. Check the address and your connection."
+                }
+            } finally { _playlistChecking.value = false }
+        }
     }
     
     fun updateMacAddress(mac: String) {
@@ -253,7 +318,12 @@ class SettingsViewModel @Inject constructor(
         _providerDiagnostics.value = ProviderDiagnosticsState(running = true, lastLocalIssue = diagnosticsStore.read().lastOrNull()?.message)
         viewModelScope.launch(Dispatchers.IO) {
             val portal = async {
-                if (_portalUrl.value.isBlank()) "Not configured" else runCatching {
+                val configured = when (preferencesManager.iptvProvider) {
+                    IptvProvider.STALKER -> preferencesManager.portalUrl.isNotBlank()
+                    IptvProvider.XTREAM -> preferencesManager.xtreamServerUrl.isNotBlank()
+                    IptvProvider.M3U -> preferencesManager.m3uPlaylistUrl.isNotBlank()
+                }
+                if (!configured) "Not configured · Save and Apply first" else runCatching {
                     if (!iptvRepository.authenticate()) "Sign-in failed"
                     else {
                         val count = iptvRepository.getChannels().size
@@ -371,6 +441,10 @@ class SettingsViewModel @Inject constructor(
                 return false
             }
         }
+        if (_iptvProvider.value == IptvProvider.M3U && !M3uPlaylistParser.isSupportedSource(_m3uPlaylistUrl.value)) {
+            _configurationError.value = "Enter a valid HTTP or HTTPS playlist URL, or choose an M3U/M3U8 file."
+            return false
+        }
         if (_stremioAddonUrls.value.any { PortalUrlNormalizer.normalizeAddon(it) == null }) {
             _configurationError.value = "One or more Stremio addon URLs are invalid."
             return false
@@ -384,6 +458,8 @@ class SettingsViewModel @Inject constructor(
         preferencesManager.xtreamServerUrl = cleanXtreamUrl
         preferencesManager.xtreamUsername = _xtreamUsername.value.trim()
         preferencesManager.xtreamPassword = _xtreamPassword.value
+        preferencesManager.m3uPlaylistUrl = _m3uPlaylistUrl.value
+        preferencesManager.m3uPlaylistName = _m3uPlaylistName.value
         preferencesManager.stremioAddonUrls = _stremioAddonUrls.value
         preferencesManager.serialNumber = _serialNumber.value.trim()
         preferencesManager.deviceId = _deviceId.value.trim()

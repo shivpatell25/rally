@@ -21,8 +21,8 @@ import java.time.Instant
 class PlaybackMenusEmulatorTest {
     @get:Rule val compose = createComposeRule()
     private val stream = "https://cmp-espn.media.dssott.com/opp/hls/espn/wsc/2026/0930/0eedac50-34a5-4a33-933b-afd99c16a5aa/0eedac50-34a5-4a33-933b-afd99c16a5aa/playlist.m3u8"
-    private val event = SportEvent("audit-game", "Chiefs vs Ravens", Team("kc", "Kansas City Chiefs", "KC"), Team("bal", "Baltimore Ravens", "BAL"), Instant.now(),
-        EventStatus.LIVE, scoreHome = 24, scoreAway = 20, venue = "M&T Bank Stadium", sport = "Football", league = "NFL", gameStatusDetail = "4th · 3:42",
+    private val event = SportEvent("audit-game", "Chiefs vs Ravens", Team("bal", "Baltimore Ravens", "BAL", "https://a.espncdn.com/i/teamlogos/nfl/500/bal.png"), Team("kc", "Kansas City Chiefs", "KC", "https://a.espncdn.com/i/teamlogos/nfl/500/kc.png"), Instant.now(),
+        EventStatus.LIVE, scoreHome = 20, scoreAway = 24, venue = "M&T Bank Stadium", sport = "Football", league = "NFL", gameStatusDetail = "4th · 3:42",
         playerStatTables = listOf(PlayerStatTable(teamName = "Chiefs", teamAbbreviation = "KC", category = "passing", labels = listOf("C/ATT", "YDS", "TD", "INT"), rows = (1..25).map { PlayerStatRow(athleteId = "$it", displayName = "Player $it", position = "QB", stats = listOf("21/30", "284", "2", "0")) })))
     private fun click(text: String) { compose.onAllNodesWithText(text, ignoreCase = true, substring = true).onFirst().performClick(); compose.mainClock.advanceTimeBy(400) }
     private fun capture(name: String) {
@@ -38,6 +38,10 @@ class PlaybackMenusEmulatorTest {
         compose.mainClock.advanceTimeBy(1_000)
         Thread.sleep(5_000)
         capture("game-view")
+        compose.onNodeWithText("KC").assertIsDisplayed()
+        compose.onNodeWithText("BAL").assertIsDisplayed()
+        compose.onNodeWithText("24").assertIsDisplayed()
+        compose.onNodeWithText("20").assertIsDisplayed()
         // D-pad traverses the actual tab focus targets, not just touch actions.
         compose.onNodeWithText("Stats").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
         compose.onNodeWithText("Stats").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }

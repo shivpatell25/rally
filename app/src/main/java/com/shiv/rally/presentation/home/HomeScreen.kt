@@ -48,7 +48,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -363,7 +362,7 @@ private fun HomeContent(
             val sports = sections[3]
             val expandedBody = if (startingSoon.isEmpty()) 49.dp.roundToPx()
                 else (34.dp * startingSoon.size + (startingSoon.size - 1).dp).roundToPx()
-            val compactHeight = upcoming.height - maxOf(0, expandedBody - 49.dp.roundToPx())
+            val compactHeight = upcoming.height - maxOf(0, expandedBody - CompactUpcomingHeight.roundToPx())
             layout(constraints.maxWidth, constraints.maxHeight) {
                 val t = transitionProgress.value
                 val heroOffset = (hero.height * t).toInt()
@@ -634,30 +633,6 @@ private fun RallyBrowseSportTile(league: String, label: String, onClick: () -> U
 private fun BrowseSportMark(league: String) {
     val logo = getLeagueLogoResource(league)
     when {
-        league == "Soccer" -> Canvas(Modifier.size(29.dp)) {
-            drawCircle(Color(0xFFF1F3F5), radius = size.minDimension * .48f)
-            fun patch(at: Offset, radius: Float, rotation: Double) {
-                val path = Path()
-                repeat(5) { index ->
-                    val angle = Math.toRadians(rotation + index * 72)
-                    val x = at.x + kotlin.math.cos(angle).toFloat() * radius
-                    val y = at.y + kotlin.math.sin(angle).toFloat() * radius
-                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                }
-                path.close()
-                drawPath(path, Color(0xFF151B20))
-            }
-            patch(center, size.minDimension * .16f, -90.0)
-            repeat(5) { index ->
-                val angle = Math.toRadians((-90.0 + index * 72.0))
-                val point = Offset(
-                    center.x + kotlin.math.cos(angle).toFloat() * size.minDimension * .34f,
-                    center.y + kotlin.math.sin(angle).toFloat() * size.minDimension * .34f
-                )
-                patch(point, size.minDimension * .095f, -90.0 + index * 72)
-                drawLine(Color(0xFF151B20), center, point, 1.dp.toPx())
-            }
-        }
         logo != null -> Image(
             painterResource(logo), null, Modifier.size(29.dp),
             contentScale = ContentScale.Fit
@@ -676,16 +651,6 @@ private fun BrowseSportMark(league: String) {
             fontWeight = FontWeight.Black,
             letterSpacing = (-.6).sp
         )
-        else -> Canvas(Modifier.size(26.dp)) {
-            drawCircle(Color(0xFFD9F36A))
-            val seam = Path().apply {
-                moveTo(size.width * .2f, 0f)
-                cubicTo(size.width * .64f, size.height * .2f, size.width * .64f, size.height * .8f, size.width * .2f, size.height)
-                moveTo(size.width * .8f, 0f)
-                cubicTo(size.width * .36f, size.height * .2f, size.width * .36f, size.height * .8f, size.width * .8f, size.height)
-            }
-            drawPath(seam, Color(0xFF637733), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
-        }
     }
 }
 
@@ -1123,6 +1088,8 @@ fun getLeagueLogoResource(league: String): Int? = when (league.uppercase()) {
     "LA LIGA" -> R.drawable.league_mark_laliga
     "SERIE A" -> R.drawable.league_mark_seriea
     "MLS" -> R.drawable.league_mark_mls
+    "SOCCER" -> R.drawable.sport_mark_soccer
+    "TENNIS" -> R.drawable.sport_mark_tennis
     else -> null
 }
 

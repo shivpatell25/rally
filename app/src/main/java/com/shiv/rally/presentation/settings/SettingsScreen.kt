@@ -1,10 +1,12 @@
-@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class)
+@file:OptIn(androidx.tv.material3.ExperimentalTvMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 
 package com.shiv.rally.presentation.settings
 
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -86,6 +88,10 @@ fun SettingsScreen(
     val xtreamServerUrl by viewModel.xtreamServerUrl.collectAsStateWithLifecycle()
     val xtreamUsername by viewModel.xtreamUsername.collectAsStateWithLifecycle()
     val xtreamPassword by viewModel.xtreamPassword.collectAsStateWithLifecycle()
+    val playlistUrl by viewModel.m3uPlaylistUrl.collectAsStateWithLifecycle()
+    val playlistName by viewModel.m3uPlaylistName.collectAsStateWithLifecycle()
+    val playlistCheck by viewModel.playlistCheck.collectAsStateWithLifecycle()
+    val playlistChecking by viewModel.playlistChecking.collectAsStateWithLifecycle()
     val serialNumber by viewModel.serialNumber.collectAsStateWithLifecycle()
     val deviceId by viewModel.deviceId.collectAsStateWithLifecycle()
     val addonUrls by viewModel.stremioAddonUrls.collectAsStateWithLifecycle()
@@ -109,6 +115,18 @@ fun SettingsScreen(
     val supportMessage by viewModel.supportMessage.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    val playlistImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: "My Playlist"
+                viewModel.selectM3uFile(uri.toString(), name)
+            }.onFailure { viewModel.reportPlaylistImportError() }
+        }
+    }
 
     val diagnosticsExport = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/plain")
@@ -169,6 +187,10 @@ fun SettingsScreen(
                     xtreamServerUrl = xtreamServerUrl,
                     xtreamUsername = xtreamUsername,
                     xtreamPassword = xtreamPassword,
+                    playlistUrl = playlistUrl,
+                    playlistName = playlistName,
+                    playlistCheck = playlistCheck,
+                    playlistChecking = playlistChecking,
                     serialNumber = serialNumber,
                     deviceId = deviceId,
                     addonUrls = addonUrls,
@@ -179,6 +201,13 @@ fun SettingsScreen(
                     onXtreamServerChange = viewModel::updateXtreamServerUrl,
                     onXtreamUsernameChange = viewModel::updateXtreamUsername,
                     onXtreamPasswordChange = viewModel::updateXtreamPassword,
+                    onPlaylistUrlChange = viewModel::updateM3uPlaylistUrl,
+                    onPlaylistNameChange = viewModel::updateM3uPlaylistName,
+                    onChoosePlaylist = {
+                        try { playlistImport.launch(arrayOf("*/*")) }
+                        catch (_: android.content.ActivityNotFoundException) { viewModel.reportPlaylistPickerUnavailable() }
+                    },
+                    onCheckPlaylist = viewModel::checkPlaylist,
                     onSerialChange = viewModel::updateSerialNumber,
                     onDeviceChange = viewModel::updateDeviceId,
                     onNewAddonChange = viewModel::updateNewAddonUrl,
@@ -481,6 +510,10 @@ private fun SourcesSettings(
     xtreamServerUrl: String,
     xtreamUsername: String,
     xtreamPassword: String,
+    playlistUrl: String,
+    playlistName: String,
+    playlistCheck: String?,
+    playlistChecking: Boolean,
     serialNumber: String,
     deviceId: String,
     addonUrls: List<String>,
@@ -491,6 +524,10 @@ private fun SourcesSettings(
     onXtreamServerChange: (String) -> Unit,
     onXtreamUsernameChange: (String) -> Unit,
     onXtreamPasswordChange: (String) -> Unit,
+    onPlaylistUrlChange: (String) -> Unit,
+    onPlaylistNameChange: (String) -> Unit,
+    onChoosePlaylist: () -> Unit,
+    onCheckPlaylist: () -> Unit,
     onSerialChange: (String) -> Unit,
     onDeviceChange: (String) -> Unit,
     onNewAddonChange: (String) -> Unit,
@@ -506,6 +543,7 @@ private fun SourcesSettings(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SettingsButton("Stalker / Ministra", { onProviderChange(IptvProvider.STALKER) }, selected = iptvProvider == IptvProvider.STALKER, modifier = Modifier.weight(1f))
                 SettingsButton("Xtream Codes", { onProviderChange(IptvProvider.XTREAM) }, selected = iptvProvider == IptvProvider.XTREAM, modifier = Modifier.weight(1f))
+                SettingsButton("M3U / M3U8", { onProviderChange(IptvProvider.M3U) }, selected = iptvProvider == IptvProvider.M3U, modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(16.dp))
             if (iptvProvider == IptvProvider.XTREAM) {
@@ -517,6 +555,27 @@ private fun SourcesSettings(
                 }
                 Spacer(Modifier.height(9.dp))
                 Text("Use the provider's server address only, for example https://provider.example:8080.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp)
+            } else if (iptvProvider == IptvProvider.M3U) {
+                if (playlistUrl.startsWith("content://")) {
+                    Text("Selected file: ${playlistName.ifBlank { "My Playlist" }}", color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 13.sp)
+                    Spacer(Modifier.height(10.dp))
+                    SettingsButton("Use a URL instead", { onPlaylistUrlChange("") })
+                } else {
+                    SettingsField(playlistUrl, onPlaylistUrlChange, "Playlist or HLS URL", KeyboardType.Uri)
+                }
+                Spacer(Modifier.height(12.dp))
+                SettingsField(playlistName, onPlaylistNameChange, "Playlist name (optional)")
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SettingsButton("Choose M3U / M3U8 file", onChoosePlaylist)
+                    SettingsButton(if (playlistChecking) "Checking playlist…" else "Check playlist", onCheckPlaylist, enabled = !playlistChecking)
+                }
+                Spacer(Modifier.height(9.dp))
+                Text("Add a channel playlist by URL or file. A single M3U8 stream appears as one channel in Live TV.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp)
+                playlistCheck?.let {
+                    Spacer(Modifier.height(9.dp))
+                    Text(it, color = RallyTvPalette.Text, fontFamily = RallyBodyFont, fontSize = 12.sp)
+                }
             } else {
                 SettingsField(portalUrl, onPortalChange, "Portal URL", KeyboardType.Uri)
                 if (portalUrl.startsWith("http://", true)) {
@@ -750,6 +809,7 @@ private fun SettingsButton(
     modifier: Modifier = Modifier
 ) {
     var focused by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
     Row(
         modifier.onFocusChanged { focused = it.isFocused }
             .rallyTvFocus(focused)
@@ -763,7 +823,7 @@ private fun SettingsButton(
                     else -> Color.Transparent
                 }
             )
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled) { keyboard?.hide(); onClick() }
             .focusable(enabled = enabled)
             .padding(horizontal = 14.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.Center,

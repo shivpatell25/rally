@@ -296,6 +296,7 @@ fun PlayerScreen(
             otherLiveEvents = current.otherLiveEvents,
             isSwitchingGame = current.isSwitchingGame,
             streamHeaders = current.streamHeaders,
+            streamMimeType = current.streamMimeType,
             isExternalStream = current.isExternalStream,
             recoveryAttempt = current.recoveryAttempt,
             recoveryStatus = current.recoveryStatus,
@@ -361,6 +362,7 @@ fun PlayerContent(
     otherLiveEvents: List<SportEvent>,
     isSwitchingGame: Boolean = false,
     streamHeaders: Map<String, String>? = null,
+    streamMimeType: String? = null,
     isExternalStream: Boolean = false,
     recoveryAttempt: Int = 0,
     recoveryStatus: String? = null,
@@ -618,7 +620,7 @@ fun PlayerContent(
         }
     }
 
-    LaunchedEffect(exoPlayer, streamUrl) {
+    LaunchedEffect(exoPlayer, streamUrl, streamMimeType) {
         streamSpecs = VideoStreamSpecs()
         playbackError = null
         firstFrameRendered = false
@@ -628,6 +630,7 @@ fun PlayerContent(
             runCatching {
                 val mediaItem = MediaItem.Builder()
                     .setUri(Uri.parse(streamUrl))
+                    .setMimeType(streamMimeType)
                     .apply {
                         if (lowLatencyMode && event?.isLive() == true) {
                             setLiveConfiguration(
@@ -1530,29 +1533,7 @@ private fun GameViewChrome(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (event != null) {
-                AsyncImage(event.awayTeamBadge ?: event.awayTeam?.logoUrl, null, Modifier.size(40.dp), contentScale = ContentScale.Fit)
-                Spacer(Modifier.width(5.dp))
-                Column(Modifier.width(92.dp)) {
-                    Text(matchupTeamName(event.awayTeam?.name, event.league), color = RallyTvPalette.Text, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(event.liveStats["${event.awayTeam?.abbreviation} Record"].orEmpty(), color = RallyTvPalette.Muted, fontSize = 9.sp)
-                }
-                Text("${event.scoreAway ?: "–"}", color = RallyTvPalette.Text, fontSize = 29.sp, fontWeight = FontWeight.Bold)
-                Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (event.isLive()) Text("● LIVE", color = RallyTvPalette.Live, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    else Text(event.league, color = RallyTvPalette.Muted, fontSize = 11.sp)
-                    Text(
-                        if (event.status == EventStatus.NOT_STARTED) java.time.format.DateTimeFormatter.ofPattern("EEE · h:mm a").withZone(java.time.ZoneId.systemDefault()).format(event.startTime)
-                        else event.gameStatusDetail.orEmpty(),
-                        color = RallyTvPalette.Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text("${event.scoreHome ?: "–"}", color = RallyTvPalette.Text, fontSize = 29.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(5.dp))
-                Column(Modifier.width(92.dp)) {
-                    Text(matchupTeamName(event.homeTeam?.name, event.league), color = RallyTvPalette.Text, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(event.liveStats["${event.homeTeam?.abbreviation} Record"].orEmpty(), color = RallyTvPalette.Muted, fontSize = 9.sp)
-                }
-                AsyncImage(event.homeTeamBadge ?: event.homeTeam?.logoUrl, null, Modifier.size(40.dp), contentScale = ContentScale.Fit)
+                RallyGameScoreHeader(event, Modifier.width(480.dp))
             } else {
                 Text(currentChannel?.name ?: "Live stream", color = RallyTvPalette.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }

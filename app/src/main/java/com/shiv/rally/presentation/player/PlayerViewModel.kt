@@ -155,12 +155,13 @@ class PlayerViewModel @Inject constructor(
             try {
                 activeChannelId = channelTarget
                 val decodedChannelId = decodePlayerTarget(channelTarget)
-                val isExternalStream = (decodedChannelId.startsWith("http://") || decodedChannelId.startsWith("https://")) &&
+                val directUrl = (decodedChannelId.startsWith("http://") || decodedChannelId.startsWith("https://")) &&
                     !decodedChannelId.contains("localhost")
+                val isExternalStream = directUrl || decodedChannelId.startsWith("m3u:") || decodedChannelId.startsWith("xtream:")
 
                 // If channelId is already an external direct stream URL (from Stremio), use it directly.
                 // Otherwise (numeric ID or localhost/ffrt Stalker cmd), resolve via Stalker createLink
-                val streamUrl = if (isExternalStream) {
+                val streamUrl = if (directUrl) {
                     decodedChannelId
                 } else {
                     iptvRepository.getChannelStreamUrl(decodedChannelId)
@@ -178,7 +179,8 @@ class PlayerViewModel @Inject constructor(
                     stremioStreams = precomputedStremio.orEmpty(),
                     streamCandidates = precomputedCandidates.orEmpty(),
                     isSwitchingGame = false,
-                    streamHeaders = initialHeaders,
+                    streamHeaders = initialHeaders ?: if (directUrl) null else iptvRepository.getChannelStreamHeaders(decodedChannelId),
+                    streamMimeType = if (directUrl) null else iptvRepository.getChannelStreamMimeType(decodedChannelId),
                     isExternalStream = isExternalStream,
                     recoveryAttempt = recoveryAttempt,
                     recoveryStatus = "Trying another verified source…".takeIf { recoveryAttempt > 0 },
@@ -446,6 +448,7 @@ sealed class PlayerUiState {
         val streamCandidates: List<StreamCandidate> = emptyList(),
         val isSwitchingGame: Boolean = false,
         val streamHeaders: Map<String, String>? = null,
+        val streamMimeType: String? = null,
         val isExternalStream: Boolean = false,
         val recoveryAttempt: Int = 0,
         val recoveryStatus: String? = null,

@@ -95,6 +95,11 @@ class AppAuditEmulatorTest {
             compose.onNodeWithText(title).assertIsDisplayed()
             capture("highlight-player-title")
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            compose.waitForIdle()
+            // Back closes a visible player overlay before leaving playback.
+            if (compose.onAllNodesWithText("The biggest moments").fetchSemanticsNodes().isEmpty()) {
+                InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            }
             waitText("The biggest moments")
         }
         nav("My Rally")

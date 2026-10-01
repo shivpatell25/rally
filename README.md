@@ -13,7 +13,7 @@ Rally is a sports-first Android TV app. It combines ESPN schedules and live data
 - My Rally combines followed teams, saved events, and upcoming games
 - ESPN-backed scores, box scores, player data, play-by-play, scoring moments, and available highlight clips
 - Automatic matching between events and IPTV channels
-- Stalker/Ministra and Xtream Codes IPTV provider support
+- Stalker/Ministra, Xtream Codes, and M3U/M3U8 IPTV provider support
 - Stremio addon stream discovery and source switching
 - Split Game View pairs live video with score, status, source/quality metadata, current drive, stats, and leaders
 - Game View controls include play/pause, restart, full screen, source selection, audio, captions, and Multi-View; the full-screen overlay also provides diagnostics
@@ -55,7 +55,7 @@ Release signing is configured through the `RALLY_KEYSTORE_PATH`, `RALLY_KEYSTORE
 
 ## Setup
 
-Open the app and choose the IPTV provider in Settings. For Stalker/Ministra, enter the portal URL and MAC address supplied by the provider. For Xtream Codes, enter the server URL, username, and password supplied by the provider. Provider details are runtime settings and do not require source edits. Stremio addon manifest URLs can be added from the same screen.
+Open the app and choose the IPTV provider in Settings. For Stalker/Ministra, enter the portal URL and MAC address supplied by the provider. For Xtream Codes, enter the server URL, username, and password supplied by the provider. For M3U/M3U8, enter a playlist URL or choose a local playlist file, check it, then Save and Apply. Channel names, groups, logos and HTTP playback headers are retained; a single HLS manifest appears as one adaptive channel. Local playlist files must contain HTTP or HTTPS stream URLs. Provider details are runtime settings and do not require source edits. Stremio addon manifest URLs can be added from the same screen.
 
 HTTP portals are supported because some legacy Stalker providers do not offer TLS. The settings screen warns when a portal is unencrypted. Prefer HTTPS whenever the provider supports it because HTTP credentials and viewing traffic can be intercepted on the network.
 

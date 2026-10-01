@@ -126,7 +126,8 @@ enum class EventStatus {
 /** IPTV middleware selected by the user in Settings. */
 enum class IptvProvider {
     STALKER,
-    XTREAM
+    XTREAM,
+    M3U
 }
 
 @Immutable
@@ -139,7 +140,9 @@ data class IptvChannel(
     val streamUrl: String? = null,
     val guide: ChannelGuide? = null,
     val supportsCatchUp: Boolean = false,
-    val archiveDurationHours: Int? = null
+    val archiveDurationHours: Int? = null,
+    val streamHeaders: Map<String, String> = emptyMap(),
+    val streamMimeType: String? = null
 )
 
 @Immutable
