@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +64,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -249,6 +251,7 @@ private fun VideoPlayerSurface(
         // Android 14's SurfaceView/Compose synchronization can leave the decoded
         // picture obscured or cropped. Embed that surface in the UI layer on API 34;
         // other TV versions retain the lower-cost external video surface.
+        key(exoPlayer) {
         if (android.os.Build.VERSION.SDK_INT == 34) {
             AndroidEmbeddedExternalSurface(
                 modifier = Modifier.width(surfaceWidth).height(surfaceHeight),
@@ -260,6 +263,7 @@ private fun VideoPlayerSurface(
                 zOrder = AndroidExternalSurfaceZOrder.MediaOverlay,
                 onInit = bindSurface
             )
+        }
         }
         AndroidView(
             factory = { context -> SubtitleView(context).apply {
@@ -286,6 +290,7 @@ fun PlayerScreen(
         is PlayerUiState.Success -> PlayerContent(
             clipTitle = viewModel.clipTitle,
             streamUrl = current.streamUrl,
+            playbackRequestId = current.playbackRequestId,
             macAddress = current.macAddress,
             token = current.token,
             event = current.event,
@@ -310,7 +315,7 @@ fun PlayerScreen(
             onSwitchStream = viewModel::switchStream,
             onPlaybackReady = viewModel::reportPlaybackReady,
             onPlaybackStall = viewModel::reportPlaybackStall,
-            onPlaybackFailure = viewModel::recoverFromPlaybackFailure,
+            onPlaybackFailure = { viewModel.recoverFromPlaybackFailure(it, current.playbackRequestId) },
             onNavigateToMultiView = onNavigateToMultiView
         )
     }
@@ -371,6 +376,7 @@ fun PlayerContent(
     adaptiveQualityEnabled: Boolean = true,
     audioNormalizationEnabled: Boolean = true,
     sourceHealthScore: Int = 0,
+    playbackRequestId: Long = 0,
     onBack: () -> Unit,
     onSelectOtherEvent: (String) -> Unit,
     onSwitchStream: (String) -> Unit = {},
@@ -380,12 +386,19 @@ fun PlayerContent(
     onNavigateToMultiView: (channelId: String, eventId: String?, pairedEventId: String?) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
+    val playbackView = LocalView.current
+    DisposableEffect(playbackView) {
+        val previous = playbackView.keepScreenOn
+        playbackView.keepScreenOn = true
+        onDispose { playbackView.keepScreenOn = previous }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
-    var controlsVisible by remember(streamUrl) { mutableStateOf(event == null) }
-    var gameViewVisible by remember(streamUrl) { mutableStateOf(event != null) }
-    var gameViewOverlayVisible by remember(streamUrl) { mutableStateOf(event != null) }
-    var currentHighlightsVisible by remember(streamUrl) { mutableStateOf(false) }
-    var defaultPresentationApplied by remember(streamUrl) { mutableStateOf(event != null) }
+    var controlsVisible by remember { mutableStateOf(event == null) }
+    var gameViewVisible by remember { mutableStateOf(event != null) }
+    var gameViewOverlayVisible by remember { mutableStateOf(event != null) }
+    var currentHighlightsVisible by remember { mutableStateOf(false) }
+    var defaultPresentationApplied by remember { mutableStateOf(event != null) }
+    var selectedHighlight by remember { mutableStateOf<HighlightClip?>(null) }
     var sourcePickerVisible by remember { mutableStateOf(false) }
     var selectedOtherEvent by remember { mutableStateOf<SportEvent?>(null) }
     var playbackError by remember { mutableStateOf<String?>(null) }
@@ -394,7 +407,6 @@ fun PlayerContent(
     var diagnosticsVisible by remember { mutableStateOf(false) }
     var diagnosticsSnapshot by remember { mutableStateOf(PlaybackDiagnostics()) }
     var canRestart by remember(streamUrl) { mutableStateOf(false) }
-    var firstFrameRendered by remember(streamUrl) { mutableStateOf(false) }
     var interactionVersion by remember { mutableIntStateOf(0) }
     val rootFocus = remember { FocusRequester() }
     val controlFocus = remember { FocusRequester() }
@@ -419,7 +431,7 @@ fun PlayerContent(
     val playbackProfile = remember(context) { resolvePlaybackProfile(context) }
     var qualityFallbackActive by remember(streamUrl) { mutableStateOf(false) }
     var liveWindowRecoveryUsed by remember(streamUrl) { mutableStateOf(false) }
-    val playbackSession = remember(context, streamUrl, safeHeaders, isExternalStream, macAddress, token, playbackProfile, lowLatencyMode) {
+    val playbackSession = remember(context, playbackProfile, lowLatencyMode) {
         val sessionTrackSelector = DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
@@ -434,6 +446,24 @@ fun PlayerContent(
                     .setAllowVideoMixedMimeTypeAdaptiveness(true)
             )
         }
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                if (lowLatencyMode) 2_500 else 6_000,
+                if (lowLatencyMode) 10_000 else 20_000,
+                if (lowLatencyMode) 500 else 800,
+                if (lowLatencyMode) 1_000 else 1_500
+            )
+            .setTargetBufferBytes(playbackProfile.targetBufferBytes)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+        val renderersFactory = rallyRenderersFactory(context)
+        val sessionPlayer = ExoPlayer.Builder(context, renderersFactory)
+            .setTrackSelector(sessionTrackSelector)
+            .setLoadControl(loadControl)
+            .build()
+        PlaybackSession(sessionPlayer, sessionTrackSelector)
+    }
+    val mediaSourceFactory = remember(context, safeHeaders, isExternalStream, macAddress, token) {
         val dataSource = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(if (isExternalStream) 12_000 else 8_000)
@@ -454,23 +484,7 @@ fun PlayerContent(
             }
         }
 
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                if (lowLatencyMode) 2_500 else 6_000,
-                if (lowLatencyMode) 10_000 else 20_000,
-                if (lowLatencyMode) 500 else 800,
-                if (lowLatencyMode) 1_000 else 1_500
-            )
-            .setTargetBufferBytes(playbackProfile.targetBufferBytes)
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-        val renderersFactory = rallyRenderersFactory(context)
-        val sessionPlayer = ExoPlayer.Builder(context, renderersFactory)
-            .setTrackSelector(sessionTrackSelector)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSource))
-            .setLoadControl(loadControl)
-            .build()
-        PlaybackSession(sessionPlayer, sessionTrackSelector)
+        DefaultMediaSourceFactory(context).setDataSourceFactory(dataSource)
     }
     val exoPlayer = playbackSession.player
     val trackSelector = playbackSession.trackSelector
@@ -480,9 +494,9 @@ fun PlayerContent(
     val hasAudioTracks = currentTracks.groups.any { it.type == C.TRACK_TYPE_AUDIO && (0 until it.length).any(it::isTrackSupported) }
     val hasTextTracks = currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && (0 until it.length).any(it::isTrackSupported) }
     val highlightsAreVisible by rememberUpdatedState(currentHighlightsVisible)
-    val playbackStartedAt = remember(streamUrl) { android.os.SystemClock.elapsedRealtime() }
-    var readyReported by remember(streamUrl) { mutableStateOf(false) }
-    var stallReportedAt by remember(streamUrl) { mutableStateOf(0L) }
+    val playbackStartedAt = remember(playbackRequestId, streamUrl) { android.os.SystemClock.elapsedRealtime() }
+    var readyReported by remember(playbackRequestId, streamUrl) { mutableStateOf(false) }
+    var stallReportedAt by remember(playbackRequestId, streamUrl) { mutableStateOf(0L) }
     val audioNormalizer = remember { AudioNormalizationSession() }
     var highlightsSessionStarted by remember(streamUrl) { mutableStateOf(false) }
     var liveWasPlayingBeforeHighlights by remember(streamUrl) { mutableStateOf(true) }
@@ -525,7 +539,25 @@ fun PlayerContent(
         }
     }
 
+    var reconnectAttempt by remember(playbackRequestId, streamUrl) { mutableIntStateOf(0) }
+    var reconnectVersion by remember(playbackRequestId, streamUrl) { mutableIntStateOf(0) }
+    var resumeOnLoad by remember(playbackRequestId, streamUrl) { mutableStateOf(true) }
+    val latestFailure by rememberUpdatedState(onPlaybackFailure)
+    fun reconnect(reason: String) {
+        if (reconnectAttempt < 2) {
+            resumeOnLoad = exoPlayer.playWhenReady
+            reconnectAttempt++
+            reconnectVersion++
+            onPlaybackStall(streamUrl)
+        } else {
+            latestFailure(reason)
+        }
+    }
+    // Release the decoder only when leaving playback, never when its source changes.
     DisposableEffect(exoPlayer) {
+        onDispose { audioNormalizer.release(); exoPlayer.release() }
+    }
+    DisposableEffect(exoPlayer, playbackRequestId, streamUrl, mediaSourceFactory, audioNormalizationEnabled) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 if (!liveWindowRecoveryUsed && error.isBehindLiveWindowFailure()) {
@@ -558,7 +590,7 @@ fun PlayerContent(
                         error.localizedMessage ?: "The stream stopped responding."
                     }
                     playbackError = null
-                    onPlaybackFailure(message)
+                    reconnect(message)
                 }
             }
 
@@ -569,7 +601,10 @@ fun PlayerContent(
             }
 
             override fun onRenderedFirstFrame() {
-                firstFrameRendered = true
+                if (!readyReported) {
+                    readyReported = true
+                    onPlaybackReady(streamUrl, android.os.SystemClock.elapsedRealtime() - playbackStartedAt)
+                }
             }
 
             override fun onTracksChanged(tracks: Tracks) {
@@ -585,7 +620,7 @@ fun PlayerContent(
                 if (playbackState == Player.STATE_READY) {
                     playbackError = null
                     streamSpecs = extractSpecs(exoPlayer.videoFormat, streamSpecs)
-                    if (!readyReported) {
+                    if (!readyReported && exoPlayer.currentTracks.groups.none { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }) {
                         readyReported = true
                         onPlaybackReady(streamUrl, android.os.SystemClock.elapsedRealtime() - playbackStartedAt)
                     }
@@ -604,7 +639,11 @@ fun PlayerContent(
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
+                isPlaying = exoPlayer.playWhenReady && exoPlayer.playbackState != Player.STATE_ENDED
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                isPlaying = playWhenReady && exoPlayer.playbackState != Player.STATE_ENDED
+                resumeOnLoad = playWhenReady
             }
 
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -615,15 +654,12 @@ fun PlayerContent(
         exoPlayer.addListener(listener)
         onDispose {
             exoPlayer.removeListener(listener)
-            audioNormalizer.release()
-            exoPlayer.release()
         }
     }
 
-    LaunchedEffect(exoPlayer, streamUrl, streamMimeType) {
+    LaunchedEffect(exoPlayer, playbackRequestId, streamUrl, streamMimeType, mediaSourceFactory, reconnectVersion) {
         streamSpecs = VideoStreamSpecs()
         playbackError = null
-        firstFrameRendered = false
         if (streamUrl.isBlank()) {
             playbackError = "No playable URL was returned for this source."
         } else {
@@ -643,35 +679,38 @@ fun PlayerContent(
                         }
                     }
                     .build()
-                exoPlayer.setMediaItem(mediaItem)
+                val shouldResume = resumeOnLoad
+                exoPlayer.stop()
+                exoPlayer.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem))
                 exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
+                exoPlayer.playWhenReady = shouldResume
             }.onFailure { onPlaybackFailure(it.localizedMessage ?: "Unable to start playback.") }
         }
     }
 
-    LaunchedEffect(exoPlayer, streamUrl, currentHighlightsVisible) {
+    LaunchedEffect(exoPlayer, playbackRequestId, streamUrl, mediaSourceFactory, reconnectVersion, currentHighlightsVisible) {
         if (currentHighlightsVisible || streamUrl.isBlank()) return@LaunchedEffect
-        // Media3 can remain READY with audio while a hardware decoder or surface
-        // silently stops producing video. Detect that state and let the existing
-        // verified-source recovery path take over instead of leaving a black screen.
-        delay(8_000)
-        var lastRenderedFrames = exoPlayer.videoDecoderCounters?.renderedOutputBufferCount ?: 0
-        var stagnantSamples = 0
+        val monitor = PlaybackProgressMonitor(android.os.SystemClock.elapsedRealtime())
+        var healthySince = android.os.SystemClock.elapsedRealtime()
         while (true) {
-            delay(4_000)
-            val renderedFrames = exoPlayer.videoDecoderCounters?.renderedOutputBufferCount ?: 0
-            val expectsVideo = exoPlayer.playWhenReady && exoPlayer.playbackState == Player.STATE_READY
-            if (expectsVideo) {
-                stagnantSamples = if (!firstFrameRendered || renderedFrames <= lastRenderedFrames) stagnantSamples + 1 else 0
-                if (stagnantSamples >= 2) {
-                    onPlaybackFailure("The video decoder stopped rendering. Trying another verified source.")
-                    break
-                }
-            } else {
-                stagnantSamples = 0
+            delay(1_000)
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (!exoPlayer.isPlaying) healthySince = now
+            else if (now - healthySince >= 60_000) { reconnectAttempt = 0; healthySince = now }
+            val expectsVideo = exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO && it.isSelected }
+            val reason = monitor.check(
+                nowMs = android.os.SystemClock.elapsedRealtime(),
+                wantsPlayback = exoPlayer.playWhenReady && exoPlayer.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+                buffering = exoPlayer.playbackState == Player.STATE_BUFFERING,
+                ready = exoPlayer.playbackState == Player.STATE_READY,
+                positionMs = exoPlayer.currentPosition,
+                renderedFrames = if (expectsVideo) exoPlayer.videoDecoderCounters?.renderedOutputBufferCount ?: 0 else null
+            )
+            if (reason != null) {
+                reconnect(reason.message)
+                break
             }
-            lastRenderedFrames = renderedFrames
         }
     }
 
@@ -918,7 +957,7 @@ fun PlayerContent(
                     canChooseAudio = hasAudioTracks,
                     canChooseCaptions = hasTextTracks,
                     onTogglePlayback = {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else {
+                        if (exoPlayer.playWhenReady) exoPlayer.pause() else {
                             if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekTo(0L)
                             exoPlayer.play()
                         }
@@ -943,7 +982,8 @@ fun PlayerContent(
                     onMultiView = {
                         onNavigateToMultiView(currentChannel?.id ?: streamUrl, event?.id, null)
                     },
-                    onKeyMoments = {
+                    onKeyMoments = { clip ->
+                        selectedHighlight = clip
                         currentHighlightsVisible = true
                         gameViewOverlayVisible = false
                     },
@@ -952,6 +992,7 @@ fun PlayerContent(
             if (currentHighlightsVisible) {
                 CurrentHighlightsChrome(
                     event = event,
+                    selectedClip = selectedHighlight,
                     mainTop = gameViewTop,
                     mainHeight = gameViewMainHeight,
                     videoWidth = gameViewVideoWidth,
@@ -982,7 +1023,7 @@ fun PlayerContent(
                 onDiagnostics = { diagnosticsVisible = true },
                 isPlaying = isPlaying,
                 onTogglePlayback = {
-                    if (exoPlayer.isPlaying) exoPlayer.pause() else {
+                    if (exoPlayer.playWhenReady) exoPlayer.pause() else {
                             if (exoPlayer.playbackState == Player.STATE_ENDED) exoPlayer.seekTo(0L)
                             exoPlayer.play()
                         }
@@ -1044,8 +1085,9 @@ fun PlayerContent(
                 canChooseSource = relevantChannels.isNotEmpty() || stremioStreams.isNotEmpty(),
                 onRetry = {
                     playbackError = null
-                    exoPlayer.prepare()
-                    exoPlayer.playWhenReady = true
+                    reconnectAttempt = 0
+                    resumeOnLoad = true
+                    reconnectVersion++
                 },
                 onChooseSource = { sourcePickerVisible = true },
                 onBack = onBack
@@ -1353,6 +1395,7 @@ private fun GameViewModeItem(label: String, selected: Boolean, enabled: Boolean,
 @Composable
 private fun CurrentHighlightsChrome(
     event: SportEvent?,
+    selectedClip: HighlightClip?,
     mainTop: androidx.compose.ui.unit.Dp,
     mainHeight: androidx.compose.ui.unit.Dp,
     videoWidth: androidx.compose.ui.unit.Dp,
@@ -1363,7 +1406,7 @@ private fun CurrentHighlightsChrome(
     val playable = remember(event?.id, event?.highlightClips) {
         event?.highlightClips.orEmpty().filter { !it.streamUrl.isNullOrBlank() }
     }
-    val selected = playable.firstOrNull()
+    val selected = playable.firstOrNull { it.id == selectedClip?.id } ?: playable.firstOrNull()
 
     Box(Modifier.fillMaxSize()) {
         if (selected != null) {
@@ -1506,9 +1549,11 @@ private fun GameViewChrome(
     onDiagnostics: () -> Unit,
     onChooseSource: () -> Unit,
     onMultiView: () -> Unit,
-    onKeyMoments: () -> Unit,
+    onKeyMoments: (HighlightClip) -> Unit,
     onOtherEvent: (SportEvent) -> Unit
 ) {
+    var requestedPlayId by remember(event?.id) { mutableStateOf<String?>(null) }
+    var requestedPlayVersion by remember { mutableIntStateOf(0) }
     var selectedSegment by remember(event?.id) { mutableIntStateOf(0) }
     val lastControlFocus = remember { FocusRequester() }
     val sourceFocus = remember { FocusRequester() }
@@ -1533,9 +1578,13 @@ private fun GameViewChrome(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (event != null) {
-                RallyGameScoreHeader(event, Modifier.width(480.dp))
+                Box(Modifier.width(videoWidth), contentAlignment = Alignment.Center) {
+                    RallyGameScoreHeader(event, Modifier.width(minOf(480.dp, videoWidth)))
+                }
             } else {
-                Text(currentChannel?.name ?: "Live stream", color = RallyTvPalette.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Box(Modifier.width(videoWidth), contentAlignment = Alignment.Center) {
+                    Text(currentChannel?.name ?: "Live stream", color = RallyTvPalette.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
             }
             Spacer(Modifier.weight(1f))
             PlayerButton("${if (sourceLabel == "Selected source") "Source" else sourceLabel.take(14)}  ⌄", onChooseSource, modifier = Modifier.focusRequester(sourceFocus).focusProperties { down = statsFocus })
@@ -1551,6 +1600,8 @@ private fun GameViewChrome(
             event = event,
             sourceLabel = sourceLabel,
             sourceLabels = sourceLabels,
+            requestedPlayId = requestedPlayId,
+            requestedPlayVersion = requestedPlayVersion,
             onChooseSource = onChooseSource,
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -1598,7 +1649,7 @@ private fun GameViewChrome(
 
         if (selectedSegment == 0) {
             val plays = event?.plays.orEmpty().filter { it.isScoringPlay }.sortedByDescending { it.sequence }.take(4)
-            val clips = event?.highlightClips.orEmpty().take(4)
+            val clips = event?.highlightClips.orEmpty().filter { !it.streamUrl.isNullOrBlank() }.take(4)
             if (plays.isEmpty() && clips.isEmpty()) {
                 Text(
                     "Key moments are not available for this game yet.",
@@ -1615,12 +1666,12 @@ private fun GameViewChrome(
                 ) {
                     clips.forEach { clip ->
                         KeyMomentTile(clip.title, clip.durationSeconds?.let { "${it / 60}:${(it % 60).toString().padStart(2, '0')}" } ?: "Highlight",
-                            clip.thumbnailUrl, event, !clip.streamUrl.isNullOrBlank(), onKeyMoments, Modifier.weight(1f))
+                            clip.thumbnailUrl, event, true, { onKeyMoments(clip) }, Modifier.weight(1f))
                     }
                     plays.take((4 - clips.size).coerceAtLeast(0)).forEach { play ->
                         KeyMomentTile(play.text,
-                            play.wallClock ?: listOfNotNull(play.period?.let { "P$it" }, play.clock).joinToString(" · "),
-                            null, event, false, {}, Modifier.weight(1f))
+                            listOfNotNull(play.period?.let { "Q$it" }, play.clock).joinToString(" · "),
+                            null, event, true, { requestedPlayId = play.id; requestedPlayVersion++ }, Modifier.weight(1f))
                     }
                 }
             }
@@ -1655,13 +1706,16 @@ private fun KeyMomentTile(title: String, detail: String, thumbnailUrl: String?, 
         .clickable(enabled = enabled, onClick = onClick).padding(2.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(65.dp).height(47.dp).clip(RoundedCornerShape(5.dp))) {
-            Image(painterResource(getEditorialPhoto(event) ?: getSportBackdrop(event)), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            thumbnailUrl?.let { AsyncImage(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-            Text(detail, color = Color.White, fontSize = 8.sp, modifier = Modifier.align(Alignment.BottomStart).background(Color(0xB0000000)).padding(2.dp))
+            if (thumbnailUrl != null) AsyncImage(thumbnailUrl, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            else Row(Modifier.fillMaxSize().background(RallyTvPalette.BackgroundSoft).padding(5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                AsyncImage(event?.awayTeamBadge ?: event?.awayTeam?.logoUrl, null, Modifier.size(25.dp), contentScale = ContentScale.Fit)
+                AsyncImage(event?.homeTeamBadge ?: event?.homeTeam?.logoUrl, null, Modifier.size(25.dp), contentScale = ContentScale.Fit)
+            }
+            Text(detail, color = Color.White, fontSize = 8.sp, lineHeight = 10.sp, modifier = Modifier.align(Alignment.BottomStart).background(Color(0xB0000000)).padding(2.dp))
         }
         Column(Modifier.padding(start = 6.dp)) {
-            Text(title, color = RallyTvPalette.Text, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(detail, color = RallyTvPalette.Muted, fontSize = 8.sp, maxLines = 1)
+            Text(title, color = RallyTvPalette.Text, fontSize = 9.sp, lineHeight = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(detail, color = RallyTvPalette.Muted, fontSize = 8.sp, lineHeight = 10.sp, maxLines = 1)
         }
     }
 }

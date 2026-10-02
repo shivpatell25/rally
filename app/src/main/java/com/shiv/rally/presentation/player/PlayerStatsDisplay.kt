@@ -52,3 +52,42 @@ internal fun SportEvent.playerTablesForDisplay(
         ).takeIf { it.rows.isNotEmpty() }
     }.take(teamLimit)
 }
+
+internal data class GamePlayerStats(
+    val id: String,
+    val player: com.shiv.rally.domain.model.PlayerStatRow,
+    val categories: List<Pair<String, List<Pair<String, String>>>>
+)
+
+internal data class GameTeamPlayers(
+    val id: String,
+    val name: String,
+    val abbreviation: String,
+    val logoUrl: String?,
+    val players: List<GamePlayerStats>
+)
+
+/** Every published participant, with all categories merged once per athlete and team. */
+internal fun SportEvent.allGamePlayers(): List<GameTeamPlayers> {
+    val teams = playerStatTables.groupBy {
+        it.teamId?.takeIf(String::isNotBlank) ?: it.teamAbbreviation.ifBlank { it.teamName }
+    }
+    return teams.map { (teamId, tables) ->
+        val first = tables.first()
+        val athletes = linkedMapOf<String, MutableList<Pair<PlayerStatTable, com.shiv.rally.domain.model.PlayerStatRow>>>()
+        tables.forEach { table ->
+            table.rows.filter { it.displayName.isNotBlank() }.forEach { row ->
+                val key = row.athleteId?.takeIf(String::isNotBlank) ?: row.displayName.trim().lowercase()
+                athletes.getOrPut(key) { mutableListOf() }.add(table to row)
+            }
+        }
+        GameTeamPlayers(teamId, first.teamName.ifBlank { first.teamAbbreviation }, first.teamAbbreviation, first.teamLogoUrl,
+            athletes.map { (id, appearances) ->
+                val row = appearances.first().second
+                val categories = appearances.groupBy { statCategoryLabel(it.first.category) }.map { (category, entries) ->
+                    category to entries.flatMap { (table, player) -> playerStatPairs(table, player) }.distinct()
+                }
+                GamePlayerStats(id, row, categories)
+            })
+    }.filter { it.players.isNotEmpty() }
+}

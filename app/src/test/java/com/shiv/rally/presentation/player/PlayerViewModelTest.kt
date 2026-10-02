@@ -151,6 +151,20 @@ class PlayerViewModelTest {
         assertEquals(true, state.isExternalStream)
     }
 
+    @Test fun retryOfTheSameUrlCreatesANewPlaybackRequest() = runTest(dispatcher) {
+        val viewModel = createViewModel(SavedStateHandle(mapOf("channelId" to channel.id, "eventId" to event.id)))
+        advanceUntilIdle()
+        val first = viewModel.uiState.value as PlayerUiState.Success
+        viewModel.retry()
+        advanceUntilIdle()
+        val second = viewModel.uiState.value as PlayerUiState.Success
+        assertEquals(first.streamUrl, second.streamUrl)
+        org.junit.Assert.assertTrue(second.playbackRequestId > first.playbackRequestId)
+        viewModel.recoverFromPlaybackFailure("Old decoder failure", first.playbackRequestId)
+        advanceUntilIdle()
+        assertEquals(second.playbackRequestId, (viewModel.uiState.value as PlayerUiState.Success).playbackRequestId)
+    }
+
     private fun createViewModel(handle: SavedStateHandle, repository: IptvRepository = iptvRepository): PlayerViewModel = PlayerViewModel(
         savedStateHandle = handle,
         iptvRepository = repository,

@@ -47,6 +47,8 @@ final class RallyParityTests: XCTestCase {
     XCTAssertEqual(result.playerStatTables.map { $0.rows.count }, [22, 22, 22, 22])
     XCTAssertEqual(result.playerStatTables.first?.rows.last?.athleteId, "p21")
     XCTAssertEqual(result.playerStatTables.first?.labels, ["ATT", "YDS", "TD"])
+    XCTAssertEqual(result.allGamePlayers.first?.players.count, 22)
+    XCTAssertEqual(result.allGamePlayers.first?.players.first?.categories.count, 4)
   }
   func testStatusDatesAndMalformedProbability() throws {
     XCTAssertEqual(
@@ -344,6 +346,7 @@ final class RallyParityTests: XCTestCase {
     await session.open(
       candidate.playbackTarget.absoluteString, event: nil, candidate: candidate,
       container: container)
+    XCTAssertTrue(session.playbackRequested)
     for _ in 0..<120 {
       if !session.loading && !session.audioTracks.isEmpty && session.elapsed > 0 { break }
       try await Task.sleep(for: .milliseconds(250))
@@ -358,6 +361,7 @@ final class RallyParityTests: XCTestCase {
     XCTAssertGreaterThan(session.player.rate, 0)
     session.pause()
     XCTAssertFalse(session.playing)
+    XCTAssertFalse(session.playbackRequested)
     session.suspendForScene()
     session.restoreForScene()
     XCTAssertEqual(
@@ -387,6 +391,21 @@ final class RallyParityTests: XCTestCase {
     session.selectCaption(nil)
     XCTAssertNil(
       session.player.currentItem?.currentMediaSelection.selectedMediaOption(in: captionGroup))
+    for index in 0..<3 {
+      let previous = session.player.currentItem
+      let next = StreamCandidate(addon: StremioStreamOption(title: "Source \(index)", streamUrl: TVOSFixtures.video,
+        headers: ["User-Agent": "Rally-switch-\(index)"]))
+      await session.open(next.playbackTarget.absoluteString, event: nil, candidate: next, container: container)
+      for _ in 0..<100 {
+        if session.elapsed > 1 && session.player.currentItem?.status == .readyToPlay { break }
+        try await Task.sleep(for: .milliseconds(200))
+      }
+      XCTAssertNil(session.error)
+      XCTAssertFalse(previous === session.player.currentItem)
+      XCTAssertGreaterThan(session.elapsed, 1, "A source change must produce advancing playback")
+      XCTAssertEqual(session.headers["User-Agent"], "Rally-switch-\(index)")
+      XCTAssertEqual(session.player.currentItem?.preferredMaximumResolution.height, 720)
+    }
   }
   func testBackupsOmitCredentialsAndPreserveImportedTeamKeys() throws {
     let source = settings()
@@ -523,4 +542,32 @@ final class RallyParityTests: XCTestCase {
     XCTAssertEqual(
       RallyDeepLink.route(URL(string: "rally://event/NFL:qa1")!), .eventDetail(eventId: "NFL:qa1"))
   }
+  func testFootballDrivePlaysAndScoringMomentsAreMerged() throws {
+    let summary = try wire([
+      "drives": [
+        "previous": [["plays": [
+          ["id": "kick", "sequenceNumber": "3900", "text": "Kickoff", "period": ["number": 1]],
+          ["id": "td", "sequenceNumber": "4600", "text": "Passing touchdown", "scoringPlay": false]
+        ]]],
+        "current": ["plays": [["id": "run", "sequenceNumber": "5000", "text": "Run for five yards"]]]
+      ],
+      "scoringPlays": [["id": "td", "text": "Touchdown"], ["id": "fg", "sequenceNumber": "6000", "text": "Field goal"]]
+    ])
+    let result = ESPNWire.enrich(event(), summary: summary)
+    XCTAssertEqual(result.plays.map(\.id), ["fg", "run", "td", "kick"])
+    XCTAssertEqual(result.plays.filter(\.isScoringPlay).count, 2)
+    XCTAssertEqual(result.plays.last?.period, 1)
+    XCTAssertEqual(result.plays.first { $0.id == "td" }?.text, "Passing touchdown")
+  }
+  func testPlaybackWatchdogDetectsStallsAndRespectsPause() {
+    var progress = PlaybackProgressWatchdog()
+    let start = Date().timeIntervalSinceReferenceDate
+    XCTAssertFalse(progress.check(now: start + 24, wantsPlayback: true, ready: false, position: 0))
+    XCTAssertTrue(progress.check(now: start + 26, wantsPlayback: true, ready: false, position: 0))
+    XCTAssertFalse(progress.check(now: start + 27, wantsPlayback: true, ready: true, position: 1))
+    XCTAssertTrue(progress.check(now: start + 42, wantsPlayback: true, ready: true, position: 1))
+    XCTAssertFalse(progress.check(now: start + 100, wantsPlayback: false, ready: true, position: 1))
+    XCTAssertFalse(progress.check(now: start + 101, wantsPlayback: true, ready: true, position: 2))
+  }
+
 }

@@ -22,6 +22,19 @@ import SwiftUI
   private(set) var target: String = ""
   private(set) var headers: [String: String] = [:]
   private var observation: NSKeyValueObservation?
+  @ObservationIgnored nonisolated(unsafe) private var watchdogTask: Task<Void, Never>?
+  @ObservationIgnored nonisolated(unsafe) private var reconnectTask: Task<Void, Never>?
+  @ObservationIgnored private var request: PlaybackRequest?
+  private var reconnectAttempts = 0
+  private var healthySince = Date()
+  private var multiViewCount: Int?
+  private var progress = PlaybackProgressWatchdog()
+  private struct PlaybackRequest {
+    let target: String
+    let event: SportEvent?
+    let candidate: StreamCandidate?
+    let container: AppContainer
+  }
   @ObservationIgnored nonisolated(unsafe) private var timeToken: Any?
   @ObservationIgnored nonisolated(unsafe) private var endToken: NSObjectProtocol?
   @ObservationIgnored nonisolated(unsafe) private var stallToken: NSObjectProtocol?
@@ -52,6 +65,7 @@ import SwiftUI
     }
   }
   var seekable: Bool { player.currentItem?.seekableTimeRanges.isEmpty == false }
+  var playbackRequested: Bool { wantsPlayback }
   var isLive: Bool { !duration.isFinite || duration == 0 }
   var bufferedSeconds: Double {
     guard let ranges = player.currentItem?.loadedTimeRanges else { return 0 }
@@ -59,6 +73,13 @@ import SwiftUI
   }
   init() {
     player.automaticallyWaitsToMinimizeStalling = true
+    // A periodic media-time observer stops firing during some stalls. Check wall time as well.
+    watchdogTask = Task { [weak self] in
+      while !Task.isCancelled {
+        do { try await Task.sleep(for: .seconds(1)) } catch { return }
+        self?.checkProgress()
+      }
+    }
     timeToken = player.addPeriodicTimeObserver(
       forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main
     ) { [weak self] time in Task { @MainActor in self?.tick(time) } }
@@ -68,6 +89,8 @@ import SwiftUI
       Task { @MainActor in
         guard notification.object as? AVPlayerItem === self?.player.currentItem else { return }
         self?.playing = false
+        self?.wantsPlayback = false
+        self?.loading = false
       }
     }
     interruptionToken = NotificationCenter.default.addObserver(
@@ -111,110 +134,146 @@ import SwiftUI
   func open(
     _ target: String, event: SportEvent?, candidate: StreamCandidate? = nil, container: AppContainer
   ) async {
+    reconnectTask?.cancel()
+    reconnectTask = nil
+    reconnectAttempts = 0
+    wantsPlayback = true
+    let next = PlaybackRequest(target: target, event: event, candidate: candidate, container: container)
+    request = next
+    await load(next)
+  }
+  private func load(_ request: PlaybackRequest) async {
     generation += 1
     let revision = generation
     loading = true
-    wantsPlayback = true
+    playing = false
     error = nil
     firstFrame = false
+    elapsed = 0
+    duration = 0
     resolution = ""
     bitrate = ""
     fps = ""
     codecs = ""
     audioTracks = []
     captionTracks = []
+    audioGroup = nil
+    captionGroup = nil
     selectedAudio = nil
     selectedCaption = nil
     started = Date()
-    settings = container.settings
-    self.target = candidate?.id ?? target
-    sourceTitle = candidate?.title ?? (event?.compactMatchup ?? "Live TV")
-    headers = candidate?.headers ?? [:]
-    player.pause()
+    healthySince = started
+    progress = PlaybackProgressWatchdog()
+    settings = request.container.settings
+    target = request.candidate?.id ?? request.target
+    sourceTitle = request.candidate?.title ?? (request.event?.compactMatchup ?? "Live TV")
+    headers = [:]
     observation = nil
+    player.pause()
+    player.replaceCurrentItem(with: nil)
     proxy?.stop()
     proxy = nil
     playlistPermission = nil
     do {
       let resolved: URL
+      var requestHeaders = request.candidate?.headers ?? [:]
+      var resolvedTitle = sourceTitle
       var isPlaylistChannel = false
-      if let channel = candidate?.channel {
-        resolved = try await container.iptv.streamUrl(forChannelId: channel.id)
-        isPlaylistChannel = container.settings.provider == .m3u
-        headers.merge(try await container.iptv.streamHeaders(forChannelId: channel.id)) {
-          _, latest in latest
-        }
-        if channel.id.hasPrefix("stalker:") {
-          headers["Cookie"] = "mac=\(container.settings.macAddress); stb_lang=en"
-          headers["Authorization"] = StreamHeaders.normalizedBearerToken(
-            container.settings.authToken)
-        }
-      } else if let direct = URL(string: target), ["http", "https"].contains(direct.scheme ?? "") {
+      let channelId = request.candidate?.channel?.id ?? request.target
+      if request.candidate?.channel == nil,
+        let direct = URL(string: request.target), ["http", "https"].contains(direct.scheme ?? "") {
         resolved = direct
       } else {
-        resolved = try await container.iptv.streamUrl(forChannelId: target)
-        if let name = try await container.iptv.channels().first(where: { $0.id == target })?.name {
-          sourceTitle = name
+        resolved = try await request.container.iptv.streamUrl(forChannelId: channelId)
+        isPlaylistChannel = request.container.settings.provider == .m3u
+        requestHeaders.merge(try await request.container.iptv.streamHeaders(forChannelId: channelId)) { _, latest in latest }
+        if request.candidate == nil,
+          let name = try await request.container.iptv.channels().first(where: { $0.id == channelId })?.name {
+          resolvedTitle = name
         }
-        isPlaylistChannel = container.settings.provider == .m3u
-        headers.merge(try await container.iptv.streamHeaders(forChannelId: target)) { _, latest in
-          latest
-        }
-        if target.hasPrefix("stalker:") {
-          headers["Cookie"] = "mac=\(container.settings.macAddress); stb_lang=en"
-          headers["Authorization"] = StreamHeaders.normalizedBearerToken(
-            container.settings.authToken)
+        if channelId.hasPrefix("stalker:") {
+          requestHeaders["Cookie"] = "mac=\(request.container.settings.macAddress); stb_lang=en"
+          requestHeaders["Authorization"] = StreamHeaders.normalizedBearerToken(request.container.settings.authToken)
         }
       }
       guard revision == generation, !Task.isCancelled else { return }
-      if isPlaylistChannel && resolved.scheme?.lowercased() == "http" {
-        playlistPermission = PlaylistMediaPermission(resolved)
-      }
-      let probe = await container.http.preflight(url: resolved, headers: headers, timeout: 3)
-      guard revision == generation, !Task.isCancelled else { return }
-      guard probe.passed else { throw URLError(.cannotConnectToHost) }
+      let permission = isPlaylistChannel && resolved.scheme?.lowercased() == "http"
+        ? PlaylistMediaPermission(resolved) : nil
+      guard NetworkPolicy.shared.permits(resolved) else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
+      // Playback validates the actual GET request. HEAD probes can reject working providers.
       var media = resolved
-      if !headers.isEmpty || resolved.scheme?.lowercased() == "http" {
-        let proxy = HeaderMediaProxy(headers: headers)
-        self.proxy = proxy
-        media = try await proxy.start(resolved)
+      var mediaProxy: HeaderMediaProxy?
+      if !requestHeaders.isEmpty || resolved.scheme?.lowercased() == "http" {
+        let nextProxy = HeaderMediaProxy(headers: requestHeaders)
+        mediaProxy = nextProxy
+        media = try await nextProxy.start(resolved)
       }
-      guard revision == generation, !Task.isCancelled else { return }
-      let asset = AVURLAsset(
-        url: media, options: [AVURLAssetHTTPUserAgentKey: headers["User-Agent"] ?? "Rally-tvOS/1.0"]
-      )
+      guard revision == generation, !Task.isCancelled else { mediaProxy?.stop(); return }
+      proxy = mediaProxy
+      playlistPermission = permission
+      headers = requestHeaders
+      sourceTitle = resolvedTitle
+      let asset = AVURLAsset(url: media, options: [AVURLAssetHTTPUserAgentKey: requestHeaders["User-Agent"] ?? "Rally-tvOS/1.0"])
       let item = AVPlayerItem(asset: asset)
-      item.preferredForwardBufferDuration = container.settings.lowLatencyMode ? 3 : 12
-      item.preferredMaximumResolution =
-        container.settings.adaptiveQualityEnabled ? .zero : CGSize(width: 1920, height: 1080)
+      item.preferredForwardBufferDuration = request.container.settings.lowLatencyMode ? 3 : 12
+      item.preferredMaximumResolution = request.container.settings.adaptiveQualityEnabled ? .zero : CGSize(width: 1920, height: 1080)
       player.replaceCurrentItem(with: item)
       if quality != "Auto" { setQuality(quality) }
+      if let multiViewCount { setMultiViewCaps(count: multiViewCount) }
       observation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
         Task { @MainActor in
-          guard let self, revision == self.generation else { return }
+          guard let self, revision == self.generation, item === self.player.currentItem else { return }
           switch item.status {
           case .readyToPlay:
             self.loading = false
             self.error = nil
-            if self.wantsPlayback && !self.sceneSuspended && !self.audioInterrupted {
-              self.player.play()
-            }
+            if self.wantsPlayback && !self.sceneSuspended && !self.audioInterrupted { self.player.play() }
             await self.loadTracks(asset)
           case .failed:
-            self.loading = false
-            self.error = "This source could not be played. Try another source or retry."
-            self.settings?.recordHealth(self.target, success: false)
-            RallyDiagnostics.shared.record("Playback", code: "Source failed")
+            self.reconnect("This source could not be played. Try another source or retry.")
           default: break
           }
         }
       }
       if wantsPlayback && !sceneSuspended && !audioInterrupted { player.play() }
     } catch {
-      guard revision == generation else { return }
+      guard revision == generation, !Task.isCancelled else { return }
+      reconnect("Couldn’t open this source. Check your provider connection and retry.")
+    }
+  }
+  private func checkProgress() {
+    guard request != nil, error == nil, reconnectTask == nil else { return }
+    let active = wantsPlayback && !sceneSuspended && !audioInterrupted
+    let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate || player.currentItem?.status != .readyToPlay
+    if !active || waiting { healthySince = Date() }
+    else if Date().timeIntervalSince(healthySince) >= 60 { reconnectAttempts = 0; healthySince = Date() }
+    let buffering = active && waiting
+    if loading != buffering { loading = buffering }
+    let time = player.currentTime().seconds
+    if progress.check(wantsPlayback: active, ready: player.currentItem?.status == .readyToPlay,
+      position: time.isFinite ? time : 0) {
+      reconnect("This source stopped updating. Choose another source or retry.")
+    }
+  }
+  private func reconnect(_ message: String) {
+    guard reconnectTask == nil, let request else { return }
+    settings?.recordHealth(target, success: false, stalled: true)
+    guard reconnectAttempts < 2 else {
       loading = false
-      playlistPermission = nil
-      self.error = "Couldn’t open this source. Check your provider connection and retry."
+      playing = false
+      player.pause()
+      error = message
+      return
+    }
+    reconnectAttempts += 1
+    loading = true
+    let revision = generation
+    RallyDiagnostics.shared.record("Playback", code: "Reconnecting stalled source")
+    reconnectTask = Task { [weak self] in
+      do { try await Task.sleep(for: .seconds(1)) } catch { return }
+      guard let self, revision == self.generation, !Task.isCancelled else { return }
+      self.reconnectTask = nil
+      await self.load(request)
     }
   }
   func pause() {
@@ -237,7 +296,7 @@ import SwiftUI
     if wantsPlayback && !audioInterrupted { player.play() }
     playing = player.rate > 0
   }
-  func toggle() { playing ? pause() : resume() }
+  func toggle() { wantsPlayback ? pause() : resume() }
   func restart() {
     guard let range = player.currentItem?.seekableTimeRanges.first?.timeRangeValue else { return }
     player.seek(to: range.start, toleranceBefore: .zero, toleranceAfter: .zero)
@@ -276,6 +335,7 @@ import SwiftUI
     }
   }
   func setMultiViewCaps(count: Int) {
+    multiViewCount = count
     player.currentItem?.preferredMaximumResolution =
       count >= 3 ? CGSize(width: 854, height: 480) : CGSize(width: 1280, height: 720)
     player.currentItem?.preferredPeakBitRate = count >= 3 ? 1_200_000 : 2_500_000
@@ -283,6 +343,9 @@ import SwiftUI
   }
   func stop() {
     generation += 1
+    reconnectTask?.cancel()
+    reconnectTask = nil
+    request = nil
     wantsPlayback = false
     player.pause()
     player.replaceCurrentItem(with: nil)
@@ -310,8 +373,10 @@ import SwiftUI
     }
     if let track = try? await asset.loadTracks(withMediaType: .video).first {
       let frameRate = (try? await track.load(.nominalFrameRate)) ?? 0
+      guard player.currentItem?.asset === asset else { return }
       fps = frameRate > 0 ? String(format: "%.1f fps", frameRate) : ""
       if let formats = try? await track.load(.formatDescriptions) {
+        guard player.currentItem?.asset === asset else { return }
         codecs = formats.map { description in
           let code = CMFormatDescriptionGetMediaSubType(description)
           return String(
@@ -341,6 +406,8 @@ import SwiftUI
     }
   }
   deinit {
+    watchdogTask?.cancel()
+    reconnectTask?.cancel()
     if let timeToken { player.removeTimeObserver(timeToken) }
     if let endToken { NotificationCenter.default.removeObserver(endToken) }
     if let stallToken { NotificationCenter.default.removeObserver(stallToken) }
@@ -364,4 +431,23 @@ struct RallyVideoSurface: UIViewRepresentable {
     if view.videoLayer.player !== player { view.videoLayer.player = player }
   }
   static func dismantleUIView(_ view: Surface, coordinator: ()) { view.videoLayer.player = nil }
+}
+
+
+/// Wall-time monitoring continues while AVPlayer is stuck and respects intentional pauses.
+struct PlaybackProgressWatchdog {
+  private var lastProgressAt = Date().timeIntervalSinceReferenceDate
+  private var lastPosition: Double = 0
+  private var hasProgress = false
+  mutating func check(now: Double = Date().timeIntervalSinceReferenceDate, wantsPlayback: Bool,
+    ready: Bool, position: Double) -> Bool {
+    defer { lastPosition = position }
+    guard wantsPlayback else { lastProgressAt = now; return false }
+    if ready && abs(position - lastPosition) > 0.01 {
+      hasProgress = true
+      lastProgressAt = now
+      return false
+    }
+    return now - lastProgressAt >= (hasProgress ? 15 : 25)
+  }
 }

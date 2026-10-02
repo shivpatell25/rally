@@ -161,3 +161,60 @@ public struct PlayerLeader: Sendable, Hashable, Codable {
     self.headshotUrl = headshotUrl
   }
 }
+
+struct GamePlayerCategory: Identifiable {
+  let id: String
+  let values: [(String, String)]
+}
+struct GamePlayerBoxScore: Identifiable {
+  let id: String
+  let player: PlayerStatRow
+  let categories: [GamePlayerCategory]
+}
+struct GameTeamPlayers: Identifiable {
+  let id: String
+  let name: String
+  let logo: URL?
+  let players: [GamePlayerBoxScore]
+}
+extension SportEvent {
+  /// Preserve every published participant and category, once per athlete and team.
+  var allGamePlayers: [GameTeamPlayers] {
+    var order: [String] = []
+    var grouped: [String: [PlayerStatTable]] = [:]
+    for table in playerStatTables {
+      let key = table.teamId ?? (table.teamAbbreviation.isEmpty ? table.teamName : table.teamAbbreviation)
+      if grouped[key] == nil { order.append(key) }
+      grouped[key, default: []].append(table)
+    }
+    return order.compactMap { key in
+      guard let tables = grouped[key], let first = tables.first else { return nil }
+      var playerOrder: [String] = []
+      var rows: [String: [(PlayerStatTable, PlayerStatRow)]] = [:]
+      for table in tables {
+        for row in table.rows where !row.displayName.isEmpty {
+          if rows[row.id] == nil { playerOrder.append(row.id) }
+          rows[row.id, default: []].append((table, row))
+        }
+      }
+      let players = playerOrder.compactMap { id -> GamePlayerBoxScore? in
+        guard let entries = rows[id], let row = entries.first?.1 else { return nil }
+        var categoryOrder: [String] = []
+        var stats: [String: [(String, String)]] = [:]
+        for (table, entry) in entries {
+          let name = (table.category ?? "Players").capitalized
+          if stats[name] == nil { categoryOrder.append(name) }
+          for (index, value) in entry.stats.enumerated() {
+            let label = table.labels.indices.contains(index) ? table.labels[index] : "Stat \(index + 1)"
+            if !(stats[name] ?? []).contains(where: { $0.0 == label && $0.1 == value }) {
+              stats[name, default: []].append((label, value))
+            }
+          }
+        }
+        return GamePlayerBoxScore(id: key + ":" + id, player: row,
+          categories: categoryOrder.map { GamePlayerCategory(id: $0, values: stats[$0] ?? []) })
+      }
+      return players.isEmpty ? nil : GameTeamPlayers(id: key, name: first.teamName, logo: first.teamLogoUrl, players: players)
+    }
+  }
+}

@@ -57,6 +57,17 @@ class PlayerStatsDisplayTest {
         assertTrue(result.single().labels.isNotEmpty())
     }
 
+    @Test fun fullPlayersPreservesEveryAthleteAndCategoryFromBothTeams() {
+        val passing = table("away", "AWY", "Passing", (1..25).map { row("$it", "Player $it", listOf("12", "220")) })
+        val rushing = table("away", "AWY", "Rushing", listOf(row("1", "Player 1", listOf("4", "20"))))
+        val home = table("home", "HME", "Receiving", listOf(row("1", "Home Player", listOf("2", "30"))))
+        val teams = event(listOf(passing, rushing, home)).allGamePlayers()
+        assertEquals(2, teams.size)
+        assertEquals(25, teams.first().players.size)
+        assertEquals(2, teams.first().players.first().categories.size)
+        assertEquals("Home Player", teams.last().players.single().player.displayName)
+    }
+
     private fun table(
         teamId: String,
         abbreviation: String,

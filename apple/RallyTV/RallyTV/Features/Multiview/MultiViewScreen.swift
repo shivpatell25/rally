@@ -351,7 +351,7 @@ struct MultiViewScreen: View {
                   }
                 } else if let tile = selected {
                   if !tile.stats {
-                    RallyAction(title: tile.session.playing ? "Pause" : "Play") {
+                    RallyAction(title: tile.session.playbackRequested ? "Pause" : "Play") {
                       tile.session.toggle()
                     }
                     RallyAction(title: "Fullscreen") {

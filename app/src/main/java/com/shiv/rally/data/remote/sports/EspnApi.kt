@@ -156,6 +156,8 @@ data class EspnSummaryResponse(
     val predictor: EspnPredictor? = null,
     val videos: List<EspnVideo>? = null,
     val plays: List<EspnPlay>? = null,
+    val drives: EspnDrives? = null,
+    val scoringPlays: List<EspnPlay>? = null,
     val winprobability: List<EspnWinProbability>? = null
 )
 
@@ -200,6 +202,23 @@ data class EspnPlay(
     val scoringPlay: Boolean? = null,
     val wallclock: String? = null
 )
+
+data class EspnDrives(val previous: List<EspnDrive>? = null, val current: EspnDrive? = null)
+data class EspnDrive(
+    val description: String? = null,
+    val plays: List<EspnPlay>? = null,
+    val yards: Int? = null
+)
+
+/** Football publishes its play feed under drives, while other sports use plays. */
+internal fun EspnSummaryResponse.allPlays(): List<EspnPlay> {
+    val scoringIds = scoringPlays.orEmpty().mapNotNull { it.id }.toSet()
+    val full = plays.orEmpty() + drives?.previous.orEmpty().flatMap { it.plays.orEmpty() } + drives?.current?.plays.orEmpty()
+    return (full + scoringPlays.orEmpty())
+        .filter { !it.text.isNullOrBlank() }
+        .distinctBy { it.id ?: "${it.sequenceNumber}:${it.period?.number}:${it.clock?.displayValue}:${it.text}" }
+        .map { if (it.id in scoringIds) it.copy(scoringPlay = true) else it }
+}
 
 data class EspnPlayPeriod(val number: Int? = null, val displayValue: String? = null)
 data class EspnPlayClock(val displayValue: String? = null)

@@ -24,9 +24,9 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        // Beta 10 adds the Apple TV port and final cross-platform release.
-        versionCode = 11
-        versionName = "1.0-beta10"
+        // Beta 11 improves playback recovery, game stats, and TV navigation.
+        versionCode = 12
+        versionName = "1.0-beta11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

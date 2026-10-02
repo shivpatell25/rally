@@ -320,13 +320,20 @@ public enum ESPNWire {
           headshotUrl: row.headshotUrl)
       }
     }
-    let plays = s["plays"].array.enumerated().compactMap { i, p -> GamePlay? in
+    let drivePlays = s["drives"]["previous"].array.flatMap { $0["plays"].array } + s["drives"]["current"]["plays"].array
+    let scoringIDs = Set(s["scoringPlays"].array.compactMap { $0["id"].string })
+    var seenPlays = Set<String>()
+    let publishedPlays = (s["plays"].array + drivePlays + s["scoringPlays"].array).filter { p in
+      let key = p["id"].string ?? "\(p["sequenceNumber"].text):\(p["text"].text)"
+      return !p["text"].text.isEmpty && seenPlays.insert(key).inserted
+    }
+    let plays = publishedPlays.enumerated().compactMap { i, p -> GamePlay? in
       guard !p["text"].text.isEmpty else { return nil }
       return GamePlay(
         id: p["id"].string ?? "\(base.id):\(i)", sequence: p["sequenceNumber"].int ?? i,
         text: p["text"].text, awayScore: p["awayScore"].int, homeScore: p["homeScore"].int,
         period: p["period"]["number"].int, clock: p["clock"]["displayValue"].string,
-        isScoringPlay: p["scoringPlay"].bool)
+        isScoringPlay: p["scoringPlay"].bool || scoringIDs.contains(p["id"].text))
     }.sorted { $0.sequence > $1.sequence }
     var probability = s["winprobability"].array.enumerated().compactMap {
       i, p -> WinProbabilityPoint? in
@@ -349,7 +356,7 @@ public enum ESPNWire {
     let drive = s["drives"]["current"]
     if let desc = drive["description"].string { stats["Current Drive"] = desc }
     if let yard = drive["yards"].string { stats["Drive Yards"] = yard }
-    if let plays = drive["plays"].array.last?["text"].string { stats["Latest Play"] = plays }
+    if let latest = plays.first { stats["Latest Play"] = latest.text }
     situation(competition, home: home, away: away, stats: &stats)
     let venue = s["gameInfo"]["venue"]
     return SportEvent(

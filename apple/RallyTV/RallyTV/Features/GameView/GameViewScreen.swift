@@ -15,6 +15,7 @@ struct GameViewScreen: View {
   var initialClipTitle: String? = nil
   var startFullscreen = false
   let navigate: (RallyRoute) -> Void
+  @State private var selectedMoment: GamePlay?
   @State private var session = PlaybackSession()
   @State private var sources = SourceModel()
   @State private var event: SportEvent?
@@ -112,6 +113,26 @@ struct GameViewScreen: View {
         if overlay == nil { controls = false }
       }
     }
+    .sheet(item: $selectedMoment) { play in
+      RallyCanvas {
+        ZStack {
+          RallyBackdrop()
+          VStack(alignment: .leading, spacing: RallyDesign.pt(16)) {
+            Text("Scoring Play").font(RallyDesign.font(22, .bold))
+            Text([play.period.map { "Q\($0)" }, play.clock].compactMap { $0 }.joined(separator: " · "))
+              .foregroundStyle(RallyDesign.muted)
+            if let event {
+              Text("\(event.awayTeam?.abbreviation ?? "Away") \(play.awayScore ?? 0) · \(event.homeTeam?.abbreviation ?? "Home") \(play.homeScore ?? 0)")
+            }
+            Text(play.text).font(RallyDesign.font(15))
+            HStack {
+              RallyAction(title: "Play-by-Play") { tab = "Plays"; selectedMoment = nil }
+              RallyAction(title: "Done") { selectedMoment = nil }
+            }
+          }.frame(width: RallyDesign.pt(540))
+        }
+      }
+    }
     .onDisappear {
       nowPlaying?.stop()
       nowPlaying = nil
@@ -170,11 +191,13 @@ struct GameViewScreen: View {
         ScrollView(.horizontal) {
           HStack(alignment: .top, spacing: RallyDesign.pt(10)) {
             if rail == "Key Moments", let event {
-              if event.highlightClips.isEmpty {
+              let clips = event.highlightClips.filter { $0.streamUrl != nil }
+              let scoring = event.plays.filter(\.isScoringPlay).prefix(max(0, 4 - clips.count))
+              if clips.isEmpty && scoring.isEmpty {
                 Text("Key moments appear as the league publishes them.").font(RallyDesign.font(10))
                   .foregroundStyle(RallyDesign.muted).padding(.vertical, RallyDesign.pt(12))
               }
-              ForEach(event.highlightClips) { clip in
+              ForEach(Array(clips.prefix(4))) { clip in
                 Button {
                   if let url = clip.streamUrl {
                     navigate(.playerClip(url: url, title: clip.title, eventId: event.id))
@@ -194,6 +217,22 @@ struct GameViewScreen: View {
                   }.frame(width: RallyDesign.pt(144.5), height: RallyDesign.pt(45))
                 }.buttonStyle(RallyMediaFocus()).focusEffectDisabled().accessibilityIdentifier(
                   "moment-\(clip.id)")
+              }
+              ForEach(Array(scoring)) { play in
+                Button { selectedMoment = play } label: {
+                  HStack(alignment: .top, spacing: RallyDesign.pt(7)) {
+                    HStack(spacing: RallyDesign.pt(3)) {
+                      RallyTeamLogo(team: event.awayTeam, size: 25)
+                      RallyTeamLogo(team: event.homeTeam, size: 25)
+                    }.frame(width: RallyDesign.pt(67), height: RallyDesign.pt(44))
+                      .background(RallyDesign.surface, in: RoundedRectangle(cornerRadius: RallyDesign.pt(6)))
+                    VStack(alignment: .leading, spacing: RallyDesign.pt(4)) {
+                      Text(play.text).font(RallyDesign.font(8, .semibold)).lineLimit(2)
+                      Text([play.period.map { "Q\($0)" }, play.clock].compactMap { $0 }.joined(separator: " · "))
+                        .font(RallyDesign.font(8)).foregroundStyle(RallyDesign.muted)
+                    }
+                  }.frame(width: RallyDesign.pt(144.5), height: RallyDesign.pt(45))
+                }.buttonStyle(RallyMediaFocus()).focusEffectDisabled().accessibilityIdentifier("moment-play-" + play.id)
               }
             } else {
               ForEach(live) { e in
@@ -219,12 +258,13 @@ struct GameViewScreen: View {
         }.scrollIndicators(.hidden).focusSection().frame(height: RallyDesign.pt(49))
       }.frame(width: RallyDesign.pt(608), height: RallyDesign.pt(500), alignment: .top)
       VStack(alignment: .leading, spacing: RallyDesign.pt(10)) {
-        HStack {
-          Spacer()
+        HStack(spacing: RallyDesign.pt(6)) {
+          sourceControls
+          Spacer(minLength: 0)
           BundleArt.image("rally_mark_ui.png").resizable().scaledToFit().frame(
             width: RallyDesign.pt(25), height: RallyDesign.pt(26))
         }.frame(height: RallyDesign.pt(24))
-        RallyTabs(tabs: ["Stats", "Plays", "Lineups", "Sources"], selection: $tab, compact: true)
+        RallyTabs(tabs: ["Stats", "Plays", "Players", "Sources"], selection: $tab, compact: true)
           .font(
             RallyDesign.font(10)
           ).frame(height: RallyDesign.pt(27))
@@ -236,8 +276,8 @@ struct GameViewScreen: View {
               VStack(alignment: .leading, spacing: RallyDesign.pt(10)) {
                 if tab == "Plays" {
                   RallyPlayList(event: event)
-                } else if tab == "Lineups" {
-                  RallyPlayerTables(event: event, compact: true)
+                } else if tab == "Players" {
+                  RallyGamePlayers(event: event)
                 } else {
                   ForEach(sources.candidates) { c in
                     RallyAction(title: c.title + " · " + (c.quality.resolution ?? "Auto")) {
@@ -293,7 +333,10 @@ struct GameViewScreen: View {
       } else {
         Text(session.sourceTitle).font(RallyDesign.font(16, .semibold)).lineLimit(1)
       }
-      Spacer(minLength: RallyDesign.pt(2))
+    }.frame(maxWidth: .infinity, alignment: .center)
+  }
+  private var sourceControls: some View {
+    HStack(spacing: RallyDesign.pt(6)) {
       if clipTitle != nil, let event, event.status.isLive {
         RallyAction(title: "Return to Live", bare: true) {
           navigate(.player(target: "auto", eventId: event.id))
@@ -312,7 +355,7 @@ struct GameViewScreen: View {
   private func playerControls(fullscreen: Bool) -> some View {
     HStack(spacing: RallyDesign.pt(6)) {
       control(
-        session.playing ? "Pause" : "Play", icon: session.playing ? "pause.fill" : "play.fill"
+        session.playbackRequested ? "Pause" : "Play", icon: session.playbackRequested ? "pause.fill" : "play.fill"
       ) { session.toggle() }
       control("Restart", icon: "arrow.counterclockwise") {
         if session.seekable {
@@ -461,14 +504,8 @@ struct GameViewScreen: View {
           ForEach(Array(stats.enumerated()), id: \.offset) { _, s in
             HStack(spacing: RallyDesign.pt(4)) {
               Text(s.awayValue).frame(width: RallyDesign.pt(30), alignment: .leading)
-              RallyComparisonBar(
-                value: s.awayValue, other: s.homeValue,
-                color: Color(hex: e.awayTeam?.colors.first ?? "AAAAAA"))
               Text(s.label).foregroundStyle(RallyDesign.muted).lineLimit(1)
                 .frame(maxWidth: .infinity)
-              RallyComparisonBar(
-                value: s.homeValue, other: s.awayValue,
-                color: Color(hex: e.homeTeam?.colors.first ?? "777777"))
               Text(s.homeValue).frame(width: RallyDesign.pt(30), alignment: .trailing)
             }.font(RallyDesign.font(8)).frame(height: RallyDesign.pt(12))
           }
@@ -691,5 +728,64 @@ enum PlaybackAudio {
       try? session.setCategory(.playback, mode: .moviePlayback)
       try? session.setActive(true)
     }.value
+  }
+}
+
+
+private struct RallyGamePlayers: View {
+  let event: SportEvent
+  @State private var selected: GamePlayerBoxScore?
+  var body: some View {
+    LazyVStack(alignment: .leading, spacing: RallyDesign.pt(10)) {
+      if event.allGamePlayers.isEmpty {
+        Text("Player stats have not been published yet.").font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
+      }
+      ForEach(event.allGamePlayers) { team in
+        HStack(spacing: RallyDesign.pt(6)) {
+          RallyRemoteImage(url: team.logo, fit: true).frame(width: RallyDesign.pt(20), height: RallyDesign.pt(20))
+          Text(team.name).font(RallyDesign.font(11, .semibold))
+        }
+        ForEach(team.players) { entry in
+          Button { selected = entry } label: {
+            VStack(alignment: .leading, spacing: RallyDesign.pt(5)) {
+              HStack(spacing: RallyDesign.pt(6)) {
+                RallyRemoteImage(url: entry.player.headshotUrl ?? team.logo, fit: true).frame(width: RallyDesign.pt(28), height: RallyDesign.pt(28))
+                VStack(alignment: .leading, spacing: RallyDesign.pt(3)) {
+                  Text(entry.player.displayName).font(RallyDesign.font(10, .semibold))
+                  Text([entry.player.position, entry.player.jersey.map { "#" + $0 }].compactMap { $0 }.joined(separator: " · "))
+                    .font(RallyDesign.font(8)).foregroundStyle(RallyDesign.muted)
+                }
+              }
+              ForEach(entry.categories) { category in
+                Text(category.id).font(RallyDesign.font(8, .semibold))
+                Text(category.values.map { $0.0 + ": " + ($0.1.isEmpty ? "—" : $0.1) }.joined(separator: " · "))
+                  .font(RallyDesign.font(9)).foregroundStyle(RallyDesign.muted).fixedSize(horizontal: false, vertical: true)
+              }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(RallyDesign.pt(7))
+          }.buttonStyle(RallyButtonStyle(bare: true)).focusEffectDisabled()
+            .accessibilityIdentifier("game-player-" + entry.id)
+        }
+      }
+    }.sheet(item: $selected) { entry in
+      RallyCanvas {
+        ZStack {
+          RallyBackdrop()
+          VStack(alignment: .leading, spacing: RallyDesign.pt(14)) {
+            Text(entry.player.displayName).font(RallyDesign.font(24, .bold))
+            ScrollView {
+              VStack(alignment: .leading, spacing: RallyDesign.pt(14)) {
+                ForEach(entry.categories) { category in
+                  Text(category.id).font(RallyDesign.font(14, .semibold))
+                  ForEach(Array(category.values.enumerated()), id: \.offset) { _, value in
+                    HStack { Text(value.0); Spacer(); Text(value.1.isEmpty ? "—" : value.1) }
+                  }
+                }
+              }
+            }.frame(maxHeight: RallyDesign.pt(330))
+            RallyAction(title: "Done") { selected = nil }
+          }.frame(width: RallyDesign.pt(450))
+        }
+      }
+    }
   }
 }

@@ -21,6 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
+import androidx.tv.foundation.lazy.list.rememberTvLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,16 +62,34 @@ fun RallyGameInformationPanel(
     sourceLabel: String,
     sourceLabels: List<String>,
     onChooseSource: () -> Unit,
+    requestedPlayId: String? = null,
+    requestedPlayVersion: Int = 0,
     modifier: Modifier = Modifier,
     initialTabFocus: FocusRequester? = null,
     leftExitFocus: FocusRequester? = null
 ) {
     var tab by remember(event?.id) { mutableStateOf("Stats") }
+    val playListState = key(tab) { rememberTvLazyListState() }
     val fallbackTabFocus = remember { FocusRequester() }
     val firstTabFocus = initialTabFocus ?: fallbackTabFocus
     val tabFocus = remember(firstTabFocus) { listOf(firstTabFocus, FocusRequester(), FocusRequester(), FocusRequester()) }
     val contentFocus = remember { FocusRequester() }
-    val selectedTabFocus = tabFocus[listOf("Stats", "Plays", "Lineups", "Sources").indexOf(tab)]
+    val gamePlayers = remember(event?.playerStatTables) { event?.allGamePlayers().orEmpty() }
+    LaunchedEffect(requestedPlayId, requestedPlayVersion) {
+        if (requestedPlayId != null) {
+            tab = "Plays"
+            withFrameNanos { }
+            tabFocus[1].requestFocus()
+        }
+    }
+    LaunchedEffect(tab, requestedPlayId, requestedPlayVersion) {
+        if (tab == "Plays" && requestedPlayId != null) {
+            withFrameNanos { }
+            val index = event?.plays.orEmpty().sortedByDescending { it.sequence }.distinctBy { it.id }.indexOfFirst { it.id == requestedPlayId }
+            if (index >= 0) playListState.scrollToItem(index)
+        }
+    }
+    val selectedTabFocus = tabFocus[listOf("Stats", "Plays", "Players", "Sources").indexOf(tab)]
     val firstContentModifier = Modifier.focusRequester(contentFocus).focusProperties {
         up = selectedTabFocus
         leftExitFocus?.let { left = it }
@@ -75,7 +97,7 @@ fun RallyGameInformationPanel(
     }
     Column(modifier.clip(panelShape).background(Color(0xE6080D11)).border(1.dp, RallyTvPalette.Divider, panelShape)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            listOf("Stats", "Plays", "Lineups", "Sources").forEachIndexed { index, label ->
+            listOf("Stats", "Plays", "Players", "Sources").forEachIndexed { index, label ->
                 var focused by remember(label) { mutableStateOf(false) }
                 Column(Modifier.weight(1f)
                     .focusRequester(tabFocus[index])
@@ -111,6 +133,7 @@ fun RallyGameInformationPanel(
                 CompactGameOverview(event, firstContentModifier, selectedTabFocus, leftExitFocus)
             } else TvLazyColumn(
                 Modifier.fillMaxSize(),
+                state = playListState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 11.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -119,30 +142,41 @@ fun RallyGameInformationPanel(
                         if (event.plays.isEmpty()) item { PanelCard("Play-by-Play", firstContentModifier) { PanelEmpty("Live play updates are not available yet.") } }
                         event.plays.sortedByDescending { it.sequence }.distinctBy { it.id }.forEachIndexed { index, play ->
                             item(key = "play:${play.id}") {
-                                PanelCard(listOfNotNull(play.period?.let { "P$it" }, play.clock).joinToString(" · ").ifBlank { "Play" },
+                                PanelCard(listOfNotNull(play.period?.let { if (event.sport.contains("football", true)) "Q$it" else "P$it" }, play.clock).joinToString(" · ").ifBlank { "Play" },
                                     if (index == 0) firstContentModifier else Modifier.focusProperties { leftExitFocus?.let { left = it } }) {
-                                    Text(play.text, color = RallyTvPalette.Text, fontSize = 10.sp)
+                                    if (play.isScoringPlay || play.awayScore != null || play.homeScore != null) {
+                                        Text(listOfNotNull("Scoring play".takeIf { play.isScoringPlay }, "${event.awayTeam?.abbreviation ?: "Away"} ${play.awayScore ?: "—"} · ${event.homeTeam?.abbreviation ?: "Home"} ${play.homeScore ?: "—"}").joinToString(" · "), color = RallyTvPalette.Muted, fontSize = 9.sp, modifier = Modifier.padding(bottom = 5.dp))
+                                    }
+                                    Text(play.text, color = RallyTvPalette.Text, fontSize = 10.sp, lineHeight = 14.sp)
                                 }
                             }
                         }
                     }
-                    "Lineups" -> {
-                        if (event.playerStatTables.isEmpty()) item { PanelCard("Lineups & Players", firstContentModifier) { PanelEmpty("Player stats are not available yet.") } }
+                    "Players" -> {
+                        val teams = gamePlayers
+                        if (teams.isEmpty()) item { PanelCard("Players", firstContentModifier) { PanelEmpty("Player stats are not available yet.") } }
                         var firstPlayer = true
-                        event.playerStatTables.forEachIndexed { tableIndex, table ->
-                            item(key = "table:$tableIndex") {
-                                Text("${table.teamAbbreviation} · ${statCategoryLabel(table.category)}", color = RallyTvPalette.Muted,
-                                    fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(6.dp))
+                        teams.forEach { team ->
+                            item(key = "team:${team.id}") {
+                                Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(team.logoUrl, null, Modifier.size(20.dp), contentScale = ContentScale.Fit)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(team.name, color = RallyTvPalette.Text, fontSize = 10.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
-                            table.rows.distinctBy { it.athleteId ?: it.displayName }.forEach { player ->
+                            team.players.forEach { entry ->
                                 val first = firstPlayer
                                 firstPlayer = false
-                                item(key = "player:$tableIndex:${player.athleteId ?: player.displayName}") {
-                                    PanelCard(player.displayName, if (first) firstContentModifier else Modifier.focusProperties { leftExitFocus?.let { left = it } }) {
+                                item(key = "player:${team.id}:${entry.id}") {
+                                    PanelCard(entry.player.displayName, if (first) firstContentModifier else Modifier.focusProperties { leftExitFocus?.let { left = it } }) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            AsyncImage(player.headshotUrl ?: table.teamLogoUrl, null, Modifier.size(22.dp), contentScale = ContentScale.Fit)
-                                            Spacer(Modifier.width(5.dp))
-                                            Text(playerStatPairs(table, player).joinToString(" · ") { "${it.first} ${it.second}" }, color = RallyTvPalette.Muted, fontSize = 9.sp)
+                                            AsyncImage(entry.player.headshotUrl ?: team.logoUrl, null, Modifier.size(28.dp), contentScale = ContentScale.Fit)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(listOfNotNull(entry.player.position, entry.player.jersey?.let { "#$it" }).joinToString(" · "), color = RallyTvPalette.Muted, fontSize = 9.sp, lineHeight = 12.sp)
+                                        }
+                                        entry.categories.forEach { (category, values) ->
+                                            Text(category, color = RallyTvPalette.Text, fontSize = 9.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp))
+                                            Text(values.joinToString(" · ") { "${it.first}: ${it.second.ifBlank { "—" }}" }, color = RallyTvPalette.Muted, fontSize = 9.sp, lineHeight = 13.sp)
                                         }
                                     }
                                 }
@@ -166,24 +200,6 @@ fun RallyGameInformationPanel(
                     Text(listOfNotNull(event.league, event.venue, event.gameStatusDetail).joinToString(" · "), color = RallyTvPalette.Muted, fontSize = 10.sp)
                     PanelEmpty("Use the quality button above the video for signal, buffering, codec, and stream health details.")
                 } }
-                if (tab == "Lineups") item { PanelCard("Team Leaders") {
-                    event.playerLeaders.distinctBy { "${it.teamAbbr}:${it.playerShortName}" }.take(6).forEach { leader ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(leader.headshotUrl ?: leader.teamLogoUrl, null, Modifier.size(22.dp), contentScale = ContentScale.Fit)
-                            Spacer(Modifier.width(6.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(leader.playerShortName, color = RallyTvPalette.Text, fontSize = 10.sp)
-                                Text(listOfNotNull(leader.position, leader.category).joinToString(" · "), color = RallyTvPalette.Muted, fontSize = 8.sp)
-                            }
-                            Text(leader.statDisplay, color = RallyTvPalette.Text, fontSize = 10.sp)
-                        }
-                    }
-                } }
-                if (tab == "Plays") item { PanelCard("Scoring Summary") {
-                    val scoring = event.plays.filter { it.isScoringPlay }.sortedByDescending { it.sequence }.take(8)
-                    if (scoring.isEmpty()) PanelEmpty("No scoring plays have been published.")
-                    scoring.forEach { Text(it.text, color = RallyTvPalette.Text, fontSize = 10.sp, modifier = Modifier.padding(vertical = 4.dp)) }
-                } }
             }
         }
     }
@@ -197,7 +213,7 @@ private fun CompactGameOverview(
     val stats = remember(event.teamStats) {
         event.teamStats.filterNot { stat ->
             listOf("spread", "moneyline", "over/under", "odds", "prediction").any { stat.label.contains(it, true) }
-        }.take(8)
+        }.take(6)
     }
     val cardFocus = remember { List(4) { FocusRequester() } }
     val football = event.league in listOf("NFL", "NCAAF")
@@ -209,8 +225,8 @@ private fun CompactGameOverview(
         leftExit?.let { left = it }
     }
     BoxWithConstraints(Modifier.fillMaxSize().padding(6.dp)) {
-        val leadersHeight = 136.dp
-        val statsHeight = 28.dp + 14.dp * stats.size.coerceAtLeast(1)
+        val leadersHeight = 122.dp
+        val statsHeight = 42.dp + 14.dp * stats.size.coerceAtLeast(1)
         val situationHeight = if (hasDrive) 64.dp else 48.dp
         val playsHeight = maxHeight - leadersHeight - statsHeight - situationHeight - 15.dp
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -225,12 +241,11 @@ private fun CompactGameOverview(
                                 Text(team?.abbreviation.orEmpty(), color = RallyTvPalette.Text, fontSize = 8.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold)
                             }
                             event.playerLeaders.filter { it.teamAbbr.equals(team?.abbreviation, true) }.take(3).forEach { leader ->
-                                Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.fillMaxWidth().height(26.dp), verticalAlignment = Alignment.CenterVertically) {
                                     AsyncImage(leader.headshotUrl ?: leader.teamLogoUrl, null, Modifier.size(21.dp).clip(RoundedCornerShape(50)), contentScale = ContentScale.Crop)
                                     Spacer(Modifier.width(4.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(leader.playerShortName, color = RallyTvPalette.Text, fontSize = 8.5.sp, lineHeight = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(listOfNotNull(leader.position, leader.category).joinToString(" · "), color = RallyTvPalette.Muted, fontSize = 7.sp, lineHeight = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Text(leader.statDisplay, color = RallyTvPalette.Text, fontSize = 8.5.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
@@ -241,18 +256,15 @@ private fun CompactGameOverview(
             }
             CompactPanelCard("Team Stats", navigation(1).height(statsHeight), event) {
                 if (stats.isEmpty()) PanelEmpty("Team stats will appear during the game.")
+                Row(Modifier.fillMaxWidth().height(14.dp)) {
+                    Text(event.awayTeam?.abbreviation ?: "Away", color = RallyTvPalette.Muted, fontSize = 8.sp, modifier = Modifier.weight(1f))
+                    Text(event.homeTeam?.abbreviation ?: "Home", color = RallyTvPalette.Muted, fontSize = 8.sp, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+                }
                 stats.forEach { stat ->
-                    val awayFraction = statBarFraction(stat.awayValue, stat.homeValue)
                     Row(Modifier.fillMaxWidth().height(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stat.awayValue, color = RallyTvPalette.Text, fontSize = 8.5.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(35.dp))
-                        Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(50)).background(Color(0xFF20252A))) {
-                            Box(Modifier.fillMaxWidth(awayFraction).height(3.dp).background(gamePanelTeamColor(event.awayTeam, Color.Gray)))
-                        }
-                        Text(stat.label, color = RallyTvPalette.Muted, fontSize = 8.sp, lineHeight = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Box(Modifier.weight(1f).height(3.dp).clip(RoundedCornerShape(50)).background(Color(0xFF20252A))) {
-                            Box(Modifier.fillMaxWidth(1f - awayFraction).height(3.dp).background(gamePanelTeamColor(event.homeTeam, Color.Gray)))
-                        }
-                        Text(stat.homeValue, color = RallyTvPalette.Text, fontSize = 8.5.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.width(35.dp))
+                        Text(stat.awayValue, color = RallyTvPalette.Text, fontSize = 8.5.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp))
+                        Text(stat.label, color = RallyTvPalette.Muted, fontSize = 8.sp, lineHeight = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(stat.homeValue, color = RallyTvPalette.Text, fontSize = 8.5.sp, lineHeight = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.width(44.dp))
                     }
                 }
             }
@@ -277,7 +289,7 @@ private fun CompactGameOverview(
                 if (plays.isEmpty()) PanelEmpty("Live play updates will appear here.")
                 else plays.forEach { play ->
                     Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Text(listOfNotNull(play.period?.let { "P$it" }, play.clock).joinToString(" · "), color = RallyTvPalette.Muted,
+                        Text(listOfNotNull(play.period?.let { if (event.sport.contains("football", true)) "Q$it" else "P$it" }, play.clock).joinToString(" · "), color = RallyTvPalette.Muted,
                             fontSize = 7.5.sp, lineHeight = 10.sp, modifier = Modifier.width(43.dp), maxLines = 1)
                         Text(play.text, color = RallyTvPalette.Text, fontSize = 8.5.sp, lineHeight = 11.sp,
                             maxLines = if (playsHeight < 72.dp) 1 else 2, overflow = TextOverflow.Ellipsis)
@@ -317,7 +329,7 @@ private fun PanelCard(title: String, modifier: Modifier = Modifier, content: @Co
     Column(modifier.fillMaxWidth().onFocusChanged { focused = it.hasFocus }.focusable()
         .clip(panelShape).background(if (focused) RallyTvPalette.FocusSurface else Color(0xB00D1217))
         .border(1.dp, if (focused) RallyTvPalette.FocusEdge.copy(alpha = .55f) else RallyTvPalette.Divider, panelShape).padding(9.dp)) {
-        Text(title, color = RallyTvPalette.Text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = RallyTvPalette.Text, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         content()
     }
@@ -325,27 +337,8 @@ private fun PanelCard(title: String, modifier: Modifier = Modifier, content: @Co
 
 @Composable
 private fun PanelEmpty(message: String) {
-    Text(message, color = RallyTvPalette.Muted, fontSize = 10.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    Text(message, color = RallyTvPalette.Muted, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
 }
 
 private fun Modifier.onFocusChangedCompat(onChanged: (Boolean) -> Unit): Modifier =
     this.then(Modifier.onFocusChanged { onChanged(it.isFocused) })
-
-private fun statBarFraction(away: String, home: String): Float {
-    fun amount(value: String): Float? = Regex("-?\\d+(?:\\.\\d+)?").find(value)?.value?.toFloatOrNull()?.let { kotlin.math.abs(it) }
-    val awayValue = amount(away) ?: return .5f
-    val homeValue = amount(home) ?: return .5f
-    val total = awayValue + homeValue
-    return if (total <= 0f) .5f else (awayValue / total).coerceIn(.08f, .92f)
-}
-
-private fun gamePanelTeamColor(team: Team?, fallback: Color): Color {
-    val raw = team?.colors?.firstOrNull()?.trim().orEmpty()
-    if (raw.isNotBlank()) {
-        val normalized = if (raw.startsWith("#")) raw else "#$raw"
-        runCatching { return Color(android.graphics.Color.parseColor(normalized)) }
-    }
-    if (team == null) return fallback
-    val palette = listOf(Color(0xFF285C78), Color(0xFF7A3044), Color(0xFF5A3A86), Color(0xFF8A5A1E), Color(0xFF24634F), Color(0xFF7C4025))
-    return palette[(team.id.hashCode() and Int.MAX_VALUE) % palette.size]
-}

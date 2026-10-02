@@ -9,14 +9,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/shivpatell25/rally/releases/latest">Download Rally TV Beta 10</a>
+  <a href="https://github.com/shivpatell25/rally/releases/latest">Download Rally TV Beta 11</a>
   ·
   <a href="https://github.com/shivpatell25/rally/issues">Get help</a>
 </p>
 
 ## Your sports, all in one place
 
-Open Rally to see what is live, what is coming up, and the moments you may have missed. Follow the leagues and teams you care about, browse the full schedule, or open a game for scores, stats, lineups, and play-by-play.
+Open Rally to see what is live, what is coming up, and the moments you may have missed. Follow the leagues and teams you care about, browse the full schedule, or open a game for scores, stats, players, and play-by-play.
 
 ### Watch the way you want
 
@@ -50,4 +50,4 @@ Sports schedules, scores, statistics, and highlight availability come from third
 
 ## About this build
 
-Rally TV Beta 10 is a test release for Android TV and Apple TV. The Android APK is signed with the Rally Beta test key so it can update compatible Beta 9 test installations. The Apple TV IPA is an unsigned package intended for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. App availability and behavior may change as Rally develops.
+Rally TV Beta 11 is a test release for Android TV and Apple TV. The Android APK is signed with the Rally Beta test key so it can update compatible Beta 9 and Beta 10 test installations. The Apple TV IPA is an unsigned package intended for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. App availability and behavior may change as Rally develops.

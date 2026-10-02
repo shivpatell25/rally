@@ -10,15 +10,30 @@ struct RootView: View {
     self.container = container
     _path = path
     _store = State(initialValue: RallyStore(container: container))
+    #if DEBUG
+      let forceWelcome = ProcessInfo.processInfo.arguments.contains("--show-welcome")
+    #else
+      let forceWelcome = false
+    #endif
     _onboarding = State(
-      initialValue: !container.settings.setupComplete
-        && !ProcessInfo.processInfo.arguments.contains("--ui-testing"))
+      initialValue: forceWelcome || (!container.settings.setupComplete
+        && !ProcessInfo.processInfo.arguments.contains("--ui-testing")))
   }
   var body: some View {
     // Re-evaluate native environment values when non-observable preferences change.
     let _ = store.settingsRevision
-    NavigationStack(path: $path) {
-      shell(.home).navigationDestination(for: RallyRoute.self) { route in shell(route) }
+    Group {
+      if onboarding {
+        RallyWelcomeScreen {
+          container.settings.setupComplete = true
+          onboarding = false
+          navigate(.settings)
+        }
+      } else {
+        NavigationStack(path: $path) {
+          shell(.home).navigationDestination(for: RallyRoute.self) { route in shell(route) }
+        }
+      }
     }.environment(store).preferredColorScheme(.dark)
       .onOpenURL { url in if let route = RallyDeepLink.route(url) { navigate(route) } }
       .task {
@@ -36,27 +51,6 @@ struct RootView: View {
           saver =
             container.settings.scoreSaverEnabled && !store.isPlaying && !onboarding
             && Date().timeIntervalSince(store.lastInteraction) > 300
-        }
-      }
-      .overlay {
-        if onboarding {
-          RallyCanvas {
-            ZStack {
-              RallyBackdrop()
-              VStack(spacing: RallyDesign.pt(20)) {
-                BundleArt.image("rally_wordmark_color_ui.png").resizable().scaledToFit().frame(
-                  width: RallyDesign.pt(160), height: RallyDesign.pt(70))
-                Text("Your sports. Your sources. One place.").font(RallyDesign.font(25, .semibold))
-                Text("Follow teams, track games, and connect your IPTV provider or sports addons.")
-                  .font(RallyDesign.font(14)).foregroundStyle(RallyDesign.muted)
-                RallyAction(title: "Continue to Setup", primary: true) {
-                  onboarding = false
-                  container.settings.setupComplete = true
-                  navigate(.settings)
-                }
-              }
-            }
-          }.environment(store)
         }
       }
       .overlay {
@@ -145,6 +139,27 @@ struct RootView: View {
     case .watchlist: MyRallyScreen(navigate: navigate)
     case .settings: SettingsScreen(navigate: navigate)
     }
+  }
+}
+struct RallyWelcomeScreen: View {
+  let continueToSetup: () -> Void
+  @FocusState private var continueFocused: Bool
+  var body: some View {
+    RallyCanvas {
+      ZStack {
+        RallyBackdrop()
+        VStack(spacing: RallyDesign.pt(20)) {
+          BundleArt.image("rally_wordmark_color_ui.png").resizable().scaledToFit().frame(
+            width: RallyDesign.pt(160), height: RallyDesign.pt(70))
+          Text("Your sports. Your sources. One place.").font(RallyDesign.font(25, .semibold))
+          Text("Follow teams, track games, and connect your IPTV provider or sports addons.")
+            .font(RallyDesign.font(14)).foregroundStyle(RallyDesign.muted)
+          RallyAction(title: "Continue to Setup", primary: true, action: continueToSetup)
+            .focused($continueFocused).accessibilityIdentifier("welcome-continue")
+        }
+      }
+    }.foregroundStyle(.white).defaultFocus($continueFocused, true)
+      .task { continueFocused = true }
   }
 }
 struct RallyTopNav: View {

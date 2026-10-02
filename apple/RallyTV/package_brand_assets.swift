@@ -19,7 +19,7 @@ func load(_ name: String) -> CGImage {
   let source = CGImageSourceCreateWithURL(resources.appendingPathComponent(name) as CFURL, nil)!
   return CGImageSourceCreateImageAtIndex(source, 0, nil)!
 }
-let mark = load("rally_mark_ui.png")
+let wordmark = load("rally_wordmark_color_ui.png")
 let flare = load("rally_tv_background_v8.png")
 func render(width: Int, height: Int, foreground: Bool, topShelf: Bool = false) -> CGImage {
   let w = CGFloat(width)
@@ -31,10 +31,10 @@ func render(width: Int, height: Int, foreground: Bool, topShelf: Bool = false) -
   context.interpolationQuality = .high
   if foreground {
     let scale = min(
-      w * (topShelf ? 0.16 : 0.40) / CGFloat(mark.width), h * 0.50 / CGFloat(mark.height))
-    let mw = CGFloat(mark.width) * scale
-    let mh = CGFloat(mark.height) * scale
-    context.draw(mark, in: CGRect(x: (w - mw) / 2, y: (h - mh) / 2, width: mw, height: mh))
+      w * 0.68 / CGFloat(wordmark.width), h * 0.44 / CGFloat(wordmark.height))
+    let mw = CGFloat(wordmark.width) * scale
+    let mh = CGFloat(wordmark.height) * scale
+    context.draw(wordmark, in: CGRect(x: (w - mw) / 2, y: (h - mh) / 2, width: mw, height: mh))
   } else {
     context.setFillColor(CGColor(red: 5 / 255, green: 5 / 255, blue: 7 / 255, alpha: 1))
     context.fill(CGRect(x: 0, y: 0, width: w, height: h))

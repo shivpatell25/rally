@@ -8,6 +8,19 @@ final class RallyParityUITests: XCTestCase {
     if let route { app.launchArguments += ["--route", route] }
     app.launch()
   }
+  func testWelcomeContinueUsesRemoteFocusAndOpensSetup() throws {
+    app.launchArguments = ["--ui-testing", "--fixtures", "--show-welcome"]
+    app.launch()
+    let button = app.buttons["welcome-continue"]
+    XCTAssertTrue(button.waitForExistence(timeout: 10))
+    XCTAssertFalse(app.buttons["nav-Home"].exists, "Home must not compete for welcome focus")
+    XCTAssertTrue(button.hasFocus, app.debugDescription)
+    shot("welcome-remote-focus")
+    remote.press(.select)
+    XCTAssertTrue(app.buttons["tab-Sources"].waitForExistence(timeout: 10), app.debugDescription)
+    XCTAssertFalse(button.exists)
+    shot("welcome-setup")
+  }
   // Explicit opt-in: this walkthrough uses public production feeds and HLS,
   // so network availability must not make the deterministic suite flaky.
   func testShippingRepositoriesAndPublishedClip() throws {
@@ -150,7 +163,7 @@ final class RallyParityUITests: XCTestCase {
     }
     try focus(app.buttons["tab-Plays"])
     remote.press(.select)
-    try focus(app.buttons["tab-Lineups"])
+    try focus(app.buttons["tab-Players"])
     remote.press(.select)
     try focus(app.buttons["tab-Sources"])
     remote.press(.select)

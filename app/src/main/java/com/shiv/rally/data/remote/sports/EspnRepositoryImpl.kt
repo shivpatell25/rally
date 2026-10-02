@@ -522,10 +522,11 @@ class EspnRepositoryImpl @Inject constructor(
                 )
             }.distinctBy { it.id }
 
-            val playsById = summary.plays.orEmpty().mapNotNull { play ->
+            val publishedPlays = summary.allPlays()
+            val playsById = publishedPlays.mapNotNull { play ->
                 play.id?.let { it to play }
             }.toMap()
-            val gamePlays = summary.plays.orEmpty().mapIndexedNotNull { index, play ->
+            val gamePlays = publishedPlays.mapIndexedNotNull { index, play ->
                 val text = play.text?.trim().orEmpty()
                 if (text.isEmpty()) return@mapIndexedNotNull null
                 com.shiv.rally.domain.model.GamePlay(
@@ -535,6 +536,7 @@ class EspnRepositoryImpl @Inject constructor(
                     awayScore = play.awayScore,
                     homeScore = play.homeScore,
                     clock = play.clock?.displayValue,
+                    period = play.period?.number,
                     wallClock = play.wallclock,
                     isScoringPlay = play.scoringPlay == true
                 )
@@ -584,7 +586,14 @@ class EspnRepositoryImpl @Inject constructor(
             val summaryCompetition = summary.header?.competitions?.firstOrNull()
             val summaryAway = summaryCompetition?.competitors?.find { it.homeAway == "away" }
             val summaryHome = summaryCompetition?.competitors?.find { it.homeAway == "home" }
+            val updatedLiveStats = event.liveStats.toMutableMap()
+            summary.drives?.current?.let { drive ->
+                updatedLiveStats["Current Drive"] = drive.description?.takeIf(String::isNotBlank)
+                    ?: listOfNotNull(drive.plays?.size?.let { "$it plays" }, drive.yards?.let { "$it yards" }).joinToString(" · ")
+            }
+            gamePlays.firstOrNull()?.let { updatedLiveStats["Latest Play"] = it.text }
             val updatedEvent = event.copy(
+                liveStats = updatedLiveStats,
                 venue = summary.gameInfo?.venue?.fullName ?: event.venue,
                 venueImageUrl = summary.gameInfo?.venue?.images?.firstOrNull()?.href
                     ?: summaryCompetition?.venue?.images?.firstOrNull()?.href ?: event.venueImageUrl,

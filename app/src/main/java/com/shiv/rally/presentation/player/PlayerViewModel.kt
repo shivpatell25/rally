@@ -23,6 +23,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.net.URLDecoder
@@ -63,6 +64,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun switchStream(newChannelId: String) {
+        recoveryJob?.cancel()
         failedPlaybackTargets.clear()
         val current = _uiState.value as? PlayerUiState.Success
         val decodedTarget = decodePlayerTarget(newChannelId)
@@ -70,7 +72,9 @@ class PlayerViewModel @Inject constructor(
             channelTarget = newChannelId,
             overrideEvent = current?.event,
             precomputedRelevant = current?.relevantChannels,
-            initialHeaders = current?.stremioStreams
+            initialHeaders = current?.streamCandidates?.firstOrNull {
+                it.playbackTarget == newChannelId || decodePlayerTarget(it.playbackTarget) == decodedTarget
+            }?.headers ?: current?.stremioStreams
                 ?.firstOrNull { it.streamUrl == newChannelId || it.streamUrl == decodedTarget }
                 ?.headers,
             precomputedStremio = current?.stremioStreams,
@@ -79,6 +83,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun retry() {
+        recoveryJob?.cancel()
         failedPlaybackTargets.clear()
         val current = _uiState.value as? PlayerUiState.Success
         loadStream(
@@ -92,6 +97,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun switchToEvent(newEventId: String) {
+        recoveryJob?.cancel()
         failedPlaybackTargets.clear()
         viewModelScope.launch(ioDispatcher) {
             try {
@@ -170,6 +176,7 @@ class PlayerViewModel @Inject constructor(
                 if (generation != loadGeneration) return@launch
                 _uiState.value = PlayerUiState.Success(
                     streamUrl = streamUrl,
+                    playbackRequestId = generation,
                     macAddress = preferencesManager.macAddress.trim(),
                     token = preferencesManager.authToken.trim(),
                     event = overrideEvent,
@@ -315,8 +322,10 @@ class PlayerViewModel @Inject constructor(
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _uiState.value = PlayerUiState.Error(e.message ?: "Failed to load stream")
+                if (generation == loadGeneration) _uiState.value = PlayerUiState.Error(e.message ?: "Failed to load stream")
             }
         }
     }
@@ -329,8 +338,8 @@ class PlayerViewModel @Inject constructor(
             detail = "Recovery attempt ${(_uiState.value as? PlayerUiState.Success)?.recoveryAttempt ?: 0}"
         )
         val current = _uiState.value as? PlayerUiState.Success ?: return
-        if (current.streamUrl == streamUrl && current.recoveryStatus != null) {
-            _uiState.value = current.copy(recoveryStatus = null, autoRecoveryExhausted = false)
+        if (current.streamUrl == streamUrl && (current.recoveryStatus != null || current.autoRecoveryExhausted || current.terminalPlaybackError != null)) {
+            _uiState.value = current.copy(recoveryStatus = null, autoRecoveryExhausted = false, terminalPlaybackError = null)
         }
     }
 
@@ -339,9 +348,11 @@ class PlayerViewModel @Inject constructor(
         diagnostics?.record("Playback stall", "Playback entered buffering after startup")
     }
 
-    fun recoverFromPlaybackFailure(reason: String) {
+    fun recoverFromPlaybackFailure(reason: String, expectedRequestId: Long? = null) {
         val current = _uiState.value as? PlayerUiState.Success ?: return
+        if (expectedRequestId != null && current.playbackRequestId != expectedRequestId) return
         if (recoveryJob?.isActive == true || current.autoRecoveryExhausted) return
+        val generation = loadGeneration
         preferencesManager.recordStreamFailure(current.streamUrl)
         diagnostics?.record("Playback", reason, "Recovery attempt ${current.recoveryAttempt + 1}")
         failedPlaybackTargets += current.streamUrl
@@ -355,6 +366,7 @@ class PlayerViewModel @Inject constructor(
             val selection = runCatching {
                 selectBestStream(event, precomputedKnownChannels(current), current.stremioStreams)
             }.getOrNull()
+            if (generation != loadGeneration) return@launch
             val next = selection?.candidates?.let { candidates ->
                 chooseRecoveryCandidate(candidates, failedPlaybackTargets)
             }
@@ -438,6 +450,7 @@ sealed class PlayerUiState {
     @Immutable
     data class Success(
         val streamUrl: String,
+        val playbackRequestId: Long = 0,
         val macAddress: String = "",
         val token: String = "",
         val event: SportEvent?,
