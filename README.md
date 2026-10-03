@@ -48,6 +48,8 @@ Rally supports Stalker/Ministra portals, Xtream Codes, M3U/M3U8 playlists, and S
 
 Sports schedules, scores, statistics, and highlight availability come from third-party services. Rally is independent and is not affiliated with ESPN, Stremio, any league, team, broadcaster, IPTV provider, or device manufacturer. Apple TV sideloading tools may require your own Apple account or a compatible signing service; this release is not App Store or TestFlight signed. See the [content and provider details](CONTENT_SOURCES.md) and [privacy policy](PRIVACY.md).
 
+Credit to Jacob Halladay for testing tvOS beta
+
 ## About this build
 
 Rally TV Beta 11 Hotfix 2 fixes Apple TV Settings navigation between text fields and action buttons. It includes the unchanged Beta 11 Android TV build. The Android APK is signed with the Rally Beta test key so it can update compatible Beta 9 and Beta 10 test installations. The Apple TV IPA is an unsigned package intended for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. App availability and behavior may change as Rally develops.
