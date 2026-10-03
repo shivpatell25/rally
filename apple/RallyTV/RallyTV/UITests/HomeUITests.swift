@@ -239,6 +239,65 @@ final class RallyParityUITests: XCTestCase {
     remote.press(.select)
     XCTAssertTrue(app.buttons["upcoming-0"].waitForExistence(timeout: 5))
   }
+  func testSettingsTextEntryAndCancel() throws {
+    launch("settings")
+    try focus(app.buttons["tab-Addons"])
+    remote.press(.select)
+    let manifest = app.textFields["settings-input-Manifest URL"]
+    remote.press(.down)
+    XCTAssertTrue(manifest.hasFocus, app.debugDescription)
+    remote.press(.select)
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+    shot("settings-manifest-keyboard")
+    // tvOS reports focus on the keyboard container rather than individual keys.
+    // Its initial lowercase key is "a"; use the remote to enter it and finish.
+    XCTAssertTrue(app.keys["a"].exists)
+    remote.press(.select)
+    try focus(app.buttons["done"])
+    remote.press(.select)
+    XCTAssertTrue(manifest.waitForExistence(timeout: 5))
+    XCTAssertEqual(manifest.value as? String, "a")
+    XCTAssertTrue(manifest.hasFocus)
+    shot("settings-manifest-entered")
+
+    func openAndReturn(_ title: String, secure: Bool = false) throws {
+      let input = secure ? app.secureTextFields["settings-input-" + title]
+        : app.textFields["settings-input-" + title]
+      try focus(input)
+      let original = input.value as? String
+      remote.press(.select)
+      XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), title)
+      remote.press(.menu)
+      XCTAssertTrue(input.waitForExistence(timeout: 5), title)
+      XCTAssertTrue(input.hasFocus, title + " did not regain focus")
+      XCTAssertEqual(input.value as? String, original)
+    }
+    try openAndReturn("Manifest URL")
+    try focus(app.buttons["tab-Sources"])
+    remote.press(.select)
+    try focus(app.buttons["Stalker / Ministra"])
+    remote.press(.down)
+    XCTAssertTrue(app.textFields["settings-input-Portal URL"].hasFocus, app.debugDescription)
+    for title in ["Portal URL", "MAC Address", "Serial Number (optional)", "Device ID (optional)"] {
+      try openAndReturn(title)
+    }
+    try focus(app.buttons["Xtream Codes"])
+    remote.press(.select)
+    remote.press(.down)
+    XCTAssertTrue(app.textFields["settings-input-Server URL"].hasFocus, app.debugDescription)
+    try openAndReturn("Server URL")
+    try openAndReturn("Username")
+    try openAndReturn("Password", secure: true)
+    try focus(app.buttons["M3U / M3U8"])
+    remote.press(.select)
+    remote.press(.down)
+    XCTAssertTrue(app.textFields["settings-input-Playlist URL"].hasFocus, app.debugDescription)
+    try openAndReturn("Playlist URL")
+    try openAndReturn("Playlist Name (optional)")
+    try focus(app.buttons["tab-My Rally"])
+    remote.press(.select)
+    try openAndReturn("Find Team")
+  }
   @MainActor func testM3uFileImportChannelBrowsingAndPlayback() async throws {
     launch("settings")
     try focus(app.buttons["M3U / M3U8"])

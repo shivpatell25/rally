@@ -108,11 +108,7 @@ struct SettingsScreen: View {
       } else if provider == .xtream {
         field("Server URL", text: $server)
         field("Username", text: $username)
-        HStack {
-          Text("Password").frame(width: RallyDesign.pt(170), alignment: .leading)
-          SecureField("Provider password", text: $password).font(RallyDesign.font(14)).frame(
-            height: RallyDesign.pt(34))
-        }
+        field("Password", text: $password, secure: true)
       } else {
         if let url = URL(string: playlist), M3uPlaylistFiles.isOwned(url) {
           Text("Imported playlist: " + playlistName).font(RallyDesign.font(13))
@@ -328,12 +324,22 @@ struct SettingsScreen: View {
       }
     }
   }
-  private func field(_ title: String, text: Binding<String>) -> some View {
-    HStack {
+  private func field(_ title: String, text: Binding<String>, secure: Bool = false) -> some View {
+    HStack(spacing: RallyDesign.pt(12)) {
       Text(title).font(RallyDesign.font(12)).frame(width: RallyDesign.pt(170), alignment: .leading)
-      TextField(title, text: text).font(RallyDesign.font(14)).frame(height: RallyDesign.pt(34))
-        .autocorrectionDisabled().textInputAutocapitalization(.never)
-    }
+      Group {
+        if secure {
+          SecureField("Provider password", text: text)
+        } else {
+          TextField(title, text: text)
+        }
+      }.font(RallyDesign.font(14)).frame(maxWidth: .infinity)
+        .frame(height: RallyDesign.pt(34)).autocorrectionDisabled()
+        .textInputAutocapitalization(.never)
+        .keyboardType(title.contains("URL") ? .URL : .default)
+        .submitLabel(.done)
+        .accessibilityIdentifier("settings-input-" + title)
+    }.frame(maxWidth: .infinity).focusSection()
   }
   private func toggle(_ title: String, get: @escaping () -> Bool, set: @escaping (Bool) -> Void)
     -> some View

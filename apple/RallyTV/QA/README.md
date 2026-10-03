@@ -33,6 +33,21 @@ seeking or playback menus change.
 
 ## Coverage
 
+### Settings input follow-up — October 2, 2026
+
+Direct Down navigation from Addons previously skipped the manifest input because
+the input began to the right of the tab and action buttons. Each settings input
+row now defines a native focus section spanning its label and text box, including
+the secure password field. URL fields use the native URL keyboard without
+autocorrection or capitalization.
+
+The remote test opened all 11 settings inputs, verified Back restores focus and
+preserves values, and entered text with Done in the manifest field. Release also
+builds successfully. See [settings-input-results.json](settings-input-results.json)
+and `/tmp/rally-settings-entry-all.xcresult`.
+
+### Main acceptance coverage
+
 - **Navigation:** Home, Live, Schedule, Leagues/league/team hubs, Highlights,
   My Rally, Search, Settings, all Event tabs and all Settings tabs.
 - **Home:** persistent navigation, cohesive venue hero, three-card paging,

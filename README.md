@@ -50,4 +50,4 @@ Sports schedules, scores, statistics, and highlight availability come from third
 
 ## About this build
 
-Rally TV Beta 11 is a test release for Android TV and Apple TV. The Android APK is signed with the Rally Beta test key so it can update compatible Beta 9 and Beta 10 test installations. The Apple TV IPA is an unsigned package intended for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. App availability and behavior may change as Rally develops.
+Rally TV Beta 11 Hotfix 1 fixes Apple TV Settings text-field navigation. It includes the unchanged Beta 11 Android TV build. The Android APK is signed with the Rally Beta test key so it can update compatible Beta 9 and Beta 10 test installations. The Apple TV IPA is an unsigned package intended for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. App availability and behavior may change as Rally develops.
