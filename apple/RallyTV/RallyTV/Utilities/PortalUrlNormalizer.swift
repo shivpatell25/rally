@@ -21,10 +21,16 @@ public enum PortalUrlNormalizer {
   public static func normalizeAddon(_ rawValue: String) -> URL? {
     var value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !value.isEmpty else { return nil }
+    if value.lowercased().hasPrefix("stremio://") {
+      value = "https://" + value.dropFirst("stremio://".count)
+    }
     if !value.lowercased().hasPrefix("http://") && !value.lowercased().hasPrefix("https://") {
       value = "https://" + value
     }
-    guard var components = URLComponents(string: value) else { return nil }
+    guard var components = URLComponents(string: value),
+      ["http", "https"].contains(components.scheme?.lowercased() ?? ""),
+      components.host?.isEmpty == false else { return nil }
+    components.fragment = nil
     if !components.path.hasSuffix("manifest.json") {
       components.path = (components.path as NSString).appendingPathComponent("manifest.json")
     }

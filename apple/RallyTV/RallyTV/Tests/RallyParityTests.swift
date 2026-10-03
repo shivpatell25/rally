@@ -571,3 +571,216 @@ final class RallyParityTests: XCTestCase {
   }
 
 }
+
+final class StremioDiscoveryTests: XCTestCase {
+  private func game() -> SportEvent {
+    SportEvent(id: "MLB:test", name: "Boston Red Sox at New York Yankees",
+      homeTeam: Team(id: "ny", name: "New York Yankees", abbreviation: "NYY"),
+      awayTeam: Team(id: "bos", name: "Boston Red Sox", abbreviation: "BOS"),
+      startTime: Date(), status: .live, sport: "baseball", league: "MLB")
+  }
+  private func fixture(timeout: TimeInterval = 3,
+    handler: @escaping (String) -> AddonTestResponse
+  ) -> (StremioRepositoryImpl, AddonTestFixture) {
+    let fixture = AddonTestFixture(handler: handler)
+    let host = "addon-\(UUID().uuidString.lowercased()).test"
+    AddonTestURLProtocol.register(fixture, host: host)
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [AddonTestURLProtocol.self]
+    let session = URLSession(configuration: config)
+    let suite = "rally.stremio.\(UUID().uuidString)"
+    let settings = SettingsStore(defaults: UserDefaults(suiteName: suite)!, secrets: KeychainSecrets(service: suite))
+    settings.stremioAddonUrls = [URL(string: "https://\(host)/configured/manifest.json?token=preserved")!]
+    return (StremioRepositoryImpl(http: HTTPClient(session: session), settings: settings, discoveryTimeout: timeout), fixture)
+  }
+  func testCustomCatalogTypeDescriptionsAndNativeHeaderStreams() async throws {
+    let (repo, fixture) = fixture { path in
+      switch path {
+      case "/configured/manifest.json":
+        return .json(#"{"name":"Sports","types":["live-event"],"catalogs":[{"id":"mlb-live","type":"live-event","name":"MLB"}]}"#)
+      case "/configured/catalog/live-event/mlb-live.json":
+        return .json(#"{"metas":[{"id":"game/123","name":"Live baseball","description":"Boston vs New York"},{"id":"wrong","name":"Boston vs Chicago"}]}"#)
+      case "/configured/stream/live-event/game%2F123.json":
+        return .json(#"{"streams":[{"name":"1080p","title":"Home broadcast","url":"https://media.test/live.m3u8","behaviorHints":{"notWebReady":true,"proxyHeaders":{"request":{"User-Agent":"SportsPlayer","Referer":"https://provider.test/"}}}}]}"#)
+      default: return .json("{}", status: 404)
+      }
+    }
+    let streams = await repo.streams(for: game())
+    XCTAssertEqual(streams.count, 1)
+    XCTAssertEqual(streams.first?.title, "Home broadcast")
+    XCTAssertEqual(streams.first?.headers?["User-Agent"], "SportsPlayer")
+    XCTAssertEqual(streams.first?.isDirectPlayable, true)
+    XCTAssertFalse(fixture.paths.contains { $0.contains("wrong.json") || $0.contains("/stream/sport/") })
+    XCTAssertTrue(fixture.queries.allSatisfy { $0 == "token=preserved" })
+  }
+  func testSearchOnlyCatalogSearchesBothTeamsAndPreservesType() async {
+    let (repo, fixture) = fixture { path in
+      if path.hasSuffix("manifest.json") {
+        return .json(#"{"name":"Search","catalogs":[{"id":"events","type":"tv","extra":[{"name":"search","isRequired":true}]}]}"#)
+      }
+      if path.contains("search=new.json") { return .json(#"{"metas":[]}"#) }
+      if path.contains("search=boston.json") {
+        return .json(#"{"metas":[{"id":"bos-ny","name":"BOS vs NYY"}]}"#)
+      }
+      if path == "/configured/stream/tv/bos-ny.json" {
+        return .json(#"{"streams":[{"url":"https://media.test/live.m3u8"}]}"#)
+      }
+      return .json("{}", status: 404)
+    }
+    let streams = await repo.streams(for: game())
+    XCTAssertEqual(streams.count, 1)
+    XCTAssertTrue(fixture.paths.contains { $0.contains("search=boston.json") })
+    XCTAssertFalse(fixture.paths.contains("/configured/catalog/tv/events.json"))
+  }
+  func testSlowCatalogDoesNotDiscardCompletedSources() async {
+    let (repo, _) = fixture(timeout: 0.5) { path in
+      if path.hasSuffix("manifest.json") {
+        return .json(#"{"name":"Sports","catalogs":[{"id":"mlb-fast","type":"tv","extra":[]},{"id":"mlb-slow","type":"tv","extra":[]}]}"#)
+      }
+      if path.contains("mlb-slow") { return .json(#"{"metas":[]}"#, delay: 5) }
+      if path.contains("mlb-fast") { return .json(#"{"metas":[{"id":"game","name":"Boston vs New York"}]}"#) }
+      if path.contains("/stream/tv/game.json") { return .json(#"{"streams":[{"url":"https://media.test/game.m3u8"}]}"#) }
+      return .json("{}", status: 404)
+    }
+    let start = Date()
+    let streams = await repo.streams(for: game())
+    XCTAssertEqual(streams.count, 1)
+    XCTAssertLessThan(Date().timeIntervalSince(start), 2)
+  }
+  func testFailedAddonDoesNotHideOtherAddonResults() async {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [AddonTestURLProtocol.self]
+    let suite = "rally.stremio.\(UUID().uuidString)"
+    let settings = SettingsStore(defaults: UserDefaults(suiteName: suite)!, secrets: KeychainSecrets(service: suite))
+    let good = "good-\(UUID().uuidString.lowercased()).test", bad = "bad-\(UUID().uuidString.lowercased()).test"
+    AddonTestURLProtocol.register(AddonTestFixture { path in
+      if path.hasSuffix("manifest.json") { return .json(#"{"catalogs":[{"type":"tv","id":"mlb","extra":[]}]}"#) }
+      if path.contains("/catalog/") { return .json(#"{"metas":[{"id":"game","name":"Boston vs New York"}]}"#) }
+      return .json(#"{"streams":[{"url":"https://media.test/live.m3u8"}]}"#)
+    }, host: good)
+    AddonTestURLProtocol.register(AddonTestFixture { _ in .json("{}", status: 401) }, host: bad)
+    settings.stremioAddonUrls = [URL(string: "https://\(good)/manifest.json")!, URL(string: "https://\(bad)/manifest.json")!]
+    let repo = StremioRepositoryImpl(http: HTTPClient(session: URLSession(configuration: config)), settings: settings)
+    let streams = await repo.streams(for: game())
+    XCTAssertEqual(streams.count, 1)
+    XCTAssertTrue(RallyDiagnostics.shared.report().contains("Manifest: HTTP 401"))
+  }
+  func testMatchSafetyAndCustomAddonURLs() throws {
+    XCTAssertTrue(StremioRepositoryImpl.matches("Boston vs New York", event: game()))
+    XCTAssertFalse(StremioRepositoryImpl.matches("Boston vs Chicago", event: game()))
+    let derby = SportEvent(id: "NBA:1", name: "Clippers vs Lakers",
+      homeTeam: Team(id: "1", name: "Los Angeles Lakers", abbreviation: "LAL"),
+      awayTeam: Team(id: "2", name: "Los Angeles Clippers", abbreviation: "LAC"),
+      startTime: Date(), status: .live, sport: "basketball", league: "NBA")
+    XCTAssertFalse(StremioRepositoryImpl.matches("Los Angeles vs Chicago", event: derby))
+    XCTAssertTrue(StremioRepositoryImpl.matches("LAL vs LAC", event: derby))
+    let noTeams = SportEvent(id: "tennis:1", name: "Sinner vs Alcaraz", startTime: Date(), status: .live, sport: "tennis", league: "ATP")
+    XCTAssertTrue(StremioRepositoryImpl.matches("Live: Sinner vs Alcaraz", event: noTeams))
+    let url = try XCTUnwrap(PortalUrlNormalizer.normalizeAddon("stremio://addon.test/config/manifest.json?key=test#fragment"))
+    XCTAssertEqual(url.absoluteString, "https://addon.test/config/manifest.json?key=test")
+    let resource = StremioRepositoryImpl.resourceURL(root: URL(string: "https://addon.test/config/?key=test")!, resource: "catalog", type: "tv", id: "games", extras: ["search": "New York & Boston"])
+    XCTAssertEqual(URLComponents(url: resource, resolvingAgainstBaseURL: false)?.percentEncodedPath, "/config/catalog/tv/games/search=New%20York%20%26%20Boston.json")
+    XCTAssertEqual(resource.query, "key=test")
+  }
+  func testSportsStreamsCollegeNamesAndNotWebReadySources() async {
+    let (repo, _) = fixture { path in
+      if path.hasSuffix("manifest.json") {
+        return .json(#"{"name":"Sports Streams","types":["sport"],"catalogs":[{"id":"sports_live","type":"sport","extra":[]},{"id":"sports_today","type":"sport","extra":[]},{"id":"sports_football","type":"sport","extra":[]},{"id":"sports_american_football","type":"sport","extra":[]}]}"#)
+      }
+      if path.contains("sports_american_football.json") {
+        return .json(#"{"metas":[{"id":"streamed:north-carolina-vs-notre-dame","type":"sport","name":"North Carolina vs Notre Dame"}]}"#)
+      }
+      if path.contains("/catalog/") { return .json(#"{"metas":[]}"#) }
+      if path.contains("streamed%3Anorth-carolina-vs-notre-dame.json") {
+        return .json(#"{"streams":[{"name":"Leaf · US : ESPN HD","title":"1280x720 · Stereo · ~4.8 Mbps","url":"https://media.test/ncaaf.m3u8","behaviorHints":{"notWebReady":true}},{"name":"CDN (Premium)","title":"🔒 Upgrade to watch","url":"https://media.test/locked","behaviorHints":{"notWebReady":true}}]}"#)
+      }
+      return .json("{}", status: 404)
+    }
+    let event = SportEvent(id: "NCAAF:test", name: "Notre Dame Fighting Irish at North Carolina Tar Heels",
+      homeTeam: Team(id: "153", name: "North Carolina Tar Heels", abbreviation: "UNC"),
+      awayTeam: Team(id: "87", name: "Notre Dame Fighting Irish", abbreviation: "ND"),
+      startTime: Date(), status: .live, sport: "football", league: "NCAAF")
+    let streams = await repo.streams(for: event)
+    XCTAssertEqual(streams.count, 1)
+    XCTAssertEqual(streams.first?.isDirectPlayable, true)
+    XCTAssertEqual(streams.first?.addonName, "Sports Streams")
+  }
+  func testPublicSportsStreamsNCAAFDiscovery() async throws {
+    try XCTSkipIf(ProcessInfo.processInfo.environment["RALLY_LIVE_STREMIO_QA"] != "1", "Opt-in live addon integration")
+    let suite = "rally.stremio.live.\(UUID().uuidString)"
+    let settings = SettingsStore(defaults: UserDefaults(suiteName: suite)!, secrets: KeychainSecrets(service: suite))
+    settings.stremioAddonUrls = [URL(string: "https://sports.highfly.to/manifest.json")!]
+    let repo = StremioRepositoryImpl(http: HTTPClient(), settings: settings)
+    let event = SportEvent(id: "NCAAF:live-check", name: "Notre Dame Fighting Irish at North Carolina Tar Heels",
+      homeTeam: Team(id: "153", name: "North Carolina Tar Heels", abbreviation: "UNC"),
+      awayTeam: Team(id: "87", name: "Notre Dame Fighting Irish", abbreviation: "ND"),
+      startTime: Date(), status: .live, sport: "football", league: "NCAAF")
+    let streams = await repo.streams(for: event)
+    XCTAssertFalse(streams.isEmpty, RallyDiagnostics.shared.report())
+    XCTAssertTrue(streams.contains(where: \.isDirectPlayable))
+    XCTAssertTrue(streams.allSatisfy { !$0.title.contains("🔒") })
+    print("LIVE ADDON CHECK: \(streams.count) sources returned for North Carolina vs Notre Dame; \(streams.filter(\.isDirectPlayable).count) native candidates")
+  }
+  func testExternalSourcesRemainNonNativeAndCatalogPrioritiesRemain() throws {
+    let dto = try JSONDecoder().decode(StremioStreamDTO.self, from: Data(#"{"externalUrl":"https://provider.test/watch","title":"Browser"}"#.utf8))
+    XCTAssertEqual(StremioRepositoryImpl.option(dto: dto, addonName: "Sports")?.isDirectPlayable, false)
+    let manifest = try JSONDecoder().decode(StremioManifest.self, from: Data(#"{"catalogs":[{"id":"baseball","type":"custom"},{"id":"generic","type":"tv"}]}"#.utf8))
+    XCTAssertEqual(StremioRepositoryImpl.catalogs(manifest, event: game()).first?.id, "baseball")
+    XCTAssertEqual(StremioRepositoryImpl.catalogs(manifest, event: game()).count, 2)
+  }
+}
+
+private struct AddonTestResponse {
+  let body: Data
+  let status: Int
+  let delay: TimeInterval
+  static func json(_ text: String, status: Int = 200, delay: TimeInterval = 0) -> Self {
+    Self(body: Data(text.utf8), status: status, delay: delay)
+  }
+}
+private final class AddonTestFixture: @unchecked Sendable {
+  private let lock = NSLock()
+  private var requests: [URL] = []
+  private let handler: (String) -> AddonTestResponse
+  init(handler: @escaping (String) -> AddonTestResponse) { self.handler = handler }
+  func reply(_ url: URL) -> AddonTestResponse {
+    lock.lock(); requests.append(url); lock.unlock()
+    return handler(URLComponents(url: url, resolvingAgainstBaseURL: false)!.percentEncodedPath)
+  }
+  var paths: [String] {
+    lock.lock(); defer { lock.unlock() }
+    return requests.map { URLComponents(url: $0, resolvingAgainstBaseURL: false)!.percentEncodedPath }
+  }
+  var queries: [String?] {
+    lock.lock(); defer { lock.unlock() }
+    return requests.map(\.query)
+  }
+}
+private final class AddonTestURLProtocol: URLProtocol, @unchecked Sendable {
+  private static let lock = NSLock()
+  private static var fixtures: [String: AddonTestFixture] = [:]
+  private var work: DispatchWorkItem?
+  static func register(_ fixture: AddonTestFixture, host: String) {
+    lock.lock(); fixtures[host] = fixture; lock.unlock()
+  }
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func startLoading() {
+    guard let url = request.url, let host = url.host else { return }
+    Self.lock.lock(); let fixture = Self.fixtures[host]; Self.lock.unlock()
+    guard let fixture else {
+      client?.urlProtocol(self, didFailWithError: URLError(.cannotFindHost)); return
+    }
+    let response = fixture.reply(url)
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.work?.isCancelled == false else { return }
+      let http = HTTPURLResponse(url: url, statusCode: response.status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+      self.client?.urlProtocol(self, didReceive: http, cacheStoragePolicy: .notAllowed)
+      self.client?.urlProtocol(self, didLoad: response.body)
+      self.client?.urlProtocolDidFinishLoading(self)
+    }
+    self.work = work
+    DispatchQueue.global().asyncAfter(deadline: .now() + response.delay, execute: work)
+  }
+  override func stopLoading() { work?.cancel() }
+}

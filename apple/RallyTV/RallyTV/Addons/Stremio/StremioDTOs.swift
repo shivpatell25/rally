@@ -28,6 +28,13 @@ public struct StremioCatalogDesc: Decodable, Sendable {
   public let type: String?
   public let id: String?
   public let name: String?
+  public let extra: [StremioCatalogExtra]?
+}
+
+public struct StremioCatalogExtra: Decodable, Sendable {
+  public let name: String
+  public let isRequired: Bool?
+  public let options: [String]?
 }
 
 public struct StremioCatalogResponse: Decodable, Sendable {
@@ -44,6 +51,7 @@ public struct StremioMetaItem: Decodable, Sendable {
   public let type: String?
   public let name: String?
   public let poster: String?
+  public let description: String?
 }
 
 public struct StremioStreamResponse: Decodable, Sendable {

@@ -197,7 +197,8 @@ import SwiftUI
         }
       }
       guard revision == generation, !Task.isCancelled else { return }
-      let permission = isPlaylistChannel && resolved.scheme?.lowercased() == "http"
+      let isAddonStream = request.candidate?.sourceKind == .stremio
+      let permission = (isPlaylistChannel || isAddonStream) && resolved.scheme?.lowercased() == "http"
         ? PlaylistMediaPermission(resolved) : nil
       guard NetworkPolicy.shared.permits(resolved) else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
       // Playback validates the actual GET request. HEAD probes can reject working providers.

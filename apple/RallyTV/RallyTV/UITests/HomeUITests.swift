@@ -210,6 +210,30 @@ final class RallyParityUITests: XCTestCase {
     XCTAssertTrue(channel.waitForExistence(timeout: 5))
     XCTAssertTrue(channel.hasFocus)
   }
+  func testSourceRefreshUsesRemoteInEventAndPlayer() throws {
+    launch("event/NFL:qa1")
+    XCTAssertTrue(app.buttons["tab-Sources"].waitForExistence(timeout: 10))
+    try focus(app.buttons["tab-Sources"])
+    remote.press(.select)
+    let refresh = app.buttons["Refresh sources"]
+    XCTAssertTrue(refresh.waitForExistence(timeout: 8), app.debugDescription)
+    try focus(refresh)
+    assertFocusFits(refresh)
+    remote.press(.select)
+    XCTAssertTrue(refresh.waitForExistence(timeout: 8))
+    launch("player?target=auto&eventId=NFL:qa1")
+    XCTAssertTrue(app.buttons["Pick Source"].waitForExistence(timeout: 35), app.debugDescription)
+    try focus(app.buttons["Pick Source"])
+    remote.press(.select)
+    XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["Refresh sources"].waitForExistence(timeout: 8))
+    try focus(app.buttons["Refresh sources"])
+    assertFocusFits(app.buttons["Refresh sources"])
+    remote.press(.select)
+    XCTAssertTrue(app.buttons["Refresh sources"].waitForExistence(timeout: 8))
+    remote.press(.menu)
+    XCTAssertTrue(app.buttons["Pick Source"].waitForExistence(timeout: 8))
+  }
   func testPlayerControlsSourceAndFullscreen() throws {
     launch("player?target=auto&eventId=NFL:qa1")
     XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 35), app.debugDescription)

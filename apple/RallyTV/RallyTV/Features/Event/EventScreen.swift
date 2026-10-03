@@ -35,12 +35,17 @@ struct EventScreen: View {
               case "Lineups": RallyPlayerTables(event: event)
               case "Plays": RallyPlayList(event: event)
               case "Sources":
+                if !sources.loading {
+                  RallyAction(title: "Refresh sources", icon: "arrow.clockwise") {
+                    Task { await sources.load(event, container: store.container) }
+                  }
+                }
                 if sources.loading {
                   RallyLoading(title: "Finding sources…")
                 } else if sources.candidates.isEmpty {
                   RallyEmptyState(
                     title: "No matching sources",
-                    message: "Add your provider or sports addons in Settings.",
+                    message: sources.error ?? "Add your provider or sports addons in Settings.",
                     actionTitle: "Settings"
                   ) { navigate(.settings) }
                 } else {
@@ -86,7 +91,7 @@ struct EventScreen: View {
           actionTitle: "Retry"
         ) { Task { await load() } }.padding(RallyDesign.pt(60))
       }
-    }.task {
+    }.task(id: "\(eventId)|\(store.settingsRevision)") {
       await load()
       if let event { await sources.load(event, container: store.container) }
       while event?.status.isLive == true && !Task.isCancelled {
