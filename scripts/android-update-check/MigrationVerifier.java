@@ -16,6 +16,15 @@ public class MigrationVerifier extends Instrumentation {
  private static void check(boolean b,String message) {if(!b)throw new AssertionError(message);}
  public void onStart(){Bundle result=new Bundle();try {
   Context c=getTargetContext();PackageInfo info=c.getPackageManager().getPackageInfo(c.getPackageName(),PackageManager.GET_SIGNING_CERTIFICATES);
+  if("true".equals(arguments.getString("recordBefore"))) {
+   JSONObject before=new JSONObject().put("uid",c.getApplicationInfo().uid);
+   JSONObject prefs=new JSONObject();File dir=new File(c.getApplicationInfo().dataDir,"shared_prefs");
+   File[] files=dir.listFiles();if(files!=null)for(File f:files)if(f.getName().endsWith(".xml"))prefs.put(f.getName(),digest(read(f)));
+   before.put("preferences",prefs);
+   java.nio.file.Files.write(new File(c.getFilesDir(),"stabilization-update-marker").toPath(),"same-data-after-signing-migration".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+   java.nio.file.Files.write(new File(c.getExternalFilesDir(null),"stabilization-before.json").toPath(),before.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+   result.putString("stream","Recorded UID/private marker and "+prefs.length()+" preference hashes before update.\n");finish(-1,result);return;
+  }
   check(info.getLongVersionCode()==Long.parseLong(arguments.getString("expectedVersionCode", "13")),"Version code");check(arguments.getString("expectedVersionName", "1.0-beta12").equals(info.versionName),"Version name");
   check(info.signingInfo.getApkContentsSigners().length==1,"One current signer");
   check(digest(info.signingInfo.getApkContentsSigners()[0].toByteArray()).equals("79ffff57b611ec7fbbc690007196df16dfd658432dd452458c56108bae55df73"),"Production certificate");

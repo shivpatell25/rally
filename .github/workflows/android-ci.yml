@@ -23,6 +23,8 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v6
+      - name: Verify release asset selection regressions
+        run: python3 -m unittest discover -s scripts/tests -v
       - name: Verify source, tests, lint, and debug package
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
       - name: Upload verification reports on failure

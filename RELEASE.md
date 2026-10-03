@@ -43,6 +43,16 @@ The updater chooses the appropriate suffix for the device API, pins the current
 production signer, checks the verified history against the installed identity,
 and requires a higher version code. `com.shiv.spatelorts` remains unchanged.
 
+Also publish `rally-android-tv.apk`, an identical copy of the migration APK.
+Beta 10/11's installed updater accepts every APK and chooses the first on a
+version tie. GitHub sorts the tagged legacy APK before the tagged migration APK,
+so these versions otherwise download the incompatible production-only package.
+The compatibility filename sorts first and retains its valid signing history.
+Keep the existing tagged filenames for current updaters and download links.
+Include all three APK names in `SHA256SUMS`, and run
+`python3 scripts/verify_android_release_assets.py --tag <tag>` after upload.
+This checks the actual API order and every published APK digest.
+
 For local packaging, build `assembleRelease` with the four production signing
 environment variables, then run `scripts/sign_android_release.py --migration
 --output rally-<tag>-android-tv.apk` with both sets of credentials. Run it without

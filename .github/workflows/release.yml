@@ -19,6 +19,14 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Load publication checks from the workflow revision
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          # Build the tagged app, but retain current publishing checks when
+          # rebuilding an older release whose source predates those checks.
+          git show "$WORKFLOW_SHA:scripts/verify_android_release_assets.py" > "$RUNNER_TEMP/verify_android_release_assets.py"
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -59,13 +67,18 @@ jobs:
         run: |
           python3 scripts/sign_android_release.py --migration --output "rally-${RELEASE_TAG}-android-tv.apk"
           python3 scripts/sign_android_release.py --output "rally-${RELEASE_TAG}-android-tv-legacy.apk"
-          sha256sum "rally-${RELEASE_TAG}-android-tv.apk" "rally-${RELEASE_TAG}-android-tv-legacy.apk" > SHA256SUMS
+          # Beta 10/11 selects the first .apk on a version tie. GitHub sorts
+          # assets by name, putting the legacy APK before the tagged migration.
+          # Keep a compatible, earlier-sorting download for those installed apps.
+          cp "rally-${RELEASE_TAG}-android-tv.apk" rally-android-tv.apk
+          sha256sum rally-android-tv.apk "rally-${RELEASE_TAG}-android-tv.apk" "rally-${RELEASE_TAG}-android-tv-legacy.apk" > SHA256SUMS
       - name: Publish verified APKs
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          gh release upload "$RELEASE_TAG" "rally-${RELEASE_TAG}-android-tv.apk" "rally-${RELEASE_TAG}-android-tv-legacy.apk" SHA256SUMS --clobber
+          gh release upload "$RELEASE_TAG" rally-android-tv.apk "rally-${RELEASE_TAG}-android-tv.apk" "rally-${RELEASE_TAG}-android-tv-legacy.apk" SHA256SUMS --clobber
+          python3 "$RUNNER_TEMP/verify_android_release_assets.py" --tag "$RELEASE_TAG"
       - name: Remove private keys
         if: always()
         run: rm -f .signing/rally-release.jks .signing/rally-legacy.jks
