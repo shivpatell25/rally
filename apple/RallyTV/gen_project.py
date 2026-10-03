@@ -228,7 +228,7 @@ def main() -> None:
         "ASSETCATALOG_COMPILER_APPICON_NAME = Rally; "
         "CODE_SIGN_STYLE = Automatic; "
         "COPY_PHASE_STRIP = NO; "
-        "CURRENT_PROJECT_VERSION = 12; "
+        "CURRENT_PROJECT_VERSION = 13; "
         "ENABLE_PREVIEWS = YES; "
         "GENERATE_INFOPLIST_FILE = YES; "
         "INFOPLIST_KEY_CFBundleDisplayName = Rally; INFOPLIST_FILE = RallyTV/App/Info.plist; "

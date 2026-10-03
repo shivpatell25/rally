@@ -46,6 +46,22 @@ preserves values, and entered text with Done in the manifest field. Release also
 builds successfully. See [settings-input-results.json](settings-input-results.json)
 and `/tmp/rally-settings-entry-all.xcresult`.
 
+### Settings actions follow-up — October 2, 2026
+
+The input-row fix alone left compact action buttons outside the input's vertical
+focus path. Action rows now also span a native focus section, while the visible
+buttons retain their existing size. This covers Add Addon, Reset Addons, installed
+addon actions, provider actions, and playlist import.
+
+Remote regressions cover direct Down from Addons to Manifest URL to Add Addon,
+Select validation, Up back to the input, keyboard dismissal, Down to Reset and Up
+to Add. Provider regressions cover input-to-action navigation for Stalker, Xtream,
+and M3U, every provider action, and return to the last input.
+Both action regressions passed on the simulator; see
+[settings-action-results.json](settings-action-results.json). The 11-input
+keyboard regression also passed with these action-row changes, and the tvOS
+Release build succeeded.
+
 ### Main acceptance coverage
 
 - **Navigation:** Home, Live, Schedule, Leagues/league/team hubs, Highlights,

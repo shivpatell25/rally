@@ -117,7 +117,9 @@ struct SettingsScreen: View {
           field("Playlist URL", text: $playlist)
         }
         field("Playlist Name (optional)", text: $playlistName)
-        RallyAction(title: "Import Playlist File", icon: "doc.badge.plus") { transfer = true }
+        actionRow {
+          RallyAction(title: "Import Playlist File", icon: "doc.badge.plus") { transfer = true }
+        }
         Text(
           "Enter a channel playlist or single HLS URL, or import an M3U/M3U8 file from your phone or computer."
         ).font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
@@ -139,14 +141,16 @@ struct SettingsScreen: View {
           playlistName = ""
           message = "Provider removed."
         }
-      }.disabled(busy)
+      }.frame(maxWidth: .infinity, alignment: .leading).focusSection().disabled(busy)
     }
   }
   private var addonSettings: some View {
     VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
       Text("Sports addons").font(RallyDesign.font(18, .semibold))
       field("Manifest URL", text: $addon)
-      RallyAction(title: "Add Addon", icon: "plus") { Task { await addAddon() } }.disabled(busy)
+      actionRow {
+        RallyAction(title: "Add Addon", icon: "plus") { Task { await addAddon() } }.disabled(busy)
+      }
       if store.container.settings.stremioAddonUrls.isEmpty {
         Text("No addons configured. Rally does not bundle stream sources.").foregroundStyle(
           RallyDesign.muted)
@@ -161,13 +165,15 @@ struct SettingsScreen: View {
             NetworkPolicy.shared.configure(store.container.settings)
             store.settingsRevision += 1
           }
-        }
+        }.frame(maxWidth: .infinity, alignment: .leading).focusSection()
       }
-      RallyAction(title: "Reset Addons") {
-        store.container.settings.stremioAddonUrls = []
-        NetworkPolicy.shared.configure(store.container.settings)
-        store.settingsRevision += 1
-        message = "Addons reset."
+      actionRow {
+        RallyAction(title: "Reset Addons") {
+          store.container.settings.stremioAddonUrls = []
+          NetworkPolicy.shared.configure(store.container.settings)
+          store.settingsRevision += 1
+          message = "Addons reset."
+        }
       }
     }
   }
@@ -323,6 +329,11 @@ struct SettingsScreen: View {
         }
       }
     }
+  }
+  // Full-width focus regions bridge the right-aligned inputs and compact left actions.
+  // Keep the visible buttons compact; the native focus engine uses the enclosing row.
+  private func actionRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    HStack { content() }.frame(maxWidth: .infinity, alignment: .leading).focusSection()
   }
   private func field(_ title: String, text: Binding<String>, secure: Bool = false) -> some View {
     HStack(spacing: RallyDesign.pt(12)) {

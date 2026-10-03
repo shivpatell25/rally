@@ -239,6 +239,70 @@ final class RallyParityUITests: XCTestCase {
     remote.press(.select)
     XCTAssertTrue(app.buttons["upcoming-0"].waitForExistence(timeout: 5))
   }
+  func testAddonInputAndActionsDirectionalNavigation() throws {
+    launch("settings")
+    try focus(app.buttons["tab-Addons"])
+    remote.press(.select)
+    remote.press(.down)
+    let manifest = app.textFields["settings-input-Manifest URL"]
+    XCTAssertTrue(manifest.hasFocus, app.debugDescription)
+    remote.press(.down)
+    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+    remote.press(.select)
+    XCTAssertTrue(app.staticTexts["Settings status"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+    remote.press(.up)
+    XCTAssertTrue(manifest.hasFocus, app.debugDescription)
+    remote.press(.select)
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    remote.press(.menu)
+    let restored = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "hasFocus == true"), object: manifest)
+    XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 5), .completed)
+    remote.press(.down)
+    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+    remote.press(.down)
+    XCTAssertTrue(app.buttons["Reset Addons"].hasFocus, app.debugDescription)
+    remote.press(.up)
+    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+  }
+  func testProviderInputsReachActions() throws {
+    launch("settings")
+    for (provider, fields) in [
+      ("Stalker / Ministra", ["Portal URL", "MAC Address", "Serial Number (optional)", "Device ID (optional)"]),
+      ("Xtream Codes", ["Server URL", "Username", "Password"]),
+      ("M3U / M3U8", ["Playlist URL", "Playlist Name (optional)"])
+    ] {
+      try focus(app.buttons[provider])
+      remote.press(.select)
+      for title in fields {
+        remote.press(.down)
+        let input = title == "Password" ? app.secureTextFields["settings-input-" + title]
+          : app.textFields["settings-input-" + title]
+        XCTAssertTrue(input.hasFocus, provider + ": " + title + "\n" + app.debugDescription)
+      }
+      remote.press(.down)
+      if provider == "M3U / M3U8" {
+        XCTAssertTrue(app.buttons["Import Playlist File"].hasFocus, app.debugDescription)
+        remote.press(.down)
+      }
+      let actions = ["Save & Apply", "Test Provider", "Remove Provider"]
+      XCTAssertTrue(actions.contains { app.buttons[$0].hasFocus }, app.debugDescription)
+      // The native engine enters at the closest button; all three must be reachable.
+      for _ in 0..<2 where !app.buttons["Save & Apply"].hasFocus { remote.press(.left) }
+      XCTAssertTrue(app.buttons["Save & Apply"].hasFocus, app.debugDescription)
+      remote.press(.right)
+      XCTAssertTrue(app.buttons["Test Provider"].hasFocus, app.debugDescription)
+      remote.press(.right)
+      XCTAssertTrue(app.buttons["Remove Provider"].hasFocus, app.debugDescription)
+      remote.press(.up)
+      if provider == "M3U / M3U8" { remote.press(.up) }
+      let last = fields.last!
+      let input = last == "Password" ? app.secureTextFields["settings-input-" + last]
+        : app.textFields["settings-input-" + last]
+      XCTAssertTrue(input.hasFocus, app.debugDescription)
+    }
+  }
   func testSettingsTextEntryAndCancel() throws {
     launch("settings")
     try focus(app.buttons["tab-Addons"])
