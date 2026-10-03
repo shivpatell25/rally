@@ -152,12 +152,12 @@ struct RallyMediaFocus: ButtonStyle {
     @Environment(\.isFocused) private var focused
     @Environment(RallyStore.self) private var store
     var body: some View {
-      label.foregroundStyle(.white).scaleEffect(focused ? 1.025 : 1).brightness(focused ? 0.04 : 0)
+      label.foregroundStyle(.white).brightness(focused ? 0.04 : 0)
         .overlay(
           RoundedRectangle(cornerRadius: RallyDesign.pt(7)).stroke(
             .white.opacity(focused ? 0.45 : 0), lineWidth: 0.7)
-        ).animation(
-          store.container.settings.reducedMotion ? nil : .easeOut(duration: 0.16), value: focused)
+        ).scaleEffect(focused ? 1.025 : 1).zIndex(focused ? 1 : 0).animation(
+          store.settings.reducedMotion ? nil : .easeOut(duration: 0.16), value: focused)
     }
   }
 }
@@ -212,13 +212,13 @@ struct RallyScheduleRow: View {
         }.font(RallyDesign.font(11)).frame(maxWidth: .infinity).padding(
           .horizontal, RallyDesign.pt(14)
         ).frame(
-          height: RallyDesign.pt(34))
+          height: RallyDesign.pt(28))
       }.buttonStyle(RallyButtonStyle(bare: true)).focusEffectDisabled().accessibilityIdentifier(
         "schedule-\(event.id)")
       RallyAction(title: "", icon: reminder ? "bell.fill" : "bell", bare: true, action: remind)
         .accessibilityLabel(reminder ? "Remove reminder" : "Set reminder").frame(
           width: RallyDesign.pt(32))
-    }.frame(height: RallyDesign.pt(34)).overlay(alignment: .bottom) {
+    }.frame(height: RallyDesign.pt(38)).overlay(alignment: .bottom) {
       Rectangle().fill(RallyDesign.edge).frame(height: RallyDesign.pt(0.5))
     }
   }

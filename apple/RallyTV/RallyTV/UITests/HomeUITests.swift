@@ -40,6 +40,13 @@ final class RallyParityUITests: XCTestCase {
     XCTAssertLessThan(app.buttons["nav-Highlights"].frame.height, 90)
     shot("real-home-top")
     try focus(app.buttons["upcoming-0"])
+    for index in 1...3 {
+      remote.press(.right)
+      let card = app.buttons["upcoming-\(index)"]
+      XCTAssertTrue(card.hasFocus, "Upcoming card \(index) must be reachable")
+      assertFocusFits(card)
+    }
+    try focus(app.buttons["upcoming-0"])
     remote.press(.down)
     XCTAssertTrue(app.buttons["sport-NCAAB"].waitForExistence(timeout: 4))
     shot("real-home-guide")
@@ -142,6 +149,67 @@ final class RallyParityUITests: XCTestCase {
       XCTAssertEqual(app.state, .runningForeground)
     }
   }
+  func testRemoteDestinationActionsAndFocusRestoration() throws {
+    launch()
+    let homeGame = app.buttons["event-NFL:qa2"]
+    try focus(homeGame)
+    remote.press(.select)
+    XCTAssertTrue(app.buttons["tab-Overview"].waitForExistence(timeout: 10))
+    remote.press(.menu)
+    XCTAssertTrue(homeGame.waitForExistence(timeout: 5))
+    XCTAssertTrue(homeGame.hasFocus, "Back should restore the Home card")
+    assertFocusFits(homeGame)
+    for route in ["live", "schedule", "watchlist", "league/NFL", "team/NFL/12"] {
+      launch(route)
+      let game = route == "live" ? app.buttons["event-NFL:qa1"] : app.buttons["schedule-NFL:qa1"]
+      try focus(game)
+      assertFocusFits(game)
+      if route != "live" {
+        remote.press(.right)
+        let reminder = app.buttons["Set reminder"].firstMatch
+        XCTAssertTrue(reminder.hasFocus, route + " reminder\n" + app.debugDescription)
+        assertFocusFits(reminder)
+        remote.press(.select)
+        XCTAssertTrue(app.buttons["Remove reminder"].exists)
+        remote.press(.left)
+        XCTAssertTrue(game.hasFocus)
+      }
+      remote.press(.select)
+      XCTAssertTrue(app.buttons["tab-Overview"].waitForExistence(timeout: 5), route)
+      remote.press(.menu)
+      XCTAssertTrue(game.waitForExistence(timeout: 5), route)
+      XCTAssertTrue(game.hasFocus, route + " focus restoration")
+    }
+    launch("leagues")
+    let nfl = app.buttons["NFL"]
+    try focus(nfl)
+    assertFocusFits(nfl)
+    remote.press(.select)
+    for tab in ["Standings", "Playoffs", "Teams", "Games"] {
+      try focus(app.buttons["tab-" + tab])
+      remote.press(.select)
+    }
+    launch("team/NFL/12")
+    try focus(app.buttons["tab-Roster"])
+    remote.press(.select)
+    let player = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Player 1 · QB'")).firstMatch
+    try focus(player)
+    remote.press(.select)
+    XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+    try focus(app.buttons["Done"])
+    remote.press(.select)
+    let restoredPlayer = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hasFocus == true"), object: player)
+    XCTAssertEqual(XCTWaiter.wait(for: [restoredPlayer], timeout: 5), .completed, app.debugDescription)
+    launch("iptv")
+    let channel = app.buttons["channel-qa:0"]
+    try focus(channel)
+    assertFocusFits(channel)
+    remote.press(.select)
+    XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 30))
+    remote.press(.menu)
+    XCTAssertTrue(channel.waitForExistence(timeout: 5))
+    XCTAssertTrue(channel.hasFocus)
+  }
   func testPlayerControlsSourceAndFullscreen() throws {
     launch("player?target=auto&eventId=NFL:qa1")
     XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 35), app.debugDescription)
@@ -152,6 +220,22 @@ final class RallyParityUITests: XCTestCase {
     for moment in moments.allElementsBoundByIndex {
       XCTAssertLessThanOrEqual(moment.frame.maxY, app.frame.height - 30)
     }
+    try focus(app.buttons["Pause"])
+    for title in ["Fullscreen", "Restart", "Multiview", "Audio", "Captions", "Pick Source"] {
+      remote.press(.right)
+      XCTAssertTrue(app.buttons[title].hasFocus, title + "\n" + app.debugDescription)
+      assertFocusFits(app.buttons[title])
+    }
+    remote.press(.right)
+    XCTAssertTrue(app.buttons["tab-Stats"].hasFocus, app.debugDescription)
+    remote.press(.down)
+    XCTAssertTrue(app.descendants(matching: .any)["stats-leaders"].hasFocus, app.debugDescription)
+    remote.press(.left)
+    XCTAssertTrue(app.buttons["Pick Source"].hasFocus, app.debugDescription)
+    remote.press(.up)
+    XCTAssertTrue(app.buttons["Video player"].hasFocus)
+    remote.press(.right)
+    XCTAssertTrue(app.buttons["tab-Stats"].hasFocus)
     shot("game-view")
     XCTAssertLessThanOrEqual(
       app.descendants(matching: .any)["stats-plays"].frame.maxY, app.frame.height - 35)
@@ -225,7 +309,7 @@ final class RallyParityUITests: XCTestCase {
   func testSettingsRemoteSectionsAndBackups() throws {
     launch("settings")
     XCTAssertTrue(app.buttons["tab-Sources"].waitForExistence(timeout: 10))
-    for tab in ["Addons", "Sports", "My Rally", "Alerts", "Viewing", "Support"] {
+    for tab in ["Account", "Playback", "Appearance", "Alerts", "Sources", "Addons", "Support"] {
       try focus(app.buttons["tab-\(tab)"])
       remote.press(.select)
       shot("settings-\(tab.lowercased().replacingOccurrences(of:" ",with:"-"))")
@@ -238,6 +322,66 @@ final class RallyParityUITests: XCTestCase {
     try focus(app.buttons["nav-Home"])
     remote.press(.select)
     XCTAssertTrue(app.buttons["upcoming-0"].waitForExistence(timeout: 5))
+  }
+  func testSettingsAllPreferenceControlsAndSupportMenus() throws {
+    launch("settings")
+    for (section, labels) in [
+      ("Playback", ["Low Latency", "Adaptive Quality", "Spoken Score Summaries"]),
+      ("Appearance", ["Reduce Motion", "High Contrast Focus", "Larger Text", "Score Saver"]),
+      ("Alerts", ["Live game alerts", "NFL RedZone alerts"])
+    ] {
+      try focus(app.buttons["tab-" + section]); remote.press(.select)
+      for label in labels {
+        let control = app.descendants(matching: .any)["setting-" + label]
+        try focus(control); assertFocusFits(control)
+        remote.press(.select)
+        XCTAssertTrue(control.hasFocus, label + " lost focus after toggle")
+        remote.press(.select)
+      }
+    }
+    try focus(app.buttons["tab-Account"]); remote.press(.select)
+    try focus(app.buttons["tab-Sports"]); remote.press(.select)
+    for league in ["NFL", "NBA", "Champions League", "Serie A"] {
+      let enabled = app.buttons["sport-enabled-" + league]
+      try focus(enabled); assertFocusFits(enabled)
+      let before = enabled.label
+      remote.press(.select)
+      XCTAssertNotEqual(enabled.label, before)
+      remote.press(.select)
+      let favorite = app.buttons["sport-favorite-" + league]
+      try focus(favorite); assertFocusFits(favorite)
+      remote.press(.select); XCTAssertTrue(favorite.hasFocus)
+      remote.press(.select)
+    }
+    try focus(app.buttons["sport-up-NBA"]); remote.press(.select)
+    try focus(app.buttons["sport-down-NBA"]); remote.press(.select)
+    shot("settings-sports-focus")
+    try focus(app.buttons["tab-Support"]); remote.press(.select)
+    for label in ["Run Diagnostics", "Clear Diagnostics", "Export Support Report", "Check for Updates", "Privacy", "Releases"] {
+      try focus(app.buttons[label]); assertFocusFits(app.buttons[label])
+    }
+    for label in ["Privacy", "Releases"] {
+      try focus(app.buttons[label]); remote.press(.select)
+      XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
+      try focus(app.buttons["Done"]); remote.press(.select)
+    }
+  }
+  func testSearchKeyboardResultsAndReturnFocus() throws {
+    launch("search")
+    try focus(app.textFields["Search query"])
+    remote.press(.select)
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    XCTAssertTrue(app.keys["a"].exists)
+    remote.press(.select)
+    try focus(app.buttons["done"]); remote.press(.select)
+    let game = app.buttons["schedule-NFL:qa1"]
+    try focus(game); assertFocusFits(game)
+    remote.press(.select)
+    XCTAssertTrue(app.buttons["tab-Overview"].waitForExistence(timeout: 5))
+    remote.press(.menu)
+    XCTAssertTrue(game.waitForExistence(timeout: 5))
+    XCTAssertTrue(game.hasFocus, app.debugDescription)
+    shot("search-return-focus")
   }
   func testAddonInputAndActionsDirectionalNavigation() throws {
     launch("settings")
@@ -291,10 +435,13 @@ final class RallyParityUITests: XCTestCase {
       // The native engine enters at the closest button; all three must be reachable.
       for _ in 0..<2 where !app.buttons["Save & Apply"].hasFocus { remote.press(.left) }
       XCTAssertTrue(app.buttons["Save & Apply"].hasFocus, app.debugDescription)
+      assertFocusFits(app.buttons["Save & Apply"])
       remote.press(.right)
       XCTAssertTrue(app.buttons["Test Provider"].hasFocus, app.debugDescription)
+      assertFocusFits(app.buttons["Test Provider"])
       remote.press(.right)
       XCTAssertTrue(app.buttons["Remove Provider"].hasFocus, app.debugDescription)
+      assertFocusFits(app.buttons["Remove Provider"])
       remote.press(.up)
       if provider == "M3U / M3U8" { remote.press(.up) }
       let last = fields.last!
@@ -339,6 +486,8 @@ final class RallyParityUITests: XCTestCase {
     try openAndReturn("Manifest URL")
     try focus(app.buttons["tab-Sources"])
     remote.press(.select)
+    try focus(app.buttons["tab-Providers"])
+    remote.press(.select)
     try focus(app.buttons["Stalker / Ministra"])
     remote.press(.down)
     XCTAssertTrue(app.textFields["settings-input-Portal URL"].hasFocus, app.debugDescription)
@@ -358,6 +507,8 @@ final class RallyParityUITests: XCTestCase {
     XCTAssertTrue(app.textFields["settings-input-Playlist URL"].hasFocus, app.debugDescription)
     try openAndReturn("Playlist URL")
     try openAndReturn("Playlist Name (optional)")
+    try focus(app.buttons["tab-Account"])
+    remote.press(.select)
     try focus(app.buttons["tab-My Rally"])
     remote.press(.select)
     try openAndReturn("Find Team")
@@ -493,6 +644,13 @@ final class RallyParityUITests: XCTestCase {
       expectation(for: playing, evaluatedWith: tiles.element(boundBy: 0))
       waitForExpectations(timeout: 20)
     }
+  }
+  private func assertFocusFits(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    let frame = element.frame, screen = app.frame
+    XCTAssertGreaterThan(frame.minX, screen.minX + 4, file: file, line: line)
+    XCTAssertGreaterThan(frame.minY, screen.minY + 4, file: file, line: line)
+    XCTAssertLessThan(frame.maxX, screen.maxX - 4, file: file, line: line)
+    XCTAssertLessThan(frame.maxY, screen.maxY - 4, file: file, line: line)
   }
   private func shot(_ name: String) {
     let a = XCTAttachment(screenshot: app.screenshot())

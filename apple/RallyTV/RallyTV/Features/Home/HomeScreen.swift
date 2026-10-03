@@ -72,7 +72,7 @@ struct HomeScreen: View {
             ) { navigate(.iptvBrowser) }.frame(height: RallyDesign.pt(190))
           }
           mediaRail.frame(height: RallyDesign.pt(166), alignment: .top)
-          Color.clear.frame(height: RallyDesign.pt(14))
+          Color.clear.frame(height: RallyDesign.pt(8))
           upcomingSection.frame(height: RallyDesign.pt(guide ? 170 : 100), alignment: .top)
           Color.clear.frame(height: RallyDesign.pt(14))
           VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
@@ -94,8 +94,8 @@ struct HomeScreen: View {
           height: RallyDesign.pt(470), alignment: .top
         ).clipped()
         .animation(
-          store.container.settings.reducedMotion
-            ? nil : .spring(response: 0.42, dampingFraction: 0.93), value: guide)
+          store.settings.reducedMotion
+            ? nil : .easeInOut(duration: 0.3), value: guide)
       }
     }.task(id: retryRevision) { await model.run(store) }
       .onChange(of: railCount) { _, count in page = min(page, max(0, (count - 1) / 3)) }
@@ -167,16 +167,9 @@ struct HomeScreen: View {
           actionTitle: "See Full Schedule"
         ) { navigate(.schedule) }.onMoveCommand { d in if d == .down { guide = true } }
       } else {
-        ZStack(alignment: .topLeading) {
+        RallyUpcomingLayout(progress: guide ? 1 : 0) {
           ForEach(Array(model.upcoming.prefix(4).enumerated()), id: \.element.id) { index, event in
-            upcoming(event, index: index).frame(
-              width: RallyDesign.pt(guide ? 840 : 204), height: RallyDesign.pt(guide ? 34 : 64),
-              alignment: .leading
-            )
-            .offset(
-              x: RallyDesign.pt(guide ? 0 : CGFloat(index) * 212),
-              y: RallyDesign.pt(guide ? CGFloat(index) * 34 : 0)
-            )
+            upcoming(event, index: index)
             .focused($focus, equals: "upcoming-\(index)")
             .onMoveCommand { d in
               if d == .down && !guide {
@@ -208,20 +201,20 @@ struct HomeScreen: View {
           Text(event.startTime.formatted(date: .omitted, time: .shortened)).font(
             RallyDesign.font(guide ? 11 : 9)
           ).foregroundStyle(RallyDesign.muted).offset(
-            x: RallyDesign.pt(guide ? 14 : 0), y: RallyDesign.pt(guide ? 10 : 0))
-          RallyTeamLogo(team: event.awayTeam, size: guide ? 27 : 26).offset(
-            x: RallyDesign.pt(guide ? 110 : 0), y: RallyDesign.pt(guide ? 3 : 23))
-          RallyTeamLogo(team: event.homeTeam, size: guide ? 27 : 26).offset(
-            x: RallyDesign.pt(guide ? 173 : 34), y: RallyDesign.pt(guide ? 3 : 23))
+            x: RallyDesign.pt(guide ? 14 : 0), y: RallyDesign.pt(guide ? 7 : 0))
+          RallyTeamLogo(team: event.awayTeam, size: guide ? 24 : 26).offset(
+            x: RallyDesign.pt(guide ? 110 : 0), y: RallyDesign.pt(guide ? 1 : 23))
+          RallyTeamLogo(team: event.homeTeam, size: guide ? 24 : 26).offset(
+            x: RallyDesign.pt(guide ? 173 : 34), y: RallyDesign.pt(guide ? 1 : 23))
           Text(event.compactMatchup).font(RallyDesign.font(guide ? 11 : 9, .medium)).lineLimit(
             guide ? 1 : 2
           ).frame(width: RallyDesign.pt(guide ? 430 : 124), alignment: .leading).offset(
-            x: RallyDesign.pt(guide ? 235 : 70), y: RallyDesign.pt(guide ? 10 : 21))
+            x: RallyDesign.pt(guide ? 235 : 70), y: RallyDesign.pt(guide ? 7 : 21))
           Text(event.league).font(RallyDesign.font(guide ? 10 : 8)).foregroundStyle(
             RallyDesign.muted
-          ).offset(x: RallyDesign.pt(guide ? 690 : 70), y: RallyDesign.pt(guide ? 10 : 48))
+          ).offset(x: RallyDesign.pt(guide ? 690 : 70), y: RallyDesign.pt(guide ? 7 : 45))
         }.frame(
-          width: RallyDesign.pt(guide ? 794 : 196), height: RallyDesign.pt(guide ? 30 : 60),
+          width: RallyDesign.pt(guide ? 770 : 196), height: RallyDesign.pt(guide ? 26 : 56),
           alignment: .topLeading
         )
         .background(
@@ -232,9 +225,11 @@ struct HomeScreen: View {
       if guide {
         RallyAction(
           title: "",
-          icon: store.container.settings.reminderIds.contains(event.id) ? "bell.fill" : "bell",
+          icon: store.settings.reminderIds.contains(event.id) ? "bell.fill" : "bell",
           bare: true
-        ) { store.reminder(event.id) }.accessibilityLabel("Set reminder").offset(
+        ) { store.reminder(event.id) }.accessibilityLabel(
+          store.settings.reminderIds.contains(event.id) ? "Remove reminder" : "Set reminder"
+        ).offset(
           x: RallyDesign.pt(802), y: RallyDesign.pt(5))
       }
     }.overlay(alignment: .bottom) {

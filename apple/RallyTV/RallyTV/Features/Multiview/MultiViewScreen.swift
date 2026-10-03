@@ -236,7 +236,7 @@ struct MultiViewScreen: View {
                 }
               }
             }
-          }.focusSection()
+          }.scrollClipDisabled().focusSection()
         }.padding(RallyDesign.pt(10)).background(RallyDesign.black).frame(
           width: RallyDesign.pt(bounds.width), height: RallyDesign.pt(bounds.height),
           alignment: .top
@@ -415,7 +415,7 @@ struct MultiViewScreen: View {
                   }
                 }
               }.padding(.vertical, RallyDesign.pt(8))
-            }.focusSection()
+            }.scrollClipDisabled().focusSection()
           }.padding(RallyDesign.pt(60))
         }
       }.onExitCommand { overlay = nil }.presentationBackground(.black)

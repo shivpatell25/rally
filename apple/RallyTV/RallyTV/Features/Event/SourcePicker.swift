@@ -84,7 +84,7 @@ struct SourcePicker: View {
                     "source-\(i)")
                 }
               }
-            }.focusSection()
+            }.scrollClipDisabled().focusSection()
           }
         }.padding(RallyDesign.pt(60))
       }

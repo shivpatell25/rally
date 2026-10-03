@@ -100,7 +100,7 @@ private struct RallyButtonSurface<Label: View>: View {
       .overlay {
         if focused {
           RoundedRectangle(cornerRadius: RallyDesign.pt(8)).stroke(
-            .white.opacity(store.container.settings.highContrastFocus ? 1 : 0.45), lineWidth: 0.8)
+            .white.opacity(store.settings.highContrastFocus ? 1 : 0.45), lineWidth: 0.8)
         }
       }
       .scaleEffect(pressed ? 0.99 : (focused ? 1.035 : 1))
@@ -108,7 +108,7 @@ private struct RallyButtonSurface<Label: View>: View {
         color: .black.opacity(focused ? 0.25 : 0), radius: RallyDesign.pt(8), y: RallyDesign.pt(3)
       )
       .animation(
-        store.container.settings.reducedMotion ? nil : .easeOut(duration: 0.16), value: focused)
+        store.settings.reducedMotion ? nil : .easeOut(duration: 0.16), value: focused)
   }
 }
 struct RallyAction: View {

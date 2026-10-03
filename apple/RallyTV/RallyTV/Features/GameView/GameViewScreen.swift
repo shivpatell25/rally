@@ -31,6 +31,9 @@ struct GameViewScreen: View {
   @State private var attempted = Set<String>()
   @State private var clipTitle: String?
   @FocusState private var controlFocus: String?
+  @Namespace private var playerFocusScope
+  @State private var lastControl = "play-pause"
+  private let controlOrder = ["play-pause", "Fullscreen", "Restart", "Multiview", "Audio", "Captions", "Pick Source"]
   private var showsSeekControl: Bool {
     session.seekable && session.duration.isFinite && session.duration > 0
   }
@@ -70,7 +73,8 @@ struct GameViewScreen: View {
         }.padding(RallyDesign.pt(24)).background(
           RallyDesign.black, in: RoundedRectangle(cornerRadius: RallyDesign.pt(10)))
       }
-    }.onPlayPauseCommand {
+    }.focusScope(playerFocusScope).defaultFocus($controlFocus, "play-pause")
+    .onPlayPauseCommand {
       session.remoteTransport(.toggle)
       controls = true
       controlActivity += 1
@@ -93,7 +97,7 @@ struct GameViewScreen: View {
       recordControlInteraction()
     }
     .animation(
-      store.container.settings.reducedMotion ? nil : .easeOut(duration: 0.18), value: controls
+      store.settings.reducedMotion ? nil : .easeOut(duration: 0.18), value: controls
     )
     .task {
       store.isPlaying = true
@@ -147,7 +151,8 @@ struct GameViewScreen: View {
     .onChange(of: controls) { _, visible in
       if full && visible { controlFocus = "play-pause" }
     }
-    .onChange(of: controlFocus) { _, _ in
+    .onChange(of: controlFocus) { _, next in
+      if let next, controlOrder.contains(next) { lastControl = next }
       if full && controls { controlActivity += 1 }
     }
     .onChange(of: overlay) { _, _ in recordControlInteraction() }
@@ -180,12 +185,20 @@ struct GameViewScreen: View {
         }.buttonStyle(RallyFlatButtonStyle()).focusEffectDisabled().focused(
           $controlFocus, equals: "Video player"
         )
-        .onMoveCommand { direction in if direction == .up { controlFocus = "header-source" } }
+        .onMoveCommand { direction in
+          if direction == .up { controlFocus = "header-source" }
+          if direction == .down { controlFocus = lastControl }
+          if direction == .right { controlFocus = "stats-tab-" + tab }
+        }
         .accessibilityLabel("Video player").accessibilityIdentifier("Video player")
         playerControls(fullscreen: false).frame(
           width: RallyDesign.pt(608), height: RallyDesign.pt(33))
         HStack {
-          RallyTabs(tabs: ["Key Moments", "Other Live Games"], selection: $rail)
+          RallyTabs(tabs: ["Key Moments", "Other Live Games"], selection: $rail,
+                    focus: $controlFocus, focusPrefix: "rail-tab-", move: { _, direction in
+            if direction == .up { controlFocus = lastControl }
+            if direction == .right && rail == "Other Live Games" { controlFocus = "stats-leaders" }
+          })
           Spacer()
         }.frame(height: RallyDesign.pt(22))
         ScrollView(.horizontal) {
@@ -254,8 +267,8 @@ struct GameViewScreen: View {
                   "other-game-" + e.id)
               }
             }
-          }.padding(.vertical, RallyDesign.pt(2))
-        }.scrollIndicators(.hidden).focusSection().frame(height: RallyDesign.pt(49))
+          }.padding(.vertical, RallyDesign.pt(6)).padding(.horizontal, RallyDesign.pt(4))
+        }.scrollIndicators(.hidden).scrollClipDisabled().focusSection().frame(height: RallyDesign.pt(61))
       }.frame(width: RallyDesign.pt(608), height: RallyDesign.pt(500), alignment: .top)
       VStack(alignment: .leading, spacing: RallyDesign.pt(10)) {
         HStack(spacing: RallyDesign.pt(6)) {
@@ -264,7 +277,12 @@ struct GameViewScreen: View {
           BundleArt.image("rally_mark_ui.png").resizable().scaledToFit().frame(
             width: RallyDesign.pt(25), height: RallyDesign.pt(26))
         }.frame(height: RallyDesign.pt(24))
-        RallyTabs(tabs: ["Stats", "Plays", "Players", "Sources"], selection: $tab, compact: true)
+        RallyTabs(tabs: ["Stats", "Plays", "Players", "Sources"], selection: $tab, compact: true,
+                  focus: $controlFocus, focusPrefix: "stats-tab-", move: { name, direction in
+          if direction == .up { controlFocus = "header-source" }
+          if direction == .down && tab == "Stats" { controlFocus = "stats-leaders" }
+          if direction == .left && name == "Stats" { controlFocus = lastControl }
+        })
           .font(
             RallyDesign.font(10)
           ).frame(height: RallyDesign.pt(27))
@@ -295,7 +313,7 @@ struct GameViewScreen: View {
                   }
                 }
               }
-            }.focusSection()
+            }.scrollClipDisabled().focusSection()
           }
         } else {
           RallyPanel("Live TV") {
@@ -350,6 +368,7 @@ struct GameViewScreen: View {
       ).accessibilityIdentifier("header-source").focused(
         $controlFocus, equals: "header-source")
       RallyAction(title: session.quality, bare: true) { overlay = .quality }
+        .focused($controlFocus, equals: "header-quality").accessibilityIdentifier("header-quality")
     }
   }
   private func playerControls(fullscreen: Bool) -> some View {
@@ -357,16 +376,6 @@ struct GameViewScreen: View {
       control(
         session.playbackRequested ? "Pause" : "Play", icon: session.playbackRequested ? "pause.fill" : "play.fill"
       ) { session.toggle() }
-      control("Restart", icon: "arrow.counterclockwise") {
-        if session.seekable {
-          session.restart()
-        } else {
-          Task {
-            await start()
-            if let clipTitle { session.sourceTitle = clipTitle }
-          }
-        }
-      }.disabled(session.player.currentItem?.status != .readyToPlay)
       if !fullscreen || eventId != nil {
         control(
           fullscreen ? "Game View" : "Fullscreen",
@@ -376,9 +385,16 @@ struct GameViewScreen: View {
           controls = true
         }
       }
-      control("Pick Source", icon: "antenna.radiowaves.left.and.right") { overlay = .source }
-      control("Audio", icon: "speaker.wave.2") { overlay = .audio }
-      control("Captions", icon: "captions.bubble") { overlay = .captions }
+      control("Restart", icon: "arrow.counterclockwise") {
+        if session.seekable {
+          session.restart()
+        } else {
+          Task {
+            await start()
+            if let clipTitle { session.sourceTitle = clipTitle }
+          }
+        }
+      }
       control("Multiview", icon: "square.grid.2x2") {
         if let candidate = selected ?? initialCandidate {
           navigate(.multiViewSource(candidate: candidate, eventId: eventId))
@@ -392,6 +408,9 @@ struct GameViewScreen: View {
             .multiView(channelId: eventId == nil ? target : nil, eventId: eventId, eventIds: []))
         }
       }
+      control("Audio", icon: "speaker.wave.2") { overlay = .audio }
+      control("Captions", icon: "captions.bubble") { overlay = .captions }
+      control("Pick Source", icon: "antenna.radiowaves.left.and.right") { overlay = .source }
       if fullscreen { control("Diagnostics", icon: "waveform.path.ecg") { overlay = .diagnostics } }
     }.focusSection().onMoveCommand { direction in
       recordControlInteraction()
@@ -410,6 +429,16 @@ struct GameViewScreen: View {
     }.buttonStyle(RallyButtonStyle(bare: true)).focusEffectDisabled()
       .focused($controlFocus, equals: title == "Play" || title == "Pause" ? "play-pause" : title)
       .accessibilityIdentifier(title)
+      .onMoveCommand { direction in
+        guard !full else { return }
+        let id = title == "Play" || title == "Pause" ? "play-pause" : title
+        if direction == .up { controlFocus = "Video player" }
+        else if direction == .down { controlFocus = "rail-tab-" + rail }
+        else if let index = controlOrder.firstIndex(of: id) {
+          if direction == .left && index > 0 { controlFocus = controlOrder[index - 1] }
+          if direction == .right { controlFocus = index + 1 < controlOrder.count ? controlOrder[index + 1] : "stats-tab-" + tab }
+        }
+      }
   }
   private var fullOverlay: some View {
     VStack {
@@ -430,6 +459,7 @@ struct GameViewScreen: View {
           Spacer()
           Text(session.resolution).font(RallyDesign.font(10))
           RallyAction(title: session.quality, bare: true) { overlay = .quality }
+        .focused($controlFocus, equals: "header-quality").accessibilityIdentifier("header-quality")
             .focused($controlFocus, equals: "fullscreen-quality")
           if session.isLive {
             RallyAction(title: "Go Live", icon: "dot.radiowaves.left.and.right", bare: true) {
@@ -494,6 +524,7 @@ struct GameViewScreen: View {
           $controlFocus, equals: "stats-leaders"
         )
         .accessibilityIdentifier("stats-leaders")
+        .onMoveCommand { moveStatsPanel("stats-leaders", direction: $0) }
       RallyPanel("Team Stats", compact: true) {
         HStack {
           Text(e.awayTeam?.abbreviation ?? "Away")
@@ -519,6 +550,7 @@ struct GameViewScreen: View {
           $controlFocus, equals: "stats-team"
         )
         .accessibilityIdentifier("stats-team")
+        .onMoveCommand { moveStatsPanel("stats-team", direction: $0) }
       RallyPanel(
         e.liveStats["Current Drive"] != nil
           ? "Current Drive" : e.status == .finished ? "Game Summary" : "Live Situation",
@@ -555,6 +587,7 @@ struct GameViewScreen: View {
           $controlFocus, equals: "stats-situation"
         )
         .accessibilityIdentifier("stats-situation")
+        .onMoveCommand { moveStatsPanel("stats-situation", direction: $0) }
       GeometryReader { geo in
         let tight = geo.size.height / RallyDesign.displayUnit < 70
         let rowHeight: CGFloat = tight ? 13 : 23
@@ -586,8 +619,19 @@ struct GameViewScreen: View {
           $controlFocus, equals: "stats-plays"
         )
         .accessibilityIdentifier("stats-plays")
+        .onMoveCommand { moveStatsPanel("stats-plays", direction: $0) }
       }
-    }.onMoveCommand { direction in if direction == .left { controlFocus = "Audio" } }
+    }
+  }
+  private func moveStatsPanel(_ origin: String, direction: MoveCommandDirection) {
+      let panels = ["stats-leaders", "stats-team", "stats-situation", "stats-plays"]
+      guard let index = panels.firstIndex(of: origin) else { return }
+      switch direction {
+      case .left: controlFocus = lastControl
+      case .up: controlFocus = index == 0 ? "stats-tab-\(tab)" : panels[index - 1]
+      case .down: if index + 1 < panels.count { controlFocus = panels[index + 1] }
+      default: break
+      }
   }
   @ViewBuilder private func overlayView(_ mode: PlayerOverlay) -> some View {
     if mode == .source {

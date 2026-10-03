@@ -23,3 +23,9 @@ scratch/
 # macOS
 .DS_Store
 *.DS_Store
+
+# Local release artifacts and Python bytecode
+brag-output/
+*.ipa
+__pycache__/
+*.pyc

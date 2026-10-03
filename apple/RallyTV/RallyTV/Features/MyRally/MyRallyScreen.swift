@@ -20,14 +20,14 @@ struct MyRallyScreen: View {
               ) { Task { await load() } }
             }
             RallySectionHeader(title: "Your Teams")
-            if store.container.settings.followedTeams.isEmpty {
+            if store.settings.followedTeams.isEmpty {
               RallyEmptyState(
                 title: "Follow your teams",
                 message: "Your teams, their games and score updates will appear here.",
                 actionTitle: "Browse Leagues"
               ) { navigate(.leagues) }
             }
-            ForEach(store.container.settings.followedTeams) { t in
+            ForEach(store.settings.followedTeams) { t in
               RallyTeamRow(
                 team: t, followed: true,
                 open: { navigate(.teamHub(league: t.league, teamId: t.teamId)) },
@@ -35,11 +35,11 @@ struct MyRallyScreen: View {
             }
             RallySectionHeader(title: "Your Games")
             let games = events.filter { e in
-              store.container.settings.favoriteTeamKeys.contains(
+              store.settings.favoriteTeamKeys.contains(
                 "\(e.league):\(e.homeTeam?.id ?? "")")
-                || store.container.settings.favoriteTeamKeys.contains(
+                || store.settings.favoriteTeamKeys.contains(
                   "\(e.league):\(e.awayTeam?.id ?? "")")
-                || store.container.settings.savedEventIds.contains(e.id)
+                || store.settings.savedEventIds.contains(e.id)
             }
             if games.isEmpty {
               RallyEmptyState(
@@ -50,16 +50,16 @@ struct MyRallyScreen: View {
             ForEach(games) { e in
               HStack {
                 RallyScheduleRow(
-                  event: e, reminder: store.container.settings.reminderIds.contains(e.id),
+                  event: e, reminder: store.settings.reminderIds.contains(e.id),
                   action: { navigate(.eventDetail(eventId: e.id)) },
                   remind: { store.reminder(e.id) })
-                if store.container.settings.savedEventIds.contains(e.id) {
+                if store.settings.savedEventIds.contains(e.id) {
                   RallyAction(title: "Remove", bare: true) { store.save(e.id) }
                 }
               }
             }
           }.padding(.vertical, RallyDesign.pt(8))
-        }.focusSection()
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).task(
       id: store.settingsRevision
@@ -67,12 +67,12 @@ struct MyRallyScreen: View {
 
   }
   private func load() async {
-    loading = true
-    let missing = store.container.settings.favoriteTeamKeys.subtracting(
-      Set(store.container.settings.followedTeams.map(\.key)))
+    loading = events.isEmpty
+    let missing = store.settings.favoriteTeamKeys.subtracting(
+      Set(store.settings.followedTeams.map(\.key)))
     for league in Set(missing.compactMap { $0.split(separator: ":").first.map(String.init) }) {
       let teams = (try? await store.container.sports.teams(league: league)) ?? []
-      store.container.settings.mergeTeamProfiles(teams)
+      store.settings.mergeTeamProfiles(teams)
     }
     do {
       events = try await store.container.sports.recentEvents()

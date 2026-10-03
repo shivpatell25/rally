@@ -33,7 +33,7 @@ struct LiveScreen: View {
             ForEach(events) { e in RallyLiveCard(event: e) { navigate(.eventDetail(eventId: e.id)) }
             }
           }.padding(.vertical, RallyDesign.pt(8))
-        }.focusSection()
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).task {
       await load()
@@ -115,9 +115,10 @@ struct ChannelScreen: View {
                 ).background(
                   RallyDesign.surface, in: RoundedRectangle(cornerRadius: RallyDesign.pt(8)))
               }.buttonStyle(RallyMediaFocus()).focusEffectDisabled()
+                .accessibilityIdentifier("channel-" + c.id)
             }
-          }
-        }.focusSection()
+          }.padding(.vertical, RallyDesign.pt(8))
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).task(
       id: store.settingsRevision
@@ -125,7 +126,7 @@ struct ChannelScreen: View {
 
   }
   private func load(refresh: Bool = false) async {
-    loading = true
+    loading = channels.isEmpty
     guard await store.container.iptv.authenticate() else {
       error = "Provider authentication failed or no provider is configured."
       loading = false

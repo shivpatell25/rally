@@ -82,7 +82,7 @@ class RallyUpdateManager @Inject constructor(
                         val name = asset.optString("name")
                         val url = asset.optString("browser_download_url")
                         val size = asset.optLong("size")
-                        if (!name.endsWith(".apk", true) || size !in 1..MAX_APK_BYTES) continue
+                        if (!isReleaseApkForDevice(name, Build.VERSION.SDK_INT) || size !in 1..MAX_APK_BYTES) continue
                         if (!url.startsWith(TRUSTED_RELEASE_PREFIX)) continue
                         add(
                             RallyRelease(
@@ -200,9 +200,25 @@ class RallyUpdateManager @Inject constructor(
         } else {
             packageInfo.signatures.orEmpty()
         }
-        check(signatures.any { signature ->
-            MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).toHex().equals(RELEASE_CERT_SHA256, true)
-        }) { "The update was not signed by Rally's release key." }
+        val candidateCurrent = signatures.map { certificateDigest(it.toByteArray()) }.toSet()
+        check(candidateCurrent == setOf(BuildConfig.RALLY_RELEASE_CERT_SHA256.lowercase())) {
+            "The update was not signed by Rally's production key."
+        }
+        val installed = context.packageManager.getPackageInfo(BuildConfig.APPLICATION_ID, flags)
+        val installedCurrent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            installed.signingInfo?.apkContentsSigners.orEmpty()
+        } else { installed.signatures.orEmpty() }
+        val candidateHistory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            packageInfo.signingInfo?.hasMultipleSigners() == false) {
+            packageInfo.signingInfo?.signingCertificateHistory.orEmpty()
+        } else { signatures }
+        check(isSigningUpdateCompatible(
+            installedCurrent.map { certificateDigest(it.toByteArray()) }.toSet(),
+            candidateCurrent,
+            candidateHistory.map { certificateDigest(it.toByteArray()) }.toSet()
+        )) {
+            "This update cannot replace the installed signing identity. Use Rally's verified migration APK; your app data has been preserved."
+        }
     }
 
     private fun fileSha256(file: File): String {
@@ -225,7 +241,6 @@ class RallyUpdateManager @Inject constructor(
         private const val TRUSTED_RELEASE_PREFIX = "https://github.com/shivpatell25/rally/releases/download/"
         private const val APK_MIME = "application/vnd.android.package-archive"
         private const val MAX_APK_BYTES = 200L * 1024L * 1024L
-        private const val RELEASE_CERT_SHA256 = "79ffff57b611ec7fbbc690007196df16dfd658432dd452458c56108bae55df73"
     }
 }
 
@@ -252,3 +267,18 @@ internal fun compareVersions(first: String, second: String): Int {
     }
     return 0
 }
+
+// Match the published Android assets explicitly so an unsigned/test APK cannot
+// win an arbitrary asset-order tie. Older production installs use a pure-key APK.
+internal fun isReleaseApkForDevice(name: String, sdk: Int): Boolean {
+    val lowered = name.lowercase()
+    return if (sdk < 28) lowered.endsWith("-android-tv-legacy.apk")
+    else lowered.endsWith("-android-tv.apk")
+}
+
+internal fun certificateDigest(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+internal fun isSigningUpdateCompatible(installed: Set<String>, current: Set<String>, history: Set<String>): Boolean =
+    installed.isNotEmpty() && current.isNotEmpty() &&
+        (installed == current || (installed.size == 1 && current.size == 1 && history.containsAll(installed)))

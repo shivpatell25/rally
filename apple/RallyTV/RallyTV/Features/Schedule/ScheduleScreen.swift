@@ -40,11 +40,11 @@ struct ScheduleScreen: View {
             ) { day = offset }
           }
         }
-      }.scrollIndicators(.hidden).focusSection()
+      }.scrollIndicators(.hidden).scrollClipDisabled().focusSection()
       HStack(spacing: RallyDesign.pt(10)) {
         Menu {
           Button("All leagues") { league = "All" }
-          ForEach(store.container.settings.sportsOrder, id: \.self) { l in Button(l) { league = l }
+          ForEach(store.settings.sportsOrder, id: \.self) { l in Button(l) { league = l }
           }
         } label: {
           Label(league == "All" ? "All leagues" : league, systemImage: "line.3.horizontal.decrease")
@@ -78,12 +78,12 @@ struct ScheduleScreen: View {
           LazyVStack(spacing: RallyDesign.pt(3)) {
             ForEach(visible) { event in
               RallyScheduleRow(
-                event: event, reminder: store.container.settings.reminderIds.contains(event.id),
+                event: event, reminder: store.settings.reminderIds.contains(event.id),
                 action: { navigate(.eventDetail(eventId: event.id)) },
                 remind: { store.reminder(event.id) })
             }
           }
-        }.focusSection()
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).padding(
       .bottom, RallyDesign.pt(18)
@@ -91,13 +91,13 @@ struct ScheduleScreen: View {
 
   }
   private func load(refresh: Bool = false) async {
-    loading = true
+    loading = events.isEmpty
     if refresh { await store.container.sports.refresh() }
     do {
       let date = dates[day + 2]
       let repository = store.container.sports
-      let leagues = store.container.settings.sportsOrder.filter {
-        store.container.settings.enabledLeagues.contains($0)
+      let leagues = store.settings.sportsOrder.filter {
+        store.settings.enabledLeagues.contains($0)
       }
       var result: [SportEvent] = []
       var succeeded = false

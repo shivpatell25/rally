@@ -13,6 +13,8 @@
       defaults.removePersistentDomain(forName: "com.shiv.rally.tv.ui-fixtures")
       let settings = SettingsStore(
         defaults: defaults, secrets: KeychainSecrets(service: "com.shiv.rally.tv.test-secrets"))
+      // Fixtures reset preferences and their matching test-only credentials together.
+      settings.clearCredentials()
       settings.setupComplete = true
       settings.followedTeams = [
         FavoriteTeam(

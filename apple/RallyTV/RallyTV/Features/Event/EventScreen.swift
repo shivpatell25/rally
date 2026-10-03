@@ -19,7 +19,7 @@ struct EventScreen: View {
           RallyHero(
             event: event, detailed: true,
             watch: { navigate(.player(target: "auto", eventId: event.id)) }, info: {},
-            saved: store.container.settings.savedEventIds.contains(event.id),
+            saved: store.settings.savedEventIds.contains(event.id),
             save: { store.save(event.id) }
           ).frame(height: RallyDesign.pt(178))
           RallyTabs(
@@ -78,7 +78,7 @@ struct EventScreen: View {
               default: EmptyView()
               }
             }.padding(.vertical, RallyDesign.pt(8))
-          }.focusSection()
+          }.scrollClipDisabled().focusSection()
         }.padding(.horizontal, RallyDesign.pt(60)).padding(.bottom, RallyDesign.pt(16))
       } else {
         RallyEmptyState(
@@ -98,7 +98,7 @@ struct EventScreen: View {
     }
   }
   private func load() async {
-    loading = true
+    loading = event == nil
     do {
       if let base = try await store.container.sports.event(id: eventId) {
         event = (try? await store.container.sports.eventSummary(base)) ?? base
@@ -286,12 +286,12 @@ struct RallyPlayerTables: View {
               }.frame(width: RallyDesign.pt(330))
             }
             RallyAction(
-              title: store.container.settings.favoritePlayerIds.contains(row.id)
+              title: store.settings.favoritePlayerIds.contains(row.id)
                 ? "Unfollow Player" : "Follow Player"
             ) {
-              var ids = store.container.settings.favoritePlayerIds
+              var ids = store.settings.favoritePlayerIds
               if !ids.insert(row.id).inserted { ids.remove(row.id) }
-              store.container.settings.favoritePlayerIds = ids
+              store.settings.favoritePlayerIds = ids
               store.settingsRevision += 1
             }
             RallyAction(title: "Done") { selected = nil }

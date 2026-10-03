@@ -218,7 +218,7 @@ struct PersonalizationTransferSheet: View {
           RallyAction(title: "Done", action: dismiss)
         }
       }
-    }.task { transfer.start(settings: store.container.settings) }.onDisappear { transfer.stop() }
+    }.task { transfer.start(settings: store.settings) }.onDisappear { transfer.stop() }
       .onExitCommand(perform: dismiss).presentationBackground(.black)
   }
 }

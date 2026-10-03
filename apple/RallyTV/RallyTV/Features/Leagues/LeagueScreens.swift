@@ -12,9 +12,9 @@ struct LeaguesScreen: View {
           spacing: RallyDesign.pt(20)
         ) {
           ForEach(
-            store.container.settings.sportsOrder.filter {
-              store.container.settings.enabledLeagues.isEmpty
-                || store.container.settings.enabledLeagues.contains($0)
+            store.settings.sportsOrder.filter {
+              store.settings.enabledLeagues.isEmpty
+                || store.settings.enabledLeagues.contains($0)
             }, id: \.self
           ) { league in
             Button {
@@ -29,7 +29,7 @@ struct LeaguesScreen: View {
             }.buttonStyle(RallyMediaFocus()).focusEffectDisabled()
           }
         }.padding(.vertical, RallyDesign.pt(10))
-      }.focusSection()
+      }.scrollClipDisabled().focusSection()
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12))
   }
 }
@@ -80,13 +80,14 @@ struct LeagueScreen: View {
               }
               ForEach(hub?.events ?? []) { e in
                 RallyScheduleRow(
-                  event: e, action: { navigate(.eventDetail(eventId: e.id)) },
+                  event: e, reminder: store.settings.reminderIds.contains(e.id),
+                  action: { navigate(.eventDetail(eventId: e.id)) },
                   remind: { store.reminder(e.id) })
               }
             } else if tab == "Teams" {
               ForEach(teams) { t in
                 RallyTeamRow(
-                  team: t, followed: store.container.settings.favoriteTeamKeys.contains(t.key),
+                  team: t, followed: store.settings.favoriteTeamKeys.contains(t.key),
                   open: { navigate(.teamHub(league: league, teamId: t.teamId)) },
                   follow: { store.follow(t) })
               }
@@ -108,13 +109,14 @@ struct LeagueScreen: View {
               if tab == "Playoffs" {
                 ForEach(hub?.postseasonEvents ?? []) { e in
                   RallyScheduleRow(
-                    event: e, action: { navigate(.eventDetail(eventId: e.id)) },
+                    event: e, reminder: store.settings.reminderIds.contains(e.id),
+                    action: { navigate(.eventDetail(eventId: e.id)) },
                     remind: { store.reminder(e.id) })
                 }
               }
             }
           }.padding(.vertical, RallyDesign.pt(8))
-        }.focusSection()
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).padding(
       .bottom, RallyDesign.pt(18)
@@ -122,7 +124,7 @@ struct LeagueScreen: View {
 
   }
   private func load() async {
-    loading = true
+    loading = hub == nil
     do {
       if league == "Soccer" {
         hub = LeagueHub(
@@ -140,26 +142,29 @@ struct RallyTabs: View {
   let tabs: [String]
   @Binding var selection: String
   var compact = false
+  var focus: FocusState<String?>.Binding? = nil
+  var focusPrefix = "tab-"
+  var move: ((String, MoveCommandDirection) -> Void)? = nil
   var body: some View {
     HStack(spacing: RallyDesign.pt(compact ? 3 : 14)) {
       ForEach(tabs, id: \.self) { tab in
-        Button {
-          selection = tab
-        } label: {
-          Text(tab).font(
-            RallyDesign.font(compact ? 10 : 12, selection == tab ? .semibold : .regular)
-          )
-          .foregroundStyle(selection == tab ? .white : RallyDesign.muted).padding(
-            .horizontal, RallyDesign.pt(compact ? 3 : 8)
-          )
-          .padding(.vertical, RallyDesign.pt(compact ? 5 : 7)).background(
-            selection == tab ? .white.opacity(0.1) : .clear,
-            in: RoundedRectangle(cornerRadius: RallyDesign.pt(8))
-          )
-        }.buttonStyle(RallyButtonStyle(bare: true)).focusEffectDisabled().accessibilityIdentifier(
-          "tab-\(tab)")
+        Group {
+          if let focus { tabButton(tab).focused(focus, equals: focusPrefix + tab) }
+          else { tabButton(tab) }
+        }.onMoveCommand { direction in move?(tab, direction) }
       }
     }.focusSection()
+  }
+  private func tabButton(_ tab: String) -> some View {
+    Button { selection = tab } label: {
+      Text(tab).font(RallyDesign.font(compact ? 10 : 12, selection == tab ? .semibold : .regular))
+        .foregroundStyle(selection == tab ? .white : RallyDesign.muted)
+        .padding(.horizontal, RallyDesign.pt(compact ? 3 : 8))
+        .padding(.vertical, RallyDesign.pt(compact ? 5 : 7))
+        .background(selection == tab ? .white.opacity(0.1) : .clear,
+                    in: RoundedRectangle(cornerRadius: RallyDesign.pt(8)))
+    }.buttonStyle(RallyButtonStyle(bare: true)).focusEffectDisabled()
+      .accessibilityIdentifier("tab-" + tab)
   }
 }
 struct RallyTeamRow: View {
@@ -194,6 +199,8 @@ struct TeamScreen: View {
   @State private var loading = true
   @State private var error: String?
   @State private var tab = "Overview"
+  @FocusState private var rosterFocus: String?
+  @State private var openedPlayerID: String?
   var body: some View {
     VStack(alignment: .leading, spacing: RallyDesign.pt(14)) {
       if let hub {
@@ -207,7 +214,7 @@ struct TeamScreen: View {
           }
           Spacer()
           RallyAction(
-            title: store.container.settings.favoriteTeamKeys.contains(hub.team.key)
+            title: store.settings.favoriteTeamKeys.contains(hub.team.key)
               ? "Following" : "Follow Team", icon: "plus"
           ) { store.follow(hub.team) }
         }
@@ -230,7 +237,7 @@ struct TeamScreen: View {
               }
               ForEach(hub.schedule) { e in
                 RallyScheduleRow(
-                  event: e, reminder: store.container.settings.reminderIds.contains(e.id),
+                  event: e, reminder: store.settings.reminderIds.contains(e.id),
                   action: { navigate(.eventDetail(eventId: e.id)) },
                   remind: { store.reminder(e.id) })
               }
@@ -244,7 +251,9 @@ struct TeamScreen: View {
                 RallyAction(
                   title: "\(p.jersey.map { "#"+$0 } ?? "")  \(p.name) · \(p.position ?? "Player")",
                   bare: true
-                ) { selectedPlayer = p }.frame(maxWidth: .infinity, alignment: .leading)
+                ) { openedPlayerID = p.id; selectedPlayer = p }
+                  .focused($rosterFocus, equals: p.id)
+                  .frame(maxWidth: .infinity, alignment: .leading)
               }
             } else {
               if hub.injuries.isEmpty {
@@ -260,11 +269,11 @@ struct TeamScreen: View {
               }
             }
           }.padding(.vertical, RallyDesign.pt(8))
-        }.focusSection()
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).task {
       await load()
-    }.sheet(item: $selectedPlayer) { p in
+    }.sheet(item: $selectedPlayer, onDismiss: { rosterFocus = openedPlayerID }) { p in
       RallyCanvas {
         ZStack {
           RallyBackdrop()
@@ -281,7 +290,7 @@ struct TeamScreen: View {
   }
   @State private var selectedPlayer: TeamPlayer?
   private func load() async {
-    loading = true
+    loading = hub == nil
     do {
       hub = try await store.container.sports.teamHub(league: league, teamId: teamId)
       error = hub == nil ? "Team information could not be found." : nil

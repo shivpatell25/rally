@@ -54,7 +54,7 @@ struct HighlightsScreen: View {
               }
             }
           }.padding(.vertical, RallyDesign.pt(8))
-        }.focusSection()
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).task {
       await load()

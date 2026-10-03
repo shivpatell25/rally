@@ -5,6 +5,12 @@ import SwiftUI
   let container: AppContainer
   var homeReset = 0
   var settingsRevision = 0
+  /// Register preference reads with SwiftUI observation. SettingsStore itself
+  /// wraps UserDefaults/Keychain, so reading container.settings bypasses redraws.
+  var settings: SettingsStore {
+    let _ = settingsRevision
+    return container.settings
+  }
   var lastInteraction = Date()
   var isPlaying = false
   var alert: GameAlert?

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,6 +18,10 @@ val hasReleaseSigning = listOf(
     rallyKeyPassword
 ).all { !it.isNullOrBlank() }
 
+val releaseIdentity = Properties().apply {
+    rootProject.file("signing/release.properties").inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.shiv.rally"
     compileSdk = 34
@@ -24,9 +30,10 @@ android {
         applicationId = "com.shiv.spatelorts"
         minSdk = 26
         targetSdk = 34
-        // Beta 11 improves playback recovery, game stats, and TV navigation.
-        versionCode = 12
-        versionName = "1.0-beta11"
+        // Stabilization release; never reuse a published version code.
+        versionCode = 13
+        versionName = "1.0-beta12"
+        buildConfigField("String", "RALLY_RELEASE_CERT_SHA256", "\"${releaseIdentity.getProperty("production.sha256")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -136,4 +143,14 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+// A release build must never silently become unsigned or fall back to debug.
+// Unit tests and assembleDebug remain usable without production credentials.
+tasks.matching { it.name == "validateSigningRelease" || it.name == "packageRelease" }.configureEach {
+    doFirst {
+        check(hasReleaseSigning) {
+            "Release signing is required. Set all four RALLY_KEYSTORE/RALLY_KEY variables; use scripts/sign_android_release.py for verified migration packaging."
+        }
+    }
 }

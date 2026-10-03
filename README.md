@@ -52,4 +52,4 @@ Credit to Jacob Halladay (LinkedIn: https://www.linkedin.com/in/jacobhalladay) f
 
 ## About this build
 
-Rally TV Beta 11 Hotfix 2 fixes Apple TV Settings navigation between text fields and action buttons. It includes the unchanged Beta 11 Android TV build. The Android APK is signed with the Rally Beta test key so it can update compatible Beta 9 and Beta 10 test installations. The Apple TV IPA is an unsigned package intended for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. App availability and behavior may change as Rally develops.
+Rally TV Beta 12 improves Apple TV remote navigation, focus restoration, Home transitions and Settings. Android TV now uses Rally’s recovered production signing identity with a verified migration for compatible Android 9+ beta installs, preserving existing app data. The Apple TV IPA remains unsigned for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build.

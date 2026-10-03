@@ -10,9 +10,10 @@ struct SearchScreen: View {
   @State private var streams: [StremioStreamOption] = []
   @State private var indexing = false
   @State private var loading = false
+  @State private var loadedQuery: String?
   @State private var error: String?
   private var leagues: [String] {
-    store.container.settings.sportsOrder.filter {
+    store.settings.sportsOrder.filter {
       $0.localizedCaseInsensitiveContains(query)
         || (query.lowercased().contains("soccer")
           && ["EPL", "MLS", "La Liga", "Champions League", "Serie A"].contains($0))
@@ -48,7 +49,8 @@ struct SearchScreen: View {
               RallySectionHeader(title: "Games")
               ForEach(events) { e in
                 RallyScheduleRow(
-                  event: e, action: { navigate(.eventDetail(eventId: e.id)) },
+                  event: e, reminder: store.settings.reminderIds.contains(e.id),
+                  action: { navigate(.eventDetail(eventId: e.id)) },
                   remind: { store.reminder(e.id) })
               }
             }
@@ -56,7 +58,7 @@ struct SearchScreen: View {
               RallySectionHeader(title: "Teams")
               ForEach(teams) { t in
                 RallyTeamRow(
-                  team: t, followed: store.container.settings.favoriteTeamKeys.contains(t.key),
+                  team: t, followed: store.settings.favoriteTeamKeys.contains(t.key),
                   open: { navigate(.teamHub(league: t.league, teamId: t.teamId)) },
                   follow: { store.follow(t) })
               }
@@ -87,7 +89,7 @@ struct SearchScreen: View {
               RallyEmptyState(title: "No results", message: "Try a team name, league or channel.")
             }
           }.padding(.vertical, RallyDesign.pt(8))
-        }.focusSection()
+        }.scrollClipDisabled().focusSection()
       }
     }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).task(id: query) {
       await search()
@@ -97,10 +99,15 @@ struct SearchScreen: View {
   private func search() async {
     let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !q.isEmpty else { return }
+    // Returning from a result keeps its focusable rows alive. A changed query
+    // still performs a fresh, cancellable search.
+    guard loadedQuery != q else { return }
     loading = true
     do {
       try await Task.sleep(for: .milliseconds(250))
-      events = try await store.container.sports.searchEvents(query: q)
+      let found = try await store.container.sports.searchEvents(query: q)
+      guard !Task.isCancelled else { return }
+      events = found
       error = nil
     } catch {
       if Task.isCancelled { return }
@@ -113,7 +120,7 @@ struct SearchScreen: View {
     channels = []
     streams = []
     let repository = store.container.sports
-    let order = store.container.settings.sportsOrder
+    let order = store.settings.sportsOrder
     async let channelResults = store.container.iptv.searchChannels(query: q, limit: 50)
     async let addonResults = store.container.stremio.searchStreams(query: q)
     for offset in stride(from: 0, to: order.count, by: 3) {
@@ -140,5 +147,6 @@ struct SearchScreen: View {
     channels = foundChannels
     streams = foundStreams.filter(\.isDirectPlayable)
     indexing = false
+    loadedQuery = q
   }
 }

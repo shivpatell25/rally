@@ -5,6 +5,8 @@ struct SettingsScreen: View {
   @Environment(RallyStore.self) private var store
   let navigate: (RallyRoute) -> Void
   @State private var tab = "Sources"
+  @State private var accountTab = "My Rally"
+  @State private var streamTab = "Providers"
   @State private var provider = IptvProvider.stalker
   @State private var portal = ""
   @State private var mac = ""
@@ -25,41 +27,59 @@ struct SettingsScreen: View {
   @State private var backupInput = ""
   @State private var transfer = false
   @State private var link: SupportLink?
+  @FocusState private var accountFocus: String?
   var body: some View {
-    VStack(alignment: .leading, spacing: RallyDesign.pt(14)) {
-      RallySectionHeader(title: "Settings")
-      RallyTabs(
-        tabs: ["Sources", "Addons", "Sports", "My Rally", "Alerts", "Viewing", "Support"],
-        selection: $tab)
-      if let message {
-        Text(message).font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
-          .accessibilityIdentifier("Settings status")
-      }
-      ScrollView {
-        VStack(alignment: .leading, spacing: RallyDesign.pt(14)) {
-          switch tab {
-          case "Sources": sourceSettings
-          case "Addons": addonSettings
-          case "Sports": sportSettings
-          case "My Rally": teamSettings
-          case "Alerts":
-            toggle(
-              "Live game alerts", get: { store.container.settings.liveGameAlertsEnabled },
-              set: { store.container.settings.liveGameAlertsEnabled = $0 })
-            toggle(
-              "NFL RedZone alerts", get: { store.container.settings.redZoneAlertsEnabled },
-              set: { store.container.settings.redZoneAlertsEnabled = $0 })
-          case "Viewing": viewingSettings
-          case "Support": supportSettings
-          default: EmptyView()
+    VStack(alignment: .leading, spacing: RallyDesign.pt(16)) {
+      Text("Settings").font(RallyDesign.font(25, .semibold))
+      HStack(alignment: .top, spacing: RallyDesign.pt(30)) {
+        VStack(alignment: .leading, spacing: RallyDesign.pt(8)) {
+          ForEach(["Account", "Playback", "Appearance", "Sources", "Alerts", "Support"], id: \.self) { section in
+            Button { tab = section } label: {
+              Text(sectionTitle(section)).font(RallyDesign.font(14, tab == section ? .semibold : .regular))
+                .frame(width: RallyDesign.pt(154), height: RallyDesign.pt(28), alignment: .leading)
+            }.buttonStyle(RallyButtonStyle(bare: true, selected: tab == section)).focusEffectDisabled()
+              .accessibilityIdentifier("tab-" + section)
           }
-        }.padding(.vertical, RallyDesign.pt(8))
-      }.focusSection()
-    }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12)).padding(
-      .bottom, RallyDesign.pt(18)
-    )
+        }.frame(width: RallyDesign.pt(174), alignment: .leading).focusSection()
+        VStack(alignment: .leading, spacing: RallyDesign.pt(10)) {
+          Text(sectionTitle(tab)).font(RallyDesign.font(20, .semibold))
+          if let message {
+            Text(message).font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
+              .accessibilityIdentifier("Settings status")
+          }
+          ScrollView {
+            VStack(alignment: .leading, spacing: RallyDesign.pt(18)) {
+              switch tab {
+              case "Sources":
+                RallyTabs(tabs: ["Providers", "Addons"], selection: $streamTab)
+                if streamTab == "Providers" { sourceSettings } else { addonSettings }
+              case "Account":
+                RallyTabs(tabs: ["My Rally", "Sports"], selection: $accountTab, focus: $accountFocus) { _, direction in
+                  if direction == .down, accountTab == "Sports",
+                     let league = store.settings.sportsOrder.first {
+                    accountFocus = "sport-enabled-" + league
+                  }
+                }
+                if accountTab == "Sports" { sportSettings } else { teamSettings }
+              case "Alerts":
+                toggle("Live game alerts", get: { store.settings.liveGameAlertsEnabled },
+                       set: { store.settings.liveGameAlertsEnabled = $0 })
+                toggle("NFL RedZone alerts", get: { store.settings.redZoneAlertsEnabled },
+                       set: { store.settings.redZoneAlertsEnabled = $0 })
+              case "Playback": playbackSettings
+              case "Appearance": appearanceSettings
+              case "Support": supportSettings
+              default: EmptyView()
+              }
+            }.padding(.vertical, RallyDesign.pt(10))
+              .padding(.horizontal, RallyDesign.pt(6))
+          }.padding(.horizontal, RallyDesign.pt(-6)).focusSection()
+        }.frame(maxWidth: .infinity, alignment: .leading).focusSection()
+      }
+    }.padding(.horizontal, RallyDesign.pt(60)).padding(.top, RallyDesign.pt(12))
+      .padding(.bottom, RallyDesign.pt(22))
     .task {
-      let s = store.container.settings
+      let s = store.settings
       provider = s.provider
       portal = s.portalUrl
       mac = s.macAddress
@@ -78,9 +98,9 @@ struct SettingsScreen: View {
     .sheet(
       isPresented: $transfer,
       onDismiss: {
-        provider = store.container.settings.provider
-        playlist = store.container.settings.m3uPlaylistUrl
-        playlistName = store.container.settings.m3uPlaylistName
+        provider = store.settings.provider
+        playlist = store.settings.m3uPlaylistUrl
+        playlistName = store.settings.m3uPlaylistName
         store.applySettings()
       }
     ) {
@@ -131,7 +151,7 @@ struct SettingsScreen: View {
         RallyAction(title: "Save & Apply", primary: true) { saveProvider() }
         RallyAction(title: "Test Provider") { Task { await testProvider() } }
         RallyAction(title: "Remove Provider") {
-          store.container.settings.clearCredentials()
+          store.settings.clearCredentials()
           store.applySettings()
           portal = ""
           server = ""
@@ -151,26 +171,26 @@ struct SettingsScreen: View {
       actionRow {
         RallyAction(title: "Add Addon", icon: "plus") { Task { await addAddon() } }.disabled(busy)
       }
-      if store.container.settings.stremioAddonUrls.isEmpty {
+      if store.settings.stremioAddonUrls.isEmpty {
         Text("No addons configured. Rally does not bundle stream sources.").foregroundStyle(
           RallyDesign.muted)
       }
-      ForEach(store.container.settings.stremioAddonUrls, id: \.self) { url in
+      ForEach(store.settings.stremioAddonUrls, id: \.self) { url in
         HStack {
           Text(url.host ?? "Addon").font(RallyDesign.font(13))
           Spacer()
           RallyAction(title: "Test") { Task { await testAddon(url) } }
           RallyAction(title: "Remove") {
-            store.container.settings.stremioAddonUrls.removeAll { $0 == url }
-            NetworkPolicy.shared.configure(store.container.settings)
+            store.settings.stremioAddonUrls.removeAll { $0 == url }
+            NetworkPolicy.shared.configure(store.settings)
             store.settingsRevision += 1
           }
         }.frame(maxWidth: .infinity, alignment: .leading).focusSection()
       }
       actionRow {
         RallyAction(title: "Reset Addons") {
-          store.container.settings.stremioAddonUrls = []
-          NetworkPolicy.shared.configure(store.container.settings)
+          store.settings.stremioAddonUrls = []
+          NetworkPolicy.shared.configure(store.settings)
           store.settingsRevision += 1
           message = "Addons reset."
         }
@@ -180,16 +200,16 @@ struct SettingsScreen: View {
   private var sportSettings: some View {
     VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
       Text("Enabled leagues & rail order").font(RallyDesign.font(18, .semibold))
-      ForEach(Array(store.container.settings.sportsOrder.enumerated()), id: \.element) {
+      ForEach(Array(store.settings.sportsOrder.enumerated()), id: \.element) {
         index, league in
         HStack {
           RallyLeagueMark(league: league, size: 24)
-          Text(league).frame(width: RallyDesign.pt(170), alignment: .leading)
+          Text(league).font(RallyDesign.font(12)).frame(width: RallyDesign.pt(74), alignment: .leading)
           RallyAction(
             title: isEnabled(league) ? "Enabled" : "Disabled",
             icon: isEnabled(league) ? "checkmark" : nil
           ) {
-            var enabled = store.container.settings.enabledLeagues
+            var enabled = store.settings.enabledLeagues
             if enabled.isEmpty { enabled = Set(EspnEndpoints.leagues.keys) }
             if enabled.contains(league) {
               guard enabled.count > 1 else {
@@ -200,38 +220,43 @@ struct SettingsScreen: View {
             } else {
               enabled.insert(league)
             }
-            store.container.settings.enabledLeagues = enabled
+            store.settings.enabledLeagues = enabled
             store.settingsRevision += 1
             Task { await store.container.sports.refresh() }
-          }
+          }.accessibilityIdentifier("sport-enabled-" + league)
+            .focused($accountFocus, equals: "sport-enabled-" + league)
+
           RallyAction(
-            title: store.container.settings.favoriteSports.contains(league)
-              ? "Favorite" : "Favorite Sport", icon: "star"
+            title: "Favorite", icon: store.settings.favoriteSports.contains(league) ? "star.fill" : "star"
           ) {
-            var values = store.container.settings.favoriteSports
+            var values = store.settings.favoriteSports
             if !values.insert(league).inserted { values.remove(league) }
-            store.container.settings.favoriteSports = values
+            store.settings.favoriteSports = values
             store.settingsRevision += 1
-          }
+          }.accessibilityIdentifier("sport-favorite-" + league)
           Spacer()
           RallyAction(title: "Up", icon: "arrow.up", bare: true) { moveLeague(index, -1) }.disabled(
-            index == 0)
+            index == 0).accessibilityIdentifier("sport-up-" + league)
           RallyAction(title: "Down", icon: "arrow.down", bare: true) { moveLeague(index, 1) }
-            .disabled(index == store.container.settings.sportsOrder.count - 1)
-        }
+            .disabled(index == store.settings.sportsOrder.count - 1)
+            .accessibilityIdentifier("sport-down-" + league)
+        }.focusSection()
+          .onMoveCommand { direction in
+            if direction == .up, index == 0 { accountFocus = "tab-Sports" }
+          }
       }
     }
   }
   private var teamSettings: some View {
     VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
       Text("Followed Teams").font(RallyDesign.font(18, .semibold))
-      ForEach(store.container.settings.followedTeams) { t in
+      ForEach(store.settings.followedTeams) { t in
         RallyTeamRow(
           team: t, followed: true, open: { navigate(.teamHub(league: t.league, teamId: t.teamId)) },
           follow: { store.follow(t) })
       }
       Menu {
-        ForEach(store.container.settings.sportsOrder, id: \.self) { league in
+        ForEach(store.settings.sportsOrder, id: \.self) { league in
           Button(league) { teamLeague = league }
         }
       } label: {
@@ -242,36 +267,40 @@ struct SettingsScreen: View {
         teams.filter { teamQuery.isEmpty || $0.name.localizedCaseInsensitiveContains(teamQuery) }
       ) { t in
         RallyTeamRow(
-          team: t, followed: store.container.settings.favoriteTeamKeys.contains(t.key),
+          team: t, followed: store.settings.favoriteTeamKeys.contains(t.key),
           open: { navigate(.teamHub(league: t.league, teamId: t.teamId)) },
           follow: { store.follow(t) })
       }
     }
   }
-  private var viewingSettings: some View {
+  private func sectionTitle(_ section: String) -> String {
+    switch section {
+    case "Sources": return "Sources / Streaming"
+    case "Alerts": return "Notifications / Alerts"
+    case "Support": return "App / About"
+    default: return section
+    }
+  }
+  private var appearanceSettings: some View {
+    VStack(alignment: .leading, spacing: RallyDesign.pt(16)) {
+      toggle("Reduce Motion", get: { store.settings.reducedMotion }, set: { store.settings.reducedMotion = $0 })
+      toggle("High Contrast Focus", get: { store.settings.highContrastFocus }, set: { store.settings.highContrastFocus = $0 })
+      toggle("Larger Text", get: { store.settings.largeText }, set: { store.settings.largeText = $0 })
+      toggle("Score Saver", get: { store.settings.scoreSaverEnabled }, set: { store.settings.scoreSaverEnabled = $0 })
+    }
+  }
+  private var playbackSettings: some View {
     VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
       toggle(
-        "Low Latency", get: { store.container.settings.lowLatencyMode },
-        set: { store.container.settings.lowLatencyMode = $0 })
+        "Low Latency", get: { store.settings.lowLatencyMode },
+        set: { store.settings.lowLatencyMode = $0 })
       toggle(
-        "Adaptive Quality", get: { store.container.settings.adaptiveQualityEnabled },
-        set: { store.container.settings.adaptiveQualityEnabled = $0 })
-      toggle(
-        "Reduce Motion", get: { store.container.settings.reducedMotion },
-        set: { store.container.settings.reducedMotion = $0 })
-      toggle(
-        "High Contrast Focus", get: { store.container.settings.highContrastFocus },
-        set: { store.container.settings.highContrastFocus = $0 })
-      toggle(
-        "Larger Text", get: { store.container.settings.largeText },
-        set: { store.container.settings.largeText = $0 })
-      toggle(
-        "Spoken Score Summaries", get: { store.container.settings.spokenScoreSummaries },
-        set: { store.container.settings.spokenScoreSummaries = $0 })
-      toggle(
-        "Score Saver", get: { store.container.settings.scoreSaverEnabled },
-        set: { store.container.settings.scoreSaverEnabled = $0 })
-      RallyPanel("Audio Normalization") {
+        "Adaptive Quality", get: { store.settings.adaptiveQualityEnabled },
+        set: { store.settings.adaptiveQualityEnabled = $0 })
+      toggle("Spoken Score Summaries", get: { store.settings.spokenScoreSummaries },
+             set: { store.settings.spokenScoreSummaries = $0 })
+      VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
+        Text("Audio Normalization").font(RallyDesign.font(15, .semibold))
         Text(
           "Apple TV manages sound compression with Reduce Loud Sounds. Enable it in Apple TV Settings → Video and Audio. AVPlayer’s live HLS path does not expose Android’s per-player limiter."
         ).font(RallyDesign.font(12)).foregroundStyle(RallyDesign.muted)
@@ -337,7 +366,7 @@ struct SettingsScreen: View {
   }
   private func field(_ title: String, text: Binding<String>, secure: Bool = false) -> some View {
     HStack(spacing: RallyDesign.pt(12)) {
-      Text(title).font(RallyDesign.font(12)).frame(width: RallyDesign.pt(170), alignment: .leading)
+      Text(title).font(RallyDesign.font(12)).frame(width: RallyDesign.pt(138), alignment: .leading)
       Group {
         if secure {
           SecureField("Provider password", text: text)
@@ -364,17 +393,18 @@ struct SettingsScreen: View {
           store.settingsRevision += 1
         })
     ).font(RallyDesign.font(14)).padding(RallyDesign.pt(6))
+      .accessibilityIdentifier("setting-" + title)
   }
   private func isEnabled(_ league: String) -> Bool {
-    store.container.settings.enabledLeagues.isEmpty
-      || store.container.settings.enabledLeagues.contains(league)
+    store.settings.enabledLeagues.isEmpty
+      || store.settings.enabledLeagues.contains(league)
   }
   private func moveLeague(_ index: Int, _ direction: Int) {
-    var order = store.container.settings.sportsOrder
+    var order = store.settings.sportsOrder
     let next = index + direction
     guard order.indices.contains(next) else { return }
     order.swapAt(index, next)
-    store.container.settings.sportsOrder = order
+    store.settings.sportsOrder = order
     store.settingsRevision += 1
   }
   private func saveProvider() {
@@ -396,7 +426,7 @@ struct SettingsScreen: View {
       message = "Enter the provider username and password."
       return
     }
-    let s = store.container.settings
+    let s = store.settings
     s.provider = provider
     s.portalUrl = portal
     s.macAddress = mac
@@ -455,10 +485,10 @@ struct SettingsScreen: View {
     busy = true
     await testAddon(url)
     if message?.hasPrefix("Addon available") == true {
-      if !store.container.settings.stremioAddonUrls.contains(url) {
-        store.container.settings.stremioAddonUrls.append(url)
+      if !store.settings.stremioAddonUrls.contains(url) {
+        store.settings.stremioAddonUrls.append(url)
       }
-      NetworkPolicy.shared.configure(store.container.settings)
+      NetworkPolicy.shared.configure(store.settings)
       addon = ""
       store.settingsRevision += 1
     }
@@ -480,9 +510,9 @@ struct SettingsScreen: View {
     let events = (try? await store.container.sports.recentEvents()) ?? []
     let ok = await store.container.iptv.authenticate()
     diagnostics =
-      "Rally tvOS · AVPlayer\nSports data: \(events.count) events\nIPTV: \(ok ? "Authenticated" : "Not configured or unavailable")\nAddons: \(store.container.settings.stremioAddonUrls.count) configured\nAccessibility: motion \(store.container.settings.reducedMotion ? "reduced" : "standard")\nNo provider URLs, identifiers or credentials are included."
+      "Rally tvOS · AVPlayer\nSports data: \(events.count) events\nIPTV: \(ok ? "Authenticated" : "Not configured or unavailable")\nAddons: \(store.settings.stremioAddonUrls.count) configured\nAccessibility: motion \(store.settings.reducedMotion ? "reduced" : "standard")\nNo provider URLs, identifiers or credentials are included."
     diagnostics += "\n\nRecent diagnostics\n" + RallyDiagnostics.shared.report()
-    store.container.settings.supportReport = diagnostics
+    store.settings.supportReport = diagnostics
     busy = false
   }
   private func checkUpdates() async {

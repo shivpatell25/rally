@@ -18,13 +18,30 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
+      - name: Check for an existing verified IPA
+        id: asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          ASSET_NAME="RallyTV-${RELEASE_TAG}-tvOS-unsigned.ipa"
+          EXISTS="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq ".assets[] | select(.name == \"$ASSET_NAME\") | .name")"
+          if test -n "$EXISTS"; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Retaining the existing verified release IPA."
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v7
+        if: steps.asset.outputs.needed == 'true'
         with:
           ref: ${{ inputs.tag || github.event.release.tag_name }}
       - uses: maxim-lobanov/setup-xcode@v1
+        if: steps.asset.outputs.needed == 'true'
         with:
-          xcode-version: "26.6.0"
+          xcode-version: latest-stable
       - name: Build unsigned Apple TV app
+        if: steps.asset.outputs.needed == 'true'
         env:
           DERIVED_DATA: ${{ runner.temp }}/rally-derived
         run: |
@@ -37,6 +54,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
       - name: Package and validate unsigned IPA
+        if: steps.asset.outputs.needed == 'true'
         env:
           DERIVED_DATA: ${{ runner.temp }}/rally-derived
           RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
@@ -54,7 +72,8 @@ jobs:
           shasum -a 256 "$IPA"
           echo "IPA_PATH=$IPA" >> "$GITHUB_ENV"
       - name: Attach IPA to release
+        if: steps.asset.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
-        run: gh release upload "$RELEASE_TAG" "$IPA_PATH" --clobber
+        run: gh release upload "$RELEASE_TAG" "$IPA_PATH"
