@@ -66,7 +66,7 @@ struct GameViewScreen: View {
           Text(error).font(RallyDesign.font(14)).multilineTextAlignment(.center).frame(
             width: RallyDesign.pt(420))
           HStack {
-            RallyAction(title: "Retry", primary: true) { Task { await start() } }
+            RallyAction(title: "Retry", primary: true) { Task { await start(refreshSource: true) } }
             RallyAction(title: "Pick Source") { overlay = .source }
             RallyAction(title: "Back") { dismiss() }
           }
@@ -739,7 +739,7 @@ struct GameViewScreen: View {
       session.sourceTitle = event.compactMatchup
     }
   }
-  private func start(_ candidate: StreamCandidate? = nil) async {
+  private func start(_ candidate: StreamCandidate? = nil, refreshSource: Bool = false) async {
     let candidate =
       candidate ?? selected ?? initialCandidate
       ?? sources.candidates.first {
@@ -755,7 +755,7 @@ struct GameViewScreen: View {
     if let candidate { attempted.insert(candidate.id) }
     await session.open(
       candidate?.channel?.id ?? candidate?.playbackTarget.absoluteString ?? target, event: event,
-      candidate: candidate, container: store.container)
+      candidate: candidate, container: store.container, refreshSource: refreshSource)
   }
   private func fallback() async {
     guard clipTitle == nil else { return }

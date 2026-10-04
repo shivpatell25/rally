@@ -27,6 +27,16 @@ internal enum class TvDeviceClass(val displayName: String) {
     PREMIUM("Premium 4K TV")
 }
 
+internal data class MultiViewVideoBudget(val width: Int, val height: Int, val bitrate: Int)
+
+internal fun multiViewVideoBudget(deviceClass: TvDeviceClass, streams: Int): MultiViewVideoBudget = when (deviceClass) {
+    TvDeviceClass.LOW_POWER -> if (streams <= 2) MultiViewVideoBudget(1280, 720, 2_500_000)
+        else MultiViewVideoBudget(854, 480, 1_200_000)
+    TvDeviceClass.STANDARD -> if (streams <= 2) MultiViewVideoBudget(1920, 1080, 4_000_000)
+        else MultiViewVideoBudget(1280, 720, 2_500_000)
+    TvDeviceClass.PREMIUM -> MultiViewVideoBudget(1920, 1080, if (streams <= 2) 6_000_000 else 4_000_000)
+}
+
 internal fun choosePlaybackProfile(
     displaySupportsHdr: Boolean,
     supports4k30: Boolean,

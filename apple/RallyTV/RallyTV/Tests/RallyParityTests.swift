@@ -358,12 +358,20 @@ final class RallyParityTests: XCTestCase {
     session.suspendForScene()
     XCTAssertEqual(session.player.rate, 0)
     session.restoreForScene()
+    for _ in 0..<120 {
+      if session.player.rate > 0 && session.player.currentItem?.status == .readyToPlay { break }
+      try await Task.sleep(for: .milliseconds(100))
+    }
     XCTAssertGreaterThan(session.player.rate, 0)
     session.pause()
     XCTAssertFalse(session.playing)
     XCTAssertFalse(session.playbackRequested)
     session.suspendForScene()
     session.restoreForScene()
+    for _ in 0..<120 {
+      if session.player.currentItem?.status == .readyToPlay { break }
+      try await Task.sleep(for: .milliseconds(100))
+    }
     XCTAssertEqual(
       session.player.rate, 0, "Returning to the foreground must preserve an explicit user pause")
     session.seek(30)

@@ -10,6 +10,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.async
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -19,6 +20,11 @@ class StalkerIptvRepositoryTest {
     private class FakeStalkerApi : StalkerApi {
         var createLinkCmd: String? = null
         var createLinkCallCount = 0
+        var emptyLinks = 0
+        var throwCancellation = false
+        var concurrentLinks = 0
+        var maxConcurrentLinks = 0
+        var linkDelayMs = 0L
         var handshakeCallCount = 0
         var returnEmptyFirstChannelRequest = false
         var channelRequestCount = 0
@@ -72,6 +78,11 @@ class StalkerIptvRepositoryTest {
 
         override suspend fun createLink(type: String, action: String, cmd: String, token: String): StalkerResponse<JsonElement> {
             createLinkCallCount++
+            if (throwCancellation) throw kotlinx.coroutines.CancellationException("slot removed")
+            concurrentLinks++
+            maxConcurrentLinks = maxOf(maxConcurrentLinks, concurrentLinks)
+            try { kotlinx.coroutines.delay(linkDelayMs) } finally { concurrentLinks-- }
+            if (emptyLinks-- > 0) return StalkerResponse()
             createLinkCmd = cmd
             return StalkerResponse(js = JsonObject().apply {
                 addProperty("cmd", "http://184.107.122.92/live/index.m3u8?token=secure_hls_token")
@@ -166,4 +177,37 @@ class StalkerIptvRepositoryTest {
         assertEquals(listOf("69785"), channels.map { it.id })
         assertEquals(0, fakeApi.channelRequestCount)
     }
+    @Test fun `empty link refreshes session and negotiates again instead of returning an ID`() = runTest {
+        fakeApi.emptyLinks = 1
+        val url = repository.getChannelStreamUrl("101")
+        assertEquals("http://184.107.122.92/live/index.m3u8?token=secure_hls_token", url)
+        assertEquals(2, fakeApi.createLinkCallCount)
+        assertEquals(1, fakeApi.handshakeCallCount)
+    }
+
+    @Test fun `invalid portal responses surface a failure instead of a localhost or numeric URL`() = runTest {
+        fakeApi.emptyLinks = 10
+        var failed = false
+        try { repository.getChannelStreamUrl("101") } catch (_: IllegalStateException) { failed = true }
+        org.junit.Assert.assertTrue(failed)
+        assertEquals(2, fakeApi.createLinkCallCount)
+    }
+
+    @Test fun `removing a slot cancels negotiation without reauthenticating the shared session`() = runTest {
+        fakeApi.throwCancellation = true
+        var cancelled = false
+        try { repository.getChannelStreamUrl("101") }
+        catch (_: kotlinx.coroutines.CancellationException) { cancelled = true }
+        org.junit.Assert.assertTrue(cancelled)
+        assertEquals(0, fakeApi.handshakeCallCount)
+    }
+
+    @Test fun `multiview link negotiation is ordered across four concurrent requests`() = runTest {
+        fakeApi.linkDelayMs = 50
+        val links = (1..4).map { id -> async { repository.getChannelStreamUrl(id.toString()) } }
+        links.forEach { it.await() }
+        assertEquals(4, fakeApi.createLinkCallCount)
+        assertEquals(1, fakeApi.maxConcurrentLinks)
+    }
+
 }

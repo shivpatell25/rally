@@ -46,6 +46,11 @@ class StremioRepositoryImpl @Inject constructor(
     private val streamCache = ConcurrentHashMap<String, TimedStreams>()
     private val requestSemaphore = Semaphore(4)
 
+    override suspend fun refreshStreamsForEvent(event: SportEvent): List<StremioStreamOption> {
+        streamCache.keys.filter { it.startsWith("${event.id}|") }.forEach(streamCache::remove)
+        return getStreamsForEvent(event)
+    }
+
     override suspend fun getStreamsForEvent(event: SportEvent): List<StremioStreamOption> = withContext(Dispatchers.IO) {
         val addonUrls = preferencesManager.stremioAddonUrls.filter { it.isNotBlank() }
         if (addonUrls.isEmpty()) {
@@ -200,7 +205,8 @@ class StremioRepositoryImpl @Inject constructor(
                                 metas.add(meta)
                             }
                         }
-                    } catch (e: Exception) {
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (e: Exception) {
                         Log.d(TAG, "Error fetching catalog $catType/$catId from $addonName: ${e.message}")
                     }
 
@@ -218,7 +224,8 @@ class StremioRepositoryImpl @Inject constructor(
                                     }
                                 }
                                 if (metas.isNotEmpty()) break
-                            } catch (e: Exception) {
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                            catch (e: Exception) {
                                 Log.d(TAG, "Search query '$query' failed for $catType/$catId in $addonName: ${e.message}")
                             }
                         }
@@ -238,7 +245,8 @@ class StremioRepositoryImpl @Inject constructor(
                         val streamUrl = "${baseUrl}stream/$streamType/${meta.id}.json"
                         val streamResponse = requestSemaphore.withPermit { api.getStreamsByUrl(streamUrl) }
                         streamResponse.streams.orEmpty().mapNotNull { toOption(it, meta, addonName) }
-                    } catch (e: Exception) {
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (e: Exception) {
                         Log.d(TAG, "Error fetching streams for meta ${meta.id} in $addonName: ${e.message}")
                         emptyList()
                     }

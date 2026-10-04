@@ -49,5 +49,7 @@ interface IptvRepository {
 
 interface StremioRepository {
     suspend fun getStreamsForEvent(event: SportEvent): List<com.shiv.rally.domain.model.StremioStreamOption>
+    /** Signed playback URLs can expire before discovery's normal cache TTL. */
+    suspend fun refreshStreamsForEvent(event: SportEvent): List<com.shiv.rally.domain.model.StremioStreamOption> = getStreamsForEvent(event)
     suspend fun searchStreams(query: String): List<com.shiv.rally.domain.model.StremioStreamOption>
 }

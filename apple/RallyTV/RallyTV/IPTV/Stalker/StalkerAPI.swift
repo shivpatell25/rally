@@ -122,7 +122,10 @@ public struct StalkerAPI: Sendable {
     // cmd is "ffmpeg http://..." — the URL follows the first space.
     let parts = cmd.split(separator: " ", maxSplits: 1).map(String.init)
     let raw = parts.count == 2 ? parts[1] : cmd
-    return URL(string: raw)
+    guard let link = URL(string: raw), ["http", "https"].contains(link.scheme?.lowercased() ?? ""),
+      let host = link.host, !host.isEmpty, host.lowercased() != "localhost"
+    else { return nil }
+    return link
   }
 }
 

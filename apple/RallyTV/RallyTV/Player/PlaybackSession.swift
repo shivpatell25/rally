@@ -6,6 +6,7 @@ import SwiftUI
   let player = AVPlayer()
   var loading = true
   var playing = false
+  var videoVisible = false
   var error: String?
   var elapsed: Double = 0
   var duration: Double = 0
@@ -24,9 +25,12 @@ import SwiftUI
   private var observation: NSKeyValueObservation?
   @ObservationIgnored nonisolated(unsafe) private var watchdogTask: Task<Void, Never>?
   @ObservationIgnored nonisolated(unsafe) private var reconnectTask: Task<Void, Never>?
+  @ObservationIgnored nonisolated(unsafe) private var foregroundTask: Task<Void, Never>?
   @ObservationIgnored private var request: PlaybackRequest?
   private var reconnectAttempts = 0
   private var healthySince = Date()
+  private var lastWatchedPosition: Double = 0
+  private var scenePosition: Double?
   private var multiViewCount: Int?
   private var progress = PlaybackProgressWatchdog()
   private struct PlaybackRequest {
@@ -88,6 +92,10 @@ import SwiftUI
     ) { [weak self] notification in
       Task { @MainActor in
         guard notification.object as? AVPlayerItem === self?.player.currentItem else { return }
+        if let self, self.isLive, self.wantsPlayback {
+          self.reconnect("This live stream ended. Retry or choose another source.")
+          return
+        }
         self?.playing = false
         self?.wantsPlayback = false
         self?.loading = false
@@ -132,23 +140,33 @@ import SwiftUI
     }
   }
   func open(
-    _ target: String, event: SportEvent?, candidate: StreamCandidate? = nil, container: AppContainer
+    _ target: String, event: SportEvent?, candidate: StreamCandidate? = nil, container: AppContainer,
+    refreshSource: Bool = false
   ) async {
+    foregroundTask?.cancel()
+    foregroundTask = nil
     reconnectTask?.cancel()
     reconnectTask = nil
     reconnectAttempts = 0
     wantsPlayback = true
     let next = PlaybackRequest(target: target, event: event, candidate: candidate, container: container)
     request = next
-    await load(next)
+    await load(next, refreshSource: refreshSource)
   }
-  private func load(_ request: PlaybackRequest) async {
+  func retry() async {
+    guard let request else { return }
+    await open(request.target, event: request.event, candidate: request.candidate,
+      container: request.container, refreshSource: true)
+  }
+  private func load(_ original: PlaybackRequest, refreshSource: Bool = false, resumePosition: Double? = nil) async {
+    var request = original
     generation += 1
     let revision = generation
     loading = true
     playing = false
     error = nil
     firstFrame = false
+    videoVisible = false
     elapsed = 0
     duration = 0
     resolution = ""
@@ -163,6 +181,7 @@ import SwiftUI
     selectedCaption = nil
     started = Date()
     healthySince = started
+    lastWatchedPosition = 0
     progress = PlaybackProgressWatchdog()
     settings = request.container.settings
     target = request.candidate?.id ?? request.target
@@ -174,10 +193,27 @@ import SwiftUI
     proxy?.stop()
     proxy = nil
     playlistPermission = nil
+    guard !sceneSuspended else { loading = false; return }
     do {
+      if refreshSource, request.candidate?.sourceKind == .stremio, let event = request.event {
+        let options = await request.container.stremio.refreshStreams(for: event)
+        try Task.checkCancellation()
+        guard revision == generation else { return }
+        let selection = await request.container.selectBestStream.select(event: event, channels: [],
+          stremioStreams: options)
+        let candidates = selection.candidates
+        guard let selected = candidates.first(where: { $0.id == request.candidate?.id })
+          ?? candidates.first(where: { $0.title == request.candidate?.title })
+          ?? candidates.first else { throw RallyNetworkError.invalidResponse }
+        request = PlaybackRequest(target: selected.playbackTarget.absoluteString, event: event,
+          candidate: selected, container: request.container)
+        guard revision == generation, !Task.isCancelled else { return }
+        self.request = request
+        target = selected.id
+      }
       let resolved: URL
       var requestHeaders = request.candidate?.headers ?? [:]
-      var resolvedTitle = sourceTitle
+      var resolvedTitle = request.candidate?.title ?? sourceTitle
       var isPlaylistChannel = false
       let channelId = request.candidate?.channel?.id ?? request.target
       if request.candidate?.channel == nil,
@@ -228,6 +264,10 @@ import SwiftUI
           case .readyToPlay:
             self.loading = false
             self.error = nil
+            if let resumePosition, resumePosition.isFinite, resumePosition > 0 {
+              await self.player.seek(to: CMTime(seconds: resumePosition, preferredTimescale: 600))
+            }
+            guard revision == self.generation, item === self.player.currentItem else { return }
             if self.wantsPlayback && !self.sceneSuspended && !self.audioInterrupted { self.player.play() }
             await self.loadTracks(asset)
           case .failed:
@@ -246,11 +286,13 @@ import SwiftUI
     guard request != nil, error == nil, reconnectTask == nil else { return }
     let active = wantsPlayback && !sceneSuspended && !audioInterrupted
     let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate || player.currentItem?.status != .readyToPlay
-    if !active || waiting { healthySince = Date() }
+    let time = player.currentTime().seconds
+    let advancing = time.isFinite && abs(time - lastWatchedPosition) > 0.01
+    lastWatchedPosition = time.isFinite ? time : 0
+    if !active || waiting || !advancing { healthySince = Date() }
     else if Date().timeIntervalSince(healthySince) >= 60 { reconnectAttempts = 0; healthySince = Date() }
     let buffering = active && waiting
     if loading != buffering { loading = buffering }
-    let time = player.currentTime().seconds
     if progress.check(wantsPlayback: active, ready: player.currentItem?.status == .readyToPlay,
       position: time.isFinite ? time : 0) {
       reconnect("This source stopped updating. Choose another source or retry.")
@@ -258,6 +300,13 @@ import SwiftUI
   }
   private func reconnect(_ message: String) {
     guard reconnectTask == nil, let request else { return }
+    // Release the failed item's decoder, proxy and upstream connection immediately.
+    observation = nil
+    player.pause()
+    player.replaceCurrentItem(with: nil)
+    proxy?.stop()
+    proxy = nil
+    playlistPermission = nil
     settings?.recordHealth(target, success: false, stalled: true)
     guard reconnectAttempts < 2 else {
       loading = false
@@ -274,7 +323,8 @@ import SwiftUI
       do { try await Task.sleep(for: .seconds(1)) } catch { return }
       guard let self, revision == self.generation, !Task.isCancelled else { return }
       self.reconnectTask = nil
-      await self.load(request)
+      guard !self.sceneSuspended else { return }
+      await self.load(request, refreshSource: true)
     }
   }
   func pause() {
@@ -288,14 +338,31 @@ import SwiftUI
     playing = player.rate > 0
   }
   func suspendForScene() {
+    guard !sceneSuspended else { return }
+    scenePosition = !isLive && player.currentTime().seconds.isFinite ? player.currentTime().seconds : nil
     sceneSuspended = true
+    generation += 1
+    reconnectTask?.cancel()
+    reconnectTask = nil
+    foregroundTask?.cancel()
+    foregroundTask = nil
+    observation = nil
     player.pause()
+    player.replaceCurrentItem(with: nil)
+    proxy?.stop()
+    proxy = nil
+    playlistPermission = nil
     playing = false
+    videoVisible = false
   }
   func restoreForScene() {
+    guard sceneSuspended else { return }
     sceneSuspended = false
-    if wantsPlayback && !audioInterrupted { player.play() }
-    playing = player.rate > 0
+    guard let request, error == nil else { return }
+    let position = scenePosition
+    foregroundTask = Task { [weak self] in
+      await self?.load(request, refreshSource: true, resumePosition: position)
+    }
   }
   func toggle() { wantsPlayback ? pause() : resume() }
   func restart() {
@@ -346,6 +413,8 @@ import SwiftUI
     generation += 1
     reconnectTask?.cancel()
     reconnectTask = nil
+    foregroundTask?.cancel()
+    foregroundTask = nil
     request = nil
     wantsPlayback = false
     player.pause()
@@ -355,6 +424,7 @@ import SwiftUI
     proxy = nil
     playlistPermission = nil
     playing = false
+    loading = false
   }
   private func loadTracks(_ asset: AVAsset) async {
     let audio = try? await asset.loadMediaSelectionGroup(for: .audible)
@@ -409,6 +479,7 @@ import SwiftUI
   deinit {
     watchdogTask?.cancel()
     reconnectTask?.cancel()
+    foregroundTask?.cancel()
     if let timeToken { player.removeTimeObserver(timeToken) }
     if let endToken { NotificationCenter.default.removeObserver(endToken) }
     if let stallToken { NotificationCenter.default.removeObserver(stallToken) }
@@ -417,6 +488,12 @@ import SwiftUI
 }
 struct RallyVideoSurface: UIViewRepresentable {
   let player: AVPlayer
+  var onReadyForDisplay: ((Bool) -> Void)? = nil
+  final class Coordinator {
+    var observation: NSKeyValueObservation?
+    var onReady: ((Bool) -> Void)?
+  }
+  func makeCoordinator() -> Coordinator { Coordinator() }
   final class Surface: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
     var videoLayer: AVPlayerLayer { layer as! AVPlayerLayer }
@@ -426,12 +503,23 @@ struct RallyVideoSurface: UIViewRepresentable {
     view.backgroundColor = .black
     view.videoLayer.videoGravity = .resizeAspect
     view.videoLayer.player = player
+    context.coordinator.onReady = onReadyForDisplay
+    context.coordinator.observation = view.videoLayer.observe(\.isReadyForDisplay, options: [.initial, .new]) {
+      [weak coordinator = context.coordinator] layer, _ in
+      let ready = layer.isReadyForDisplay
+      Task { @MainActor in coordinator?.onReady?(ready) }
+    }
     return view
   }
   func updateUIView(_ view: Surface, context: Context) {
+    context.coordinator.onReady = onReadyForDisplay
     if view.videoLayer.player !== player { view.videoLayer.player = player }
   }
-  static func dismantleUIView(_ view: Surface, coordinator: ()) { view.videoLayer.player = nil }
+  static func dismantleUIView(_ view: Surface, coordinator: Coordinator) {
+    coordinator.observation = nil
+    coordinator.onReady = nil
+    view.videoLayer.player = nil
+  }
 }
 
 

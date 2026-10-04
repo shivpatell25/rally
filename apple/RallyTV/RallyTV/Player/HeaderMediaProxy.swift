@@ -14,6 +14,13 @@ final class HeaderMediaProxy: @unchecked Sendable {
   private var port: UInt16 = 0
   private let resourceLock = NSLock()
   private var resources: [String: URL] = [:]
+  private var playlistChildren: [String: Set<String>] = [:]
+  private var rootResource: String?
+  private var stopped = false
+  private var connections: [ObjectIdentifier: NWConnection] = [:]
+  private var tasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+  var resourceCount: Int { resourceLock.withLock { resources.count } }
+  var activeConnectionCount: Int { resourceLock.withLock { connections.count } }
   init(headers: [String: String]) {
     self.headers = StreamHeaders.sanitized(headers)
     let config = URLSessionConfiguration.ephemeral
@@ -26,9 +33,13 @@ final class HeaderMediaProxy: @unchecked Sendable {
     let parameters = NWParameters.tcp
     parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
     let listener = try NWListener(using: parameters)
-    self.listener = listener
+    try resourceLock.withLock {
+      guard !stopped else { throw CancellationError() }
+      self.listener = listener
+    }
     listener.newConnectionHandler = { [weak self] connection in self?.receive(connection) }
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+    try await withTaskCancellationHandler(operation: {
+      try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       let ready = ReadyLatch()
       listener.stateUpdateHandler = { [weak self] state in
         guard ready.claim(state) else { return }
@@ -42,24 +53,41 @@ final class HeaderMediaProxy: @unchecked Sendable {
         }
       }
       listener.start(queue: queue)
-    }
+      }
+    }, onCancel: { self.stop() })
+    try Task.checkCancellation()
+    resourceLock.withLock { rootResource = resourceID(upstream) }
     return localURL(upstream)
   }
   func stop() {
-    listener?.cancel()
-    listener = nil
+    let active = resourceLock.withLock {
+      stopped = true
+      let active = (listener, Array(connections.values), Array(tasks.values))
+      listener = nil
+      connections.removeAll()
+      tasks.removeAll()
+      resources.removeAll()
+      playlistChildren.removeAll()
+      return active
+    }
+    active.0?.cancel()
+    active.1.forEach { $0.cancel() }
+    active.2.forEach { $0.cancel() }
     session.invalidateAndCancel()
   }
   deinit {
     listener?.cancel()
     session.invalidateAndCancel()
   }
-  private func localURL(_ upstream: URL) -> URL {
-    let encoded = SHA256.hash(data: Data(upstream.absoluteString.utf8)).map {
+  private func resourceID(_ upstream: URL) -> String {
+    SHA256.hash(data: Data(upstream.absoluteString.utf8)).map {
       String(format: "%02x", $0)
     }.joined()
+  }
+  private func localURL(_ upstream: URL) -> URL {
+    let encoded = resourceID(upstream)
     resourceLock.lock()
-    resources[encoded] = upstream
+    if !stopped { resources[encoded] = upstream }
     resourceLock.unlock()
     return URL(string: "http://127.0.0.1:\(port)/\(token)/\(encoded)")!
   }
@@ -69,6 +97,12 @@ final class HeaderMediaProxy: @unchecked Sendable {
     return resources[id]
   }
   private func receive(_ connection: NWConnection) {
+    let accepted = resourceLock.withLock {
+      if stopped { return false }
+      connections[ObjectIdentifier(connection)] = connection
+      return true
+    }
+    guard accepted else { connection.cancel(); return }
     connection.start(queue: queue)
     read(connection, buffer: Data())
   }
@@ -82,15 +116,19 @@ final class HeaderMediaProxy: @unchecked Sendable {
       var buffer = buffer
       if let data { buffer.append(data) }
       guard buffer.count <= 65536 else {
-        connection.cancel()
+        self.close(connection)
         return
       }
       if let text = String(data: buffer, encoding: .utf8), text.contains("\r\n\r\n") {
-        Task { await self.respond(connection, text: text) }
+        let task = Task { await self.respond(connection, text: text) }
+        self.resourceLock.withLock {
+          if self.stopped || self.connections[ObjectIdentifier(connection)] == nil { task.cancel() }
+          else { self.tasks[ObjectIdentifier(connection)] = task }
+        }
       } else if !complete && error == nil {
         self.read(connection, buffer: buffer)
       } else {
-        connection.cancel()
+        self.close(connection)
       }
     }
   }
@@ -121,6 +159,7 @@ final class HeaderMediaProxy: @unchecked Sendable {
       }
     }
     do {
+      try Task.checkCancellation()
       guard NetworkPolicy.shared.permits(url) else {
         throw URLError(.appTransportSecurityRequiresSecureConnection)
       }
@@ -133,12 +172,14 @@ final class HeaderMediaProxy: @unchecked Sendable {
       var type = http.value(forHTTPHeaderField: "Content-Type") ?? "application/octet-stream"
       if let playlist = String(data: upstream, encoding: .utf8), playlist.hasPrefix("#EXTM3U") {
         let base = http.url ?? url
+        var children: [String: URL] = [:]
         let rewritten = playlist.components(separatedBy: "\n").map { line -> String in
           if !line.hasPrefix("#"), !line.trimmingCharacters(in: .whitespaces).isEmpty,
             let absolute = URL(
               string: line.trimmingCharacters(in: .whitespacesAndNewlines), relativeTo: base)?
               .absoluteURL
           {
+            children[resourceID(absolute)] = absolute
             return localURL(absolute).absoluteString
           }
           guard let regex = try? NSRegularExpression(pattern: "URI=\"([^\"]+)\"") else {
@@ -151,6 +192,7 @@ final class HeaderMediaProxy: @unchecked Sendable {
             if let range = Range(match.range(at: 1), in: output),
               let absolute = URL(string: String(output[range]), relativeTo: base)?.absoluteURL
             {
+              children[resourceID(absolute)] = absolute
               output.replaceSubrange(range, with: localURL(absolute).absoluteString)
             }
           }
@@ -158,6 +200,20 @@ final class HeaderMediaProxy: @unchecked Sendable {
         }.joined(separator: "\n")
         body = Data(rewritten.utf8)
         type = "application/vnd.apple.mpegurl"
+        // Retain the current playlist graph, including variants and AES keys.
+        // Old live-window URLs must not accumulate for the life of the stream.
+        resourceLock.withLock {
+          guard !stopped, let rootResource else { return }
+          resources.merge(children) { _, latest in latest }
+          playlistChildren[resourceID(url)] = Set(children.keys)
+          var reachable = Set<String>()
+          var pending = [rootResource]
+          while let id = pending.popLast() {
+            if reachable.insert(id).inserted { pending.append(contentsOf: playlistChildren[id] ?? []) }
+          }
+          resources = resources.filter { reachable.contains($0.key) }
+          playlistChildren = playlistChildren.filter { reachable.contains($0.key) }
+        }
       }
       var extra: [String: String] = [:]
       if let range = http.value(forHTTPHeaderField: "Content-Range") {
@@ -178,7 +234,17 @@ final class HeaderMediaProxy: @unchecked Sendable {
       + extra.map { "\($0.key): \($0.value)\r\n" }.joined() + "\r\n"
     var payload = Data(header.utf8)
     payload.append(body)
-    connection.send(content: payload, completion: .contentProcessed { _ in connection.cancel() })
+    connection.send(content: payload, completion: .contentProcessed { [weak self] _ in
+      self?.close(connection)
+      connection.cancel()
+    })
+  }
+  private func close(_ connection: NWConnection) {
+    resourceLock.withLock {
+      connections.removeValue(forKey: ObjectIdentifier(connection))
+      tasks.removeValue(forKey: ObjectIdentifier(connection))
+    }
+    connection.cancel()
   }
 }
 

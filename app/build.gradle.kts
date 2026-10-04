@@ -31,8 +31,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // Stabilization release; never reuse a published version code.
-        versionCode = 13
-        versionName = "1.0-beta12"
+        versionCode = 14
+        versionName = "1.0-beta13"
         buildConfigField("String", "RALLY_RELEASE_CERT_SHA256", "\"${releaseIdentity.getProperty("production.sha256")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -52,6 +52,10 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Hardware stress tests must not replace a user's signed installation.
+            if (providers.gradleProperty("rallyQa").orNull == "true") applicationIdSuffix = ".qa"
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true

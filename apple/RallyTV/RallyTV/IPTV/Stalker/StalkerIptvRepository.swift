@@ -13,6 +13,9 @@ public actor StalkerIptvRepository: IptvRepository {
   private var guides: [String: (guide: ChannelGuide, at: Date)] = [:
 
     ]
+  private var linkBusy = false
+  private var linkWaiters: [(UUID, CheckedContinuation<Void, Error>)] = []
+  private var authTask: Task<Bool, Never>?
 
   private static let channelTTL: TimeInterval = 15 * 60
   private static let guideTTL: TimeInterval = 2 * 60
@@ -66,11 +69,42 @@ public actor StalkerIptvRepository: IptvRepository {
     guard let cmd = commands[id], let api = makeAPI() else {
       throw RallyNetworkError.invalidResponse
     }
-    if let link = try? await api.createLink(token: settings.authToken, cmd: cmd) { return link }
+    try await acquireLink()
+    defer { releaseLink() }
+    try Task.checkCancellation()
+    do {
+      if let link = try await api.createLink(token: settings.authToken, cmd: cmd) { return link }
+    } catch {
+      try Task.checkCancellation()
+      if error is CancellationError { throw error }
+    }
+    try Task.checkCancellation()
     guard await authenticateInternal(force: true),
       let link = try await api.createLink(token: settings.authToken, cmd: cmd)
     else { throw RallyNetworkError.invalidResponse }
     return link
+  }
+
+  // Actors are reentrant across network awaits. Explicitly order negotiations
+  // without serializing playback downloads or swallowing cancelled waiters.
+  private func acquireLink() async throws {
+    try Task.checkCancellation()
+    if !linkBusy { linkBusy = true; return }
+    let id = UUID()
+    try await withTaskCancellationHandler(operation: {
+      try await withCheckedThrowingContinuation { continuation in
+        linkWaiters.append((id, continuation))
+      }
+    }, onCancel: { Task { await self.cancelLinkWaiter(id) } })
+    if Task.isCancelled { releaseLink(); throw CancellationError() }
+  }
+  private func cancelLinkWaiter(_ id: UUID) {
+    guard let index = linkWaiters.firstIndex(where: { $0.0 == id }) else { return }
+    linkWaiters.remove(at: index).1.resume(throwing: CancellationError())
+  }
+  private func releaseLink() {
+    if linkWaiters.isEmpty { linkBusy = false }
+    else { linkWaiters.removeFirst().1.resume() }
   }
 
   public func guide(forChannelId channelId: String) async -> ChannelGuide? {
@@ -106,6 +140,15 @@ public actor StalkerIptvRepository: IptvRepository {
   // MARK: - Auth
 
   private func authenticateInternal(force: Bool) async -> Bool {
+    if let authTask { return await authTask.value }
+    if !force, !settings.authToken.isEmpty { return true }
+    let task = Task { await self.performAuthentication(force: force) }
+    authTask = task
+    let result = await task.value
+    authTask = nil
+    return result
+  }
+  private func performAuthentication(force: Bool) async -> Bool {
     if !force, !settings.authToken.isEmpty { return true }
     guard !settings.portalUrl.isEmpty else { return false }
     settings.authToken = ""

@@ -16,6 +16,7 @@ public struct MatchEventToStream: MatcherService {
   public func matchEventToChannels(event: SportEvent, channels: [IptvChannel]) async
     -> [MatchResult]
   {
+    guard !channels.isEmpty else { return [] }
     let stations = await tvStations(event.id).map {
       $0.lowercased().replacingOccurrences(of: " network", with: "").replacingOccurrences(
         of: " channel", with: "")

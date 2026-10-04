@@ -3,7 +3,6 @@
 
 package com.shiv.rally.presentation.player
 
-import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
@@ -37,7 +36,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,18 +68,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.C
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.foundation.lazy.grid.TvGridCells
@@ -113,11 +99,6 @@ private val multiPanelShape = RoundedCornerShape(10.dp)
 private val multiPillShape = RoundedCornerShape(6.dp)
 private val multiActionShape = RoundedCornerShape(8.dp)
 
-private data class MultiViewPlaybackSession(
-    val player: ExoPlayer,
-    val trackSelector: DefaultTrackSelector
-)
-
 @Composable
 fun MultiViewScreen(
     viewModel: MultiViewViewModel = hiltViewModel(),
@@ -136,6 +117,30 @@ fun MultiViewScreen(
     SideEffect { audioRouter.select(state.slots.getOrNull(state.audioSlotIndex)?.slotId) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
+    val playback = remember(context, audioRouter, viewModel, lifecycleOwner) {
+        MultiViewPlaybackController(context, audioRouter, viewModel::recoverPlayback, viewModel::reportHealthyPlayback)
+    }
+    var resumed by remember(lifecycleOwner) { mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    var foregroundRevision by remember(lifecycleOwner) { mutableIntStateOf(0) }
+    DisposableEffect(playback, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                resumed = true
+                // Composition may be paused for the entire background interval.
+                // A false→true flag can coalesce; every resume needs a new key.
+                foregroundRevision++
+            }
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                resumed = false
+                playback.suspendPlayback()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); playback.release() }
+    }
+    LaunchedEffect(state.slots, state.macAddress, state.token, resumed, foregroundRevision) {
+        playback.sync(state.slots, state.macAddress, state.token, resumed)
+    }
     DisposableEffect(lifecycleOwner, audioRouter, context) {
         val manager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
         val request = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
@@ -170,7 +175,7 @@ fun MultiViewScreen(
             state.isSourcePickerOpen -> viewModel.closeSourcePicker()
             state.isPickerOpen -> viewModel.closePicker()
             immersive -> immersive = false
-            else -> onBack()
+            else -> { playback.suspendPlayback(); onBack() }
         }
     }
 
@@ -216,7 +221,7 @@ fun MultiViewScreen(
                     },
                     onImmersive = { if (state.slots.isNotEmpty()) immersive = true },
                     onCompare = { if (state.slots.size >= 2) comparisonVisible = true },
-                    onDone = onBack
+                    onDone = { playback.suspendPlayback(); onBack() }
                 )
                 Spacer(Modifier.height(10.dp))
             }
@@ -226,8 +231,6 @@ fun MultiViewScreen(
                 audioIndex = state.audioSlotIndex,
                 layoutMode = state.layoutMode,
                 immersive = immersive,
-                macAddress = state.macAddress,
-                token = state.token,
                 statsEnabled = state.statsTileEnabled,
                 statsGames = state.statsGames,
                 statsLoading = state.statsLoading,
@@ -236,8 +239,7 @@ fun MultiViewScreen(
                 onStatsRemove = viewModel::removeStatsTile,
                 tileFocus = tileFocus,
                 headerFocus = headerFocus,
-                audioRouter = audioRouter,
-                onPlaybackError = viewModel::reportPlaybackError,
+                playback = playback,
                 onFocus = viewModel::setFocusedSlot,
                 onOpenActions = { index ->
                     actionSlotIndex = index
@@ -252,6 +254,7 @@ fun MultiViewScreen(
                     slot = slot,
                     onFullScreen = {
                         actionSlotIndex = null
+                        playback.suspendPlayback()
                         onFullScreen(slot.channel?.id ?: slot.streamUrl, slot.event?.id)
                     },
                     onChange = {
@@ -469,11 +472,11 @@ private fun MultiViewSourceLoadingOverlay(onCancel: () -> Unit) {
 @Composable
 private fun MultiViewGrid(
     slots: List<MultiViewSlot>, focusedIndex: Int, audioIndex: Int,
-    layoutMode: MultiViewLayoutMode, immersive: Boolean, macAddress: String, token: String,
+    layoutMode: MultiViewLayoutMode, immersive: Boolean,
     statsEnabled: Boolean, statsGames: List<SportEvent>, statsLoading: Boolean, statsError: String?,
     onStatsRefresh: () -> Unit, onStatsRemove: () -> Unit,
-    tileFocus: List<FocusRequester>, headerFocus: FocusRequester, audioRouter: MultiViewAudioRouter,
-    onPlaybackError: (String, String?) -> Unit,
+    tileFocus: List<FocusRequester>, headerFocus: FocusRequester,
+    playback: MultiViewPlaybackController,
     onFocus: (Int) -> Unit, onOpenActions: (Int) -> Unit, onAdd: () -> Unit
 ) {
     if (slots.isEmpty()) {
@@ -493,8 +496,8 @@ private fun MultiViewGrid(
         }
         Layout(modifier = Modifier.fillMaxSize(), content = {
             slots.forEachIndexed { index, slot -> key(slot.slotId) {
-                MultiViewSlotItem(slot, index, slots.size, focusedIndex == index, audioIndex == index,
-                    macAddress, token, tileFocus[index], !immersive, audioRouter, onPlaybackError,
+                MultiViewSlotItem(slot, index, focusedIndex == index, audioIndex == index,
+                    tileFocus[index], !immersive, playback,
                     { onFocus(index) }, { onOpenActions(index) }, navigation(index))
             } }
             if (statsEnabled) key("player-stats") {
@@ -520,175 +523,21 @@ private fun MultiViewGrid(
 private fun MultiViewSlotItem(
     slot: MultiViewSlot,
     slotIndex: Int,
-    slotCount: Int,
     isFocused: Boolean,
     isAudioActive: Boolean,
-    macAddress: String,
-    token: String,
     focusRequester: FocusRequester?,
     showChrome: Boolean,
-    audioRouter: MultiViewAudioRouter,
-    onPlaybackError: (String, String?) -> Unit,
+    playback: MultiViewPlaybackController,
     onFocus: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     var hasFocus by remember { mutableStateOf(false) }
-    var playbackError by remember(slot.slotId, slot.playbackRevision) { mutableStateOf<String?>(null) }
-    var firstFrameRendered by remember(slot.slotId, slot.playbackRevision) { mutableStateOf(false) }
-    var resolution by remember(slot.slotId, slot.playbackRevision) { mutableStateOf<String?>(null) }
-    val safeHeaders = remember(slot.streamHeaders, slot.channel?.streamHeaders) {
-        sanitizedStreamHeaders(slot.streamHeaders ?: slot.channel?.streamHeaders)
-    }
-    val isExternal = slot.channel == null || slot.channel.id.startsWith("m3u:") || slot.channel.id.startsWith("xtream:")
-    val initialMaxHeight = if (slotCount <= 2) 720 else 480
-    val initialMaxWidth = if (slotCount <= 2) 1280 else 854
-    val initialMaxBitrate = if (slotCount <= 2) 2_500_000 else 1_200_000
-    val playbackSession = remember(context, slot.slotId, slot.streamUrl, slot.playbackRevision, safeHeaders, isExternal, macAddress, token) {
-        if (slot.streamUrl.isBlank()) null else {
-            val sessionTrackSelector = DefaultTrackSelector(context).apply {
-                parameters = buildUponParameters()
-                    .setMaxVideoSize(initialMaxWidth, initialMaxHeight)
-                    .setMaxVideoFrameRate(30)
-                    .setMaxVideoBitrate(initialMaxBitrate)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !isAudioActive)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    .setExceedVideoConstraintsIfNecessary(true)
-                    .setExceedRendererCapabilitiesIfNecessary(false)
-                    .build()
-            }
-            val dataSource = DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(if (isExternal) 10_000 else 7_000)
-                .setReadTimeoutMs(if (isExternal) 10_000 else 7_000)
-            if (isExternal) {
-                val userAgent = safeHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value
-                    ?: "Mozilla/5.0 (Android TV) AppleWebKit/537.36 Chrome/122 Safari/537.36"
-                dataSource.setUserAgent(userAgent)
-                val requestHeaders = safeHeaders.filterKeys { !it.equals("User-Agent", true) }
-                if (requestHeaders.isNotEmpty()) dataSource.setDefaultRequestProperties(requestHeaders)
-            } else {
-                dataSource.setUserAgent("Mozilla/5.0 (QtEmbedded; U; Linux; C) MAG200 stbapp")
-                if (macAddress.isNotBlank()) {
-                    val requestHeaders = mutableMapOf("Cookie" to "mac=$macAddress; stb_lang=en; timezone=GMT")
-                    if (token.isNotBlank()) requestHeaders["Authorization"] = normalizedBearerToken(token)
-                    dataSource.setDefaultRequestProperties(requestHeaders)
-                }
-            }
-
-            val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(1_500, 8_000, 500, 1_000)
-                .setTargetBufferBytes(1 * 1024 * 1024)
-                .setPrioritizeTimeOverSizeThresholds(true)
-                .build()
-            val renderers = rallyRenderersFactory(context)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
-            val sessionPlayer = ExoPlayer.Builder(context, renderers)
-                .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSource))
-                .setTrackSelector(sessionTrackSelector)
-                .setLoadControl(loadControl)
-                .build().apply {
-                    videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                    volume = 0f
-                    setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), false)
-                }
-            MultiViewPlaybackSession(sessionPlayer, sessionTrackSelector)
-        }
-    }
-    val exoPlayer = playbackSession?.player
-    val trackSelector = playbackSession?.trackSelector
-    val currentPlayer by rememberUpdatedState(exoPlayer)
-
-    DisposableEffect(lifecycleOwner, exoPlayer) {
-        var resumeAfterForeground = false
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    resumeAfterForeground = currentPlayer?.playWhenReady == true
-                    currentPlayer?.pause()
-                }
-                Lifecycle.Event.ON_START -> if (resumeAfterForeground) {
-                    currentPlayer?.playWhenReady = true
-                    resumeAfterForeground = false
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    DisposableEffect(exoPlayer, audioRouter, slot.slotId) {
-        if (exoPlayer != null && trackSelector != null) {
-            audioRouter.register(slot.slotId) { audible ->
-                exoPlayer.volume = if (audible) 1f else 0f
-                trackSelector.setParameters(trackSelector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !audible))
-            }
-        }
-        onDispose { audioRouter.unregister(slot.slotId) }
-    }
-    LaunchedEffect(exoPlayer, slotCount) {
-        trackSelector?.let { selector ->
-            val maxHeight = if (slotCount <= 2) 720 else 480
-            val maxWidth = if (slotCount <= 2) 1280 else 854
-            val maxBitrate = if (slotCount <= 2) 2_500_000 else 1_200_000
-            selector.setParameters(
-                selector.buildUponParameters()
-                    .setMaxVideoSize(maxWidth, maxHeight)
-                    .setMaxVideoFrameRate(30)
-                    .setMaxVideoBitrate(maxBitrate)
-                    .setExceedVideoConstraintsIfNecessary(true)
-                    .setExceedRendererCapabilitiesIfNecessary(false)
-            )
-        }
-    }
-
-    val reportError by rememberUpdatedState(onPlaybackError)
-    DisposableEffect(exoPlayer) {
-        if (exoPlayer == null) return@DisposableEffect onDispose { }
-        val listener = object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                playbackError = "Playback stopped. Retry or choose another source."
-                reportError(slot.slotId, playbackError)
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY) { playbackError = null; reportError(slot.slotId, null) }
-            }
-
-            override fun onRenderedFirstFrame() { firstFrameRendered = true }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.height > 0) {
-                    resolution = when {
-                        videoSize.height >= 2160 -> "4K"
-                        videoSize.height >= 1080 -> "1080p"
-                        videoSize.height >= 720 -> "720p"
-                        else -> "${videoSize.height}p"
-                    }
-                }
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
-        }
-    }
-
-    LaunchedEffect(exoPlayer, slot.streamUrl, slot.playbackRevision, slot.channel?.streamMimeType) {
-        if (exoPlayer == null || slot.streamUrl.isBlank()) return@LaunchedEffect
-        // Starting several hardware decoders on the same frame causes large CPU,
-        // allocator, and network spikes on low-end Android TV devices.
-        delay((slotIndex * 140L).coerceAtMost(420L))
-        runCatching {
-            exoPlayer.setMediaItem(MediaItem.Builder().setUri(Uri.parse(slot.streamUrl)).setMimeType(slot.channel?.streamMimeType).build())
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
-        }.onFailure { playbackError = it.localizedMessage ?: "Unable to start stream" }
-    }
+    val snapshot = playback.snapshots[slot.slotId] ?: MultiViewPlaybackSnapshot()
+    val session = snapshot.session
+    val firstFrameRendered = snapshot.firstFrame
+    val resolution = snapshot.resolution
+    val playbackError = snapshot.error
 
     val activeError = slot.error ?: playbackError
     val borderColor = if (isFocused || hasFocus) AppleTvTheme.GlassBorderFocused else AppleTvTheme.GlassBorder
@@ -714,13 +563,11 @@ private fun MultiViewSlotItem(
                 if (isFocused || hasFocus) 2.dp else 1.dp, borderColor, multiPanelShape
             ) else Modifier)
     ) {
-        if (exoPlayer != null && activeError == null) {
+        if (session != null) {
             AndroidView(
                 factory = { ctx ->
-                    android.view.LayoutInflater.from(ctx).inflate(
-                        R.layout.player_view_surface_texture, null, false
-                    ).findViewById<PlayerView>(R.id.game_player_view).also { (it.parent as? ViewGroup)?.removeView(it) }.apply {
-                        player = exoPlayer
+                    multiViewPlayerView(ctx).apply {
+                        session.attach(this)
                         useController = false
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         setShutterBackgroundColor(android.graphics.Color.BLACK)
@@ -730,25 +577,26 @@ private fun MultiViewSlotItem(
                     }
                 },
                 update = {
-                    if (it.player !== exoPlayer) it.player = exoPlayer
+                    session.attach(it)
                     it.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 },
+                onRelease = { session.detach(it) },
                 modifier = Modifier.fillMaxSize()
             )
         }
 
         if ((slot.isLoading || !firstFrameRendered) && activeError == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Starting stream…", color = AppleTvTheme.TextSecondary, fontSize = 12.sp)
+                Text(if (slot.recoveryAttempt > 0) "Reconnecting…" else "Starting stream…", color = AppleTvTheme.TextSecondary, fontSize = 12.sp)
             }
         }
 
         if (activeError != null) {
             Box(Modifier.fillMaxSize().background(AppleTvTheme.DeepNavy).padding(16.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Stream unavailable", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (slot.isLoading) "Reconnecting" else "Stream unavailable", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
-                    Text(if (slot.error != null) "Choose another source or retry." else activeError, color = AppleTvTheme.TextSecondary, fontSize = 10.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(if (slot.isLoading) "Refreshing the broadcast connection…" else activeError, color = AppleTvTheme.TextSecondary, fontSize = 10.sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(7.dp))
                     Text("Press OK for options", color = AppleTvTheme.TextTertiary, fontSize = 9.sp)
                 }

@@ -50,4 +50,12 @@ class PlaybackCapabilitiesTest {
         assertEquals(30, profile.maxVideoFrameRate)
         assertFalse(profile.displaySupportsHdr)
     }
+    @org.junit.Test fun multiviewRetainsFullHdBudgetOnShieldClassHardware() {
+        val shield = multiViewVideoBudget(TvDeviceClass.PREMIUM, 4)
+        org.junit.Assert.assertEquals(1080, shield.height)
+        val chromecast = multiViewVideoBudget(TvDeviceClass.LOW_POWER, 4)
+        org.junit.Assert.assertEquals(480, chromecast.height)
+        org.junit.Assert.assertTrue(shield.bitrate > chromecast.bitrate)
+    }
+
 }

@@ -30,7 +30,7 @@ def collect() -> tuple[list[str], list[str]]:
             rel = os.path.relpath(full, ROOT)
             if name.endswith(".swift"):
                 sources.append(rel)
-            elif name.lower().endswith((".jpg", ".jpeg", ".png", ".ttf")):
+            elif name.lower().endswith((".jpg", ".jpeg", ".png", ".ttf", ".ts")):
                 resources.append(rel)
     return sorted(sources), sorted(resources)
 
@@ -40,6 +40,7 @@ def main() -> None:
     # UI tests compile into their own bundle — never into the app target.
     testSources = sorted(s for s in sources if "/UITests/" in s.replace(os.sep, "/"))
     unitSources = sorted(s for s in sources if "/Tests/" in s.replace(os.sep, "/"))
+    unitResources = [r for r in resources if "/Tests/" in r.replace(os.sep, "/")]
     sources = sorted(s for s in sources if "/UITests/" not in s.replace(os.sep, "/") and "/Tests/" not in s.replace(os.sep, "/"))
     if not sources:
         sys.exit("no Swift sources found under " + SRC)
@@ -118,7 +119,7 @@ def main() -> None:
     for rel in resources:
         name = os.path.basename(rel)
         ext = os.path.splitext(name)[1].lower()
-        ftype = "folder.assetcatalog" if ext == ".xcassets" else "file" if ext == ".ttf" else ("image.png" if ext == ".png" else "image.jpeg")
+        ftype = "folder.assetcatalog" if ext == ".xcassets" else "file" if ext in (".ttf", ".ts") else ("image.png" if ext == ".png" else "image.jpeg")
         L.append(f"\t\t{res_file_ids[rel]} = {{isa = PBXFileReference; lastKnownFileType = {ftype}; name = \"{name}\"; path = \"{name}\"; sourceTree = \"<group>\"; }};")
     for rel in testSources + unitSources:
         name = os.path.basename(rel)
@@ -200,7 +201,7 @@ def main() -> None:
 
     # PBXResourcesBuildPhase
     section("PBXResourcesBuildPhase")
-    res_files = ", ".join(res_build_ids[rel] for rel in resources)
+    res_files = ", ".join(res_build_ids[rel] for rel in resources if rel not in unitResources)
     L.append(f"\t\t{ids['resourcesPhase']} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({res_files}); runOnlyForDeploymentPostprocessing = 0; }};")
     end_section("PBXResourcesBuildPhase")
 
@@ -228,7 +229,7 @@ def main() -> None:
         "ASSETCATALOG_COMPILER_APPICON_NAME = Rally; "
         "CODE_SIGN_STYLE = Automatic; "
         "COPY_PHASE_STRIP = NO; "
-        "CURRENT_PROJECT_VERSION = 15; "
+        "CURRENT_PROJECT_VERSION = 16; "
         "ENABLE_PREVIEWS = YES; "
         "GENERATE_INFOPLIST_FILE = YES; "
         "INFOPLIST_KEY_CFBundleDisplayName = Rally; INFOPLIST_FILE = RallyTV/App/Info.plist; "
@@ -301,10 +302,11 @@ def main() -> None:
     )
     end_section("XCConfigurationList")
     # Hosted unit tests exercise the actual shipping models, parser and layout math.
-    u = {key: uid(key) for key in ["unitTarget", "unitProduct", "unitSources", "unitFrameworks", "unitDependency", "unitProxy", "unitConfig", "unitDebug", "unitRelease"]}
+    u = {key: uid(key) for key in ["unitTarget", "unitProduct", "unitSources", "unitResources", "unitFrameworks", "unitDependency", "unitProxy", "unitConfig", "unitDebug", "unitRelease"]}
     L += [
         f"{u['unitProduct']} = {{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = RallyTVTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; }};",
-        f"{u['unitTarget']} = {{isa = PBXNativeTarget; buildConfigurationList = {u['unitConfig']}; buildPhases = ({u['unitSources']}, {u['unitFrameworks']}); buildRules = (); dependencies = ({u['unitDependency']}); name = RallyTVTests; productName = RallyTVTests; productReference = {u['unitProduct']}; productType = \"com.apple.product-type.bundle.unit-test\"; }};",
+        f"{u['unitTarget']} = {{isa = PBXNativeTarget; buildConfigurationList = {u['unitConfig']}; buildPhases = ({u['unitSources']}, {u['unitFrameworks']}, {u['unitResources']}); buildRules = (); dependencies = ({u['unitDependency']}); name = RallyTVTests; productName = RallyTVTests; productReference = {u['unitProduct']}; productType = \"com.apple.product-type.bundle.unit-test\"; }};",
+        f"{u['unitResources']} = {{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(res_build_ids[p] for p in unitResources)}); runOnlyForDeploymentPostprocessing = 0; }};",
         f"{u['unitSources']} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({', '.join(test_build_ids[p] for p in unitSources)}); runOnlyForDeploymentPostprocessing = 0; }};",
         f"{u['unitFrameworks']} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};",
         f"{u['unitDependency']} = {{isa = PBXTargetDependency; target = {ids['target']}; targetProxy = {u['unitProxy']}; }};",

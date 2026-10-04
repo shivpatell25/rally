@@ -48,6 +48,12 @@ public actor StremioRepositoryImpl: StremioRepository {
     return deduped
   }
 
+  public func refreshStreams(for event: SportEvent) async -> [StremioStreamOption] {
+    let key = "\(event.id)|\(settings.stremioAddonUrls.map(\.absoluteString).joined(separator: "|"))"
+    streamCache.removeValue(forKey: key)
+    return await streams(for: event)
+  }
+
   public func searchStreams(query: String) async -> [StremioStreamOption] {
     var result: [StremioStreamOption] = []
     await withTaskGroup(of: [StremioStreamOption].self) { group in

@@ -91,6 +91,8 @@ class MultiViewViewModel @Inject constructor(
     private var statsRefreshPending = false
     private var active = false
     private val slotJobs = ConcurrentHashMap<String, Job>()
+    private val recoveryJobs = mutableMapOf<String, Job>()
+    private val slotGenerations = ConcurrentHashMap<String, Long>()
 
     private val _uiState = MutableStateFlow(
         MultiViewUiState(
@@ -376,7 +378,7 @@ class MultiViewViewModel @Inject constructor(
             if (channel != null || (!fallbackChannelId.isNullOrBlank() && (event == null || fallbackChannelId.startsWith("http")))) {
                 val targetId = channel?.id ?: fallbackChannelId!!
                 val decodedTarget = decodeRouteComponent(targetId)
-                resolvedStreamUrl = if ((decodedTarget.startsWith("http://") || decodedTarget.startsWith("https://")) && !decodedTarget.contains("localhost")) {
+                resolvedStreamUrl = if (channel == null && (decodedTarget.startsWith("http://") || decodedTarget.startsWith("https://")) && !decodedTarget.contains("localhost")) {
                     decodedTarget
                 } else {
                     iptvRepository.getChannelStreamUrl(decodedTarget)
@@ -429,6 +431,10 @@ class MultiViewViewModel @Inject constructor(
             )
         }
 
+        if (resolvedChannel != null) {
+            val providerHeaders = iptvRepository.getChannelStreamHeaders(resolvedChannel.id)
+            if (providerHeaders.isNotEmpty()) resolvedHeaders = resolvedHeaders.orEmpty() + providerHeaders
+        }
         return MultiViewSlot(
             event = resolvedEvent,
             channel = resolvedChannel,
@@ -594,6 +600,7 @@ class MultiViewViewModel @Inject constructor(
                 .ifBlank { "Adaptive" }
         } ?: "Adaptive"
         val loadingSlot = slot.copy(
+            playbackRevision = slot.playbackRevision + 1, recoveryAttempt = 0,
             streamUrl = "",
             streamHeaders = selectedHeaders,
             selectedSourceId = candidate?.id ?: fallbackStream?.let { "stremio:${it.streamUrl}" } ?: "iptv:${fallbackChannel?.id}",
@@ -620,6 +627,7 @@ class MultiViewViewModel @Inject constructor(
                 }
                 loadingSlot.copy(streamUrl = url, isLoading = false, error = null)
             }.getOrElse { error ->
+                if (error is CancellationException) throw error
                 loadingSlot.copy(isLoading = false, error = error.message ?: "Unable to start this source")
             }
         }
@@ -683,6 +691,7 @@ class MultiViewViewModel @Inject constructor(
         if (slotIndex !in currentSlots.indices) return
 
         val tempSlot = currentSlots[slotIndex].copy(
+            playbackRevision = currentSlots[slotIndex].playbackRevision + 1, recoveryAttempt = 0,
             event = event,
             channel = null,
             streamUrl = "",
@@ -718,6 +727,7 @@ class MultiViewViewModel @Inject constructor(
         if (slotIndex !in currentSlots.indices) return
 
         val tempSlot = currentSlots[slotIndex].copy(
+            playbackRevision = currentSlots[slotIndex].playbackRevision + 1, recoveryAttempt = 0,
             event = null,
             channel = channel,
             streamUrl = "",
@@ -754,6 +764,8 @@ class MultiViewViewModel @Inject constructor(
         val removed = currentSlots[slotIndex]
         val audioSlotId = currentSlots.getOrNull(_uiState.value.audioSlotIndex)?.slotId
         slotJobs.remove(removed.slotId)?.cancel()
+        recoveryJobs.remove(removed.slotId)?.cancel()
+        slotGenerations.remove(removed.slotId)
         val updated = currentSlots.toMutableList()
         updated.removeAt(slotIndex)
 
@@ -772,58 +784,104 @@ class MultiViewViewModel @Inject constructor(
         )
     }
 
-    fun retrySlot(slotIndex: Int) {
+    fun retrySlot(slotIndex: Int) = restartSlot(slotIndex, automatic = false)
+
+    private fun restartSlot(slotIndex: Int, automatic: Boolean) {
         val currentSlots = _uiState.value.slots
         val target = currentSlots.getOrNull(slotIndex) ?: return
-
-        val retrySeed = target.copy(
-            streamUrl = "",
-            isLoading = true,
-            error = null,
-            playbackRevision = target.playbackRevision + 1
-        )
-        val updated = currentSlots.toMutableList()
-        updated[slotIndex] = retrySeed
-        _uiState.value = _uiState.value.copy(slots = updated)
-
-        resolveIntoSlot(target.slotId) {
-            val selectedTarget = target.sourcePlaybackTarget
-            if (!selectedTarget.isNullOrBlank()) {
-                return@resolveIntoSlot runCatching {
-                    val decodedTarget = decodeRouteComponent(selectedTarget)
-                    val url = if (target.channel != null && !decodedTarget.startsWith("http://") && !decodedTarget.startsWith("https://")) {
-                        iptvRepository.getChannelStreamUrl(decodedTarget)
-                    } else {
-                        decodedTarget
-                    }
-                    retrySeed.copy(streamUrl = url, isLoading = false, error = null)
-                }.getOrElse { error ->
-                    retrySeed.copy(isLoading = false, error = error.message ?: "Unable to restart this source")
-                }
-            }
-            val allChannels = _uiState.value.availableChannels.ifEmpty { iptvRepository.getChannels() }
-            resolveSlot(
-                event = target.event,
-                channel = target.channel,
-                fallbackChannelId = target.channel?.id,
-                allChannels = allChannels
-            ).copy(playbackRevision = retrySeed.playbackRevision)
+        val retrySeed = target.copy(streamUrl = "", isLoading = true, error = null,
+            recoveryAttempt = if (automatic) target.recoveryAttempt + 1 else 0,
+            playbackRevision = target.playbackRevision + 1)
+        _uiState.value = _uiState.value.copy(slots = currentSlots.map { if (it.slotId == target.slotId) retrySeed else it })
+        resolveIntoSlot(target.slotId, cancelRecovery = !automatic) {
+            resolveSelectedSource(retrySeed, refreshAddon = true)
         }
     }
 
-    private fun resolveIntoSlot(slotId: String, resolver: suspend () -> MultiViewSlot) {
+    private suspend fun resolveSelectedSource(seed: MultiViewSlot, refreshAddon: Boolean): MultiViewSlot {
+        if (seed.channel != null) {
+            val target = seed.channel.id
+            val url = iptvRepository.getChannelStreamUrl(decodeRouteComponent(target))
+            val headers = iptvRepository.getChannelStreamHeaders(target)
+            return seed.copy(streamUrl = url, streamHeaders = seed.streamHeaders.orEmpty() + headers,
+                isLoading = false, error = null)
+        }
+        if (seed.event != null && seed.selectedSourceId?.startsWith("stremio:") == true && refreshAddon) {
+            // Re-query the addon, bypassing discovery's cache. Keep the selected
+            // broadcast when its signed URL rotates, then use an exact-game fallback.
+            val selection = selectBestStream(seed.event, _uiState.value.availableChannels, refreshStreams = true)
+            val playable = selection.candidates.filter { it.channel == null && it.exactGameMatch && it.preflightPassed != false }
+            val selected = playable.firstOrNull { it.id == seed.selectedSourceId }
+                ?: playable.firstOrNull { it.title == seed.sourceTitle }
+                ?: playable.firstOrNull()
+                ?: throw IllegalStateException("This addon no longer has a playable broadcast for this game.")
+            return seed.copy(streamUrl = selected.playbackTarget, sourcePlaybackTarget = selected.playbackTarget,
+                selectedSourceId = selected.id, sourceTitle = selected.title, sourceQuality = sourceQualityLabel(selected),
+                streamHeaders = selected.headers, isLoading = false, error = null)
+        }
+        val target = seed.sourcePlaybackTarget ?: seed.streamUrl
+        if (target.isNotBlank()) return seed.copy(streamUrl = decodeRouteComponent(target), isLoading = false, error = null)
+        return resolveSlot(seed.event, seed.channel, seed.channel?.id, _uiState.value.availableChannels)
+            .copy(slotId = seed.slotId, playbackRevision = seed.playbackRevision, recoveryAttempt = seed.recoveryAttempt)
+    }
+
+    /** Revision guards reject errors from a decoder already replaced by the user.
+     * Each tile has its own retry budget; READY never resets it prematurely. */
+    fun recoverPlayback(slotId: String, revision: Int, message: String) {
+        val slot = _uiState.value.slots.find { it.slotId == slotId } ?: return
+        if (slot.playbackRevision != revision || recoveryJobs[slotId]?.isActive == true) return
+        reportPlaybackError(slotId, message)
+        if (slot.recoveryAttempt >= 3) {
+            _uiState.value = _uiState.value.copy(slots = _uiState.value.slots.map {
+                if (it.slotId == slotId) it.copy(isLoading = false, error = "This source is unavailable. Retry or choose another source.") else it
+            })
+            return
+        }
+        _uiState.value = _uiState.value.copy(slots = _uiState.value.slots.map {
+            if (it.slotId == slotId) it.copy(isLoading = true) else it
+        })
+        recoveryJobs[slotId] = viewModelScope.launch {
+            delay(listOf(1_000L, 3_000L, 6_000L)[slot.recoveryAttempt])
+            val state = _uiState.value
+            val index = state.slots.indexOfFirst { it.slotId == slotId && it.playbackRevision == revision }
+            // Clear this job before resolving: a failed negotiation can schedule
+            // the next bounded attempt without racing this completed delay.
+            recoveryJobs.remove(slotId)
+            if (index >= 0) restartSlot(index, automatic = true)
+        }
+    }
+
+    fun reportHealthyPlayback(slotId: String, revision: Int) {
+        val state = _uiState.value
+        val slot = state.slots.find { it.slotId == slotId } ?: return
+        if (slot.playbackRevision != revision) return
+        recoveryJobs.remove(slotId)?.cancel()
+        _uiState.value = state.copy(slots = state.slots.map {
+            if (it.slotId == slotId) it.copy(error = null, recoveryAttempt = 0) else it
+        })
+    }
+
+    private fun resolveIntoSlot(slotId: String, cancelRecovery: Boolean = true, resolver: suspend () -> MultiViewSlot) {
+        if (cancelRecovery) recoveryJobs.remove(slotId)?.cancel()
+        val generation = (slotGenerations[slotId] ?: 0L) + 1
+        slotGenerations[slotId] = generation
         slotJobs.remove(slotId)?.cancel()
         slotJobs[slotId] = viewModelScope.launch(ioDispatcher) {
             val seed = _uiState.value.slots.find { it.slotId == slotId } ?: return@launch
-            val resolved = try { resolver().copy(slotId = slotId) }
+            val resolved = try { resolver().copy(slotId = slotId, playbackRevision = seed.playbackRevision, recoveryAttempt = seed.recoveryAttempt) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { seed.copy(isLoading = false, error = "Unable to connect. Choose another source or retry.") }
             withContext(Dispatchers.Main) {
+                if (slotGenerations[slotId] != generation) return@withContext
                 val index = _uiState.value.slots.indexOfFirst { it.slotId == slotId }
                 if (index >= 0) {
                     val updated = _uiState.value.slots.toMutableList()
                     updated[index] = resolved
-                    _uiState.value = _uiState.value.copy(slots = updated)
+                    _uiState.value = _uiState.value.copy(slots = updated,
+                        macAddress = preferencesManager.macAddress.trim(), token = preferencesManager.authToken.trim())
+                    if (resolved.error != null && resolved.recoveryAttempt > 0) {
+                        recoverPlayback(slotId, resolved.playbackRevision, resolved.error)
+                    }
                     if (_uiState.value.statsTileEnabled) refreshStats()
                 }
             }

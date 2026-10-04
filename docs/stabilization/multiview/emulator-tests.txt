@@ -1,0 +1,12 @@
+
+com.shiv.rally.presentation.player.PlaybackSourceSwitchTest:.
+com.shiv.rally.presentation.player.MultiViewStabilityTest:...
+com.shiv.rally.presentation.player.MultiViewEmulatorTest:..
+com.shiv.rally.presentation.player.PlayerForegroundRecoveryTest:.
+com.shiv.rally.presentation.player.MultiViewSessionOwnershipTest:.
+
+Time: 147.15
+
+OK (8 tests)
+
+

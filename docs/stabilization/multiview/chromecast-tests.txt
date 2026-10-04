@@ -1,0 +1,15 @@
+
+com.shiv.rally.presentation.player.PlaybackSourceSwitchTest:.
+com.shiv.rally.presentation.player.MultiViewStabilityTest:[351159.523335] (RenderThread) Successfully parsed 1 environment variable(s) from /vendor/etc/mali_platform.config.
+Could not open module param file '/sys/module/mali_kbase/parameters/large_page_conf'
+[351159.572924] (RenderThread) Successfully parsed 1 environment variable(s) from /vendor/etc/mali_platform.config.
+...
+com.shiv.rally.presentation.player.MultiViewEmulatorTest:..
+com.shiv.rally.presentation.player.PlayerForegroundRecoveryTest:.
+com.shiv.rally.presentation.player.MultiViewSessionOwnershipTest:.
+
+Time: 278.836
+
+OK (8 tests)
+
+

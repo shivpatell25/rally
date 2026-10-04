@@ -504,15 +504,25 @@ fun PlayerContent(
 
     DisposableEffect(lifecycleOwner, exoPlayer) {
         var resumeAfterForeground = false
+        var stoppedForBackground = false
+        var returnToLiveEdge = false
         val observer = LifecycleEventObserver { _, lifecycleEvent ->
             when (lifecycleEvent) {
-                Lifecycle.Event.ON_STOP -> {
+                Lifecycle.Event.ON_PAUSE -> {
                     resumeAfterForeground = exoPlayer.playWhenReady && !highlightsAreVisible
-                    exoPlayer.pause()
+                    returnToLiveEdge = exoPlayer.isCurrentMediaItemLive
+                    stoppedForBackground = exoPlayer.mediaItemCount > 0 && !highlightsAreVisible
+                    // A paused player still owns a decoder and an upstream
+                    // connection. Release both before Multiview/another player
+                    // enters, preserving the media item for navigation back.
+                    exoPlayer.stop()
                 }
-                Lifecycle.Event.ON_START -> if (resumeAfterForeground && !highlightsAreVisible) {
-                    exoPlayer.playWhenReady = true
+                Lifecycle.Event.ON_RESUME -> if (stoppedForBackground && !highlightsAreVisible) {
+                    if (returnToLiveEdge) exoPlayer.seekToDefaultPosition()
+                    exoPlayer.prepare()
+                    exoPlayer.playWhenReady = resumeAfterForeground
                     resumeAfterForeground = false
+                    stoppedForBackground = false
                 }
                 else -> Unit
             }

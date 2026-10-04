@@ -319,13 +319,14 @@ final class RallyParityUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Add Stats"].waitForExistence(timeout: 35))
     try focus(app.buttons["Add Stats"])
     remote.press(.select)
-    Thread.sleep(forTimeInterval: 1)
+    verifyMultiviewVideo()
     shot("multiview-stats")
     try focus(app.buttons["Audio Follows Focus"])
     remote.press(.select)
     XCTAssertTrue(app.buttons["Audio Pinned"].waitForExistence(timeout: 4))
     try focus(app.buttons["Immersive"])
     remote.press(.select)
+    verifyMultiviewVideo()
     shot("multiview-immersive")
     remote.press(.menu)
     XCTAssertTrue(app.buttons["Immersive"].waitForExistence(timeout: 4))
@@ -634,10 +635,11 @@ final class RallyParityUITests: XCTestCase {
       let tiles = app.buttons.matching(
         NSPredicate(format: "identifier BEGINSWITH 'multiview-tile-'"))
       XCTAssertEqual(tiles.count, count)
+      verifyMultiviewVideo()
       shot("multiview-\(count)")
       try focus(app.buttons["Immersive"])
       remote.press(.select)
-      Thread.sleep(forTimeInterval: 0.4)
+      verifyMultiviewVideo()
       let screen = app.frame
       for tile in tiles.allElementsBoundByIndex {
         let rect = tile.frame
@@ -667,7 +669,18 @@ final class RallyParityUITests: XCTestCase {
       let playing = NSPredicate(format: "value == 'Playing'")
       expectation(for: playing, evaluatedWith: tiles.element(boundBy: 0))
       waitForExpectations(timeout: 20)
+      verifyMultiviewVideo()
     }
+  }
+  private func verifyMultiviewVideo(file: StaticString = #filePath, line: UInt = #line) {
+    // Playing requires the AVPlayerLayer to have a displayable video frame,
+    // not just a ready item or advancing audio clock.
+    let tiles = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'multiview-tile-'"))
+    let ready = NSPredicate { _, _ in
+      tiles.count > 0 && tiles.allElementsBoundByIndex.allSatisfy { ($0.value as? String) == "Playing" }
+    }
+    let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: ready, object: app)], timeout: 25)
+    XCTAssertEqual(result, .completed, "Every tile must have a displayable video frame: \(tiles.allElementsBoundByIndex.map { $0.value as? String ?? "nil" })", file: file, line: line)
   }
   private func assertFocusFits(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
     let frame = element.frame, screen = app.frame

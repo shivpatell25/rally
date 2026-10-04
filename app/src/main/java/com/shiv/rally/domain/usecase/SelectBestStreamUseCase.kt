@@ -32,23 +32,27 @@ class SelectBestStreamUseCase @Inject constructor(
     suspend operator fun invoke(
         event: SportEvent,
         channels: List<IptvChannel>? = null,
-        knownStremioStreams: List<StremioStreamOption>? = null
+        knownStremioStreams: List<StremioStreamOption>? = null,
+        refreshStreams: Boolean = false
     ): StreamSelection = coroutineScope {
         val allChannelsDeferred = async {
-            channels ?: runCatching { iptvRepository.getChannels() }.getOrDefault(emptyList())
+            channels ?: runCatching { iptvRepository.getChannels() }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it else emptyList() }
         }
         val stremioDeferred = async {
-            knownStremioStreams ?: runCatching { stremioRepository.getStreamsForEvent(event) }.getOrDefault(emptyList())
+            knownStremioStreams ?: runCatching {
+                if (refreshStreams) stremioRepository.refreshStreamsForEvent(event)
+                else stremioRepository.getStreamsForEvent(event)
+            }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it else emptyList() }
         }
         val allChannels = allChannelsDeferred.await()
         val relevant = runCatching { matcherService.getRelevantChannelsForEvent(event, allChannels) }
-            .getOrDefault(emptyList())
+            .getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it else emptyList() }
         val stremio = stremioDeferred.await().distinctBy { it.streamUrl }
 
         val guideByChannel = relevant.take(16).map { relevantChannel ->
             async {
                 val guide = guideSemaphore.withPermit {
-                    runCatching { iptvRepository.getChannelGuide(relevantChannel.channel.id) }.getOrNull()
+                    runCatching { iptvRepository.getChannelGuide(relevantChannel.channel.id) }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it else null }
                 }
                 relevantChannel.channel.id to guide
             }

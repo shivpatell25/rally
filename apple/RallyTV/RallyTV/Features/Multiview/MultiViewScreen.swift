@@ -112,6 +112,7 @@ struct MultiViewScreen: View {
   @State private var focusLayout = false
   @State private var overlay: MultiOverlay?
   @State private var loading = true
+  @State private var sceneActive = false
   @State private var error: String?
   @State private var sourceModel = SourceModel()
   @State private var pendingEvent: SportEvent?
@@ -176,6 +177,7 @@ struct MultiViewScreen: View {
         store.isPlaying = false
       }
       .onChange(of: scenePhase, initial: true) { _, phase in
+        sceneActive = phase == .active
         if phase == .active {
           tiles.forEach { $0.session.restoreForScene() }
         } else {
@@ -247,7 +249,9 @@ struct MultiViewScreen: View {
           overlay = .manage
         } label: {
           ZStack(alignment: .bottomLeading) {
-            RallyVideoSurface(player: tile.session.player).allowsHitTesting(false)
+            RallyVideoSurface(player: tile.session.player) { ready in
+              tile.session.videoVisible = ready
+            }.allowsHitTesting(false)
             if tile.session.loading {
               ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -276,12 +280,13 @@ struct MultiViewScreen: View {
         )
         .overlay(Rectangle().stroke(.white.opacity(focused == tile.id ? 0.45 : 0), lineWidth: 1))
         .accessibilityIdentifier("multiview-tile-\(tile.id)")
-        .accessibilityValue(
-          tile.session.error != nil
-            ? "Playback error"
-            : tile.session.loading ? "Opening" : tile.session.playing ? "Playing" : "Paused")
+        .accessibilityValue(playbackAccessibilityValue(tile.session))
       }
     }.frame(width: RallyDesign.pt(bounds.width), height: RallyDesign.pt(bounds.height)).clipped()
+  }
+  private func playbackAccessibilityValue(_ session: PlaybackSession) -> String {
+    let value = session.error != nil ? "Playback error" : session.loading ? "Opening" : session.playing && session.videoVisible ? "Playing" : "Paused"
+    return value
   }
   @ViewBuilder private func overlayView(_ mode: MultiOverlay) -> some View {
     if mode == .source {
@@ -386,11 +391,7 @@ struct MultiViewScreen: View {
                       }
                     }
                     RallyAction(title: "Retry") {
-                      Task {
-                        await tile.session.open(
-                          tile.channel?.id ?? tile.candidate?.playbackTarget.absoluteString ?? "",
-                          event: tile.event, candidate: tile.candidate, container: store.container)
-                      }
+                      Task { await tile.session.retry() }
                     }
                     if let next = tiles.first(where: { $0.id != tile.id }) {
                       RallyAction(title: "Swap with \(next.title)") {
@@ -426,13 +427,7 @@ struct MultiViewScreen: View {
     channels = (try? await store.container.iptv.channels()) ?? []
     if !tiles.isEmpty {
       for tile in tiles where !tile.stats {
-        if tile.session.player.currentItem != nil && tile.session.error == nil {
-          tile.session.restoreForScene()
-        } else {
-          await tile.session.open(
-            tile.channel?.id ?? tile.candidate?.playbackTarget.absoluteString ?? "auto",
-            event: tile.event, candidate: tile.candidate, container: store.container)
-        }
+        if sceneActive { tile.session.restoreForScene() }
       }
       capPlayers()
       await refreshStats()
@@ -482,10 +477,12 @@ struct MultiViewScreen: View {
     }
     lastAudio = tile.id
     routeAudio()
-    if scenePhase != .active { tile.session.suspendForScene() }
     await tile.session.open(
       tile.channel?.id ?? candidate?.playbackTarget.absoluteString ?? "", event: event,
       candidate: candidate, container: store.container)
+    // Async View methods capture Environment values from their starting render.
+    // State holds the current phase after a foreground transition during discovery.
+    if !sceneActive { tile.session.suspendForScene() }
     capPlayers()
     focused = tile.id
     await refreshStats()

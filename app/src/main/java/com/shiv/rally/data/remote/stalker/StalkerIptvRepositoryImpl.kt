@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.shiv.rally.di.ApplicationScope
@@ -43,6 +44,9 @@ class StalkerIptvRepositoryImpl @Inject constructor(
     }
 
     private val authMutex = Mutex()
+    // Portals commonly mutate a shared MAG session during create_link. Keep
+    // link negotiation ordered; the resulting video connections stay parallel.
+    private val streamLinkMutex = Mutex()
     private val channelMutex = Mutex()
     private val guideCache = ConcurrentHashMap<String, ChannelGuide>()
     private val guideLocks = ConcurrentHashMap<String, Mutex>()
@@ -130,7 +134,8 @@ class StalkerIptvRepositoryImpl @Inject constructor(
                         }
                     }
                     Log.d(TAG, "Profile activated successfully")
-                } catch (e: Exception) {
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (e: Exception) {
                     Log.e(TAG, "getProfile failed: ${e.message}", e)
                     preferencesManager.authToken = ""
                     return false
@@ -140,7 +145,8 @@ class StalkerIptvRepositoryImpl @Inject constructor(
                 Log.w(TAG, "Handshake response did not contain a valid token")
                 false
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Log.e(TAG, "Handshake failed: ${e.message}", e)
             false
         }
@@ -507,39 +513,36 @@ class StalkerIptvRepositoryImpl @Inject constructor(
             }
         }
 
-        try {
-            if (preferencesManager.authToken.isEmpty()) {
-                authenticateInternal(force = false)
+        streamLinkMutex.withLock {
+            if (preferencesManager.authToken.isBlank() && !authenticateInternal(force = false)) {
+                throw IllegalStateException("The portal could not authenticate. Check your IPTV settings.")
             }
-            val response = try {
-                api.createLink(
-                    type = "itv",
-                    action = "create_link",
-                    cmd = cmd,
-                    token = preferencesManager.authToken
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "createLink failed: ${e.message}. Re-authenticating...")
-                if (authenticateInternal(force = true)) {
-                    api.createLink(
-                        type = "itv",
-                        action = "create_link",
-                        cmd = cmd,
-                        token = preferencesManager.authToken
-                    )
-                } else throw e
+            suspend fun negotiate(): String {
+                val response = api.createLink(type = "itv", action = "create_link", cmd = cmd,
+                    token = preferencesManager.authToken)
+                val js = response.js
+                val raw = when {
+                    js == null || js.isJsonNull -> null
+                    js.isJsonObject -> js.asJsonObject.get("cmd")?.takeIf { it.isJsonPrimitive }?.asString
+                    js.isJsonPrimitive -> js.asString
+                    else -> null
+                }
+                val url = raw?.let(::cleanStreamUrl).orEmpty()
+                val uri = runCatching { java.net.URI(url) }.getOrNull()
+                if (uri?.scheme !in listOf("http", "https") || uri?.host.isNullOrBlank() ||
+                    uri?.host.equals("localhost", ignoreCase = true)) {
+                    throw IllegalStateException("The portal did not provide a playable stream link.")
+                }
+                return url
             }
-            val js = response.js
-            val rawCmd = when {
-                js == null || js.isJsonNull -> cmd
-                js.isJsonObject -> js.asJsonObject.get("cmd")?.asString ?: cmd
-                js.isJsonPrimitive -> js.asString
-                else -> cmd
+            try {
+                negotiate()
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                Log.w(TAG, "Stream negotiation failed; refreshing the portal session once")
+                if (!authenticateInternal(force = true)) throw failure
+                negotiate()
             }
-            cleanStreamUrl(rawCmd)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error resolving channel stream URL for $channelId: ${e.message}", e)
-            cleanStreamUrl(channelId)
         }
     }
 
