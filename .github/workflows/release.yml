@@ -33,6 +33,10 @@ jobs:
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v6
       - uses: android-actions/setup-android@v3
+        with:
+          # The old SDK `tools` package was removed from Google's repository.
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - name: Install signing tools
         run: sdkmanager "build-tools;34.0.0"
       - name: Restore private signing keys
