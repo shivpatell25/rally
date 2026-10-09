@@ -26,6 +26,7 @@ struct SettingsScreen: View {
   @State private var diagnostics = ""
   @State private var backupInput = ""
   @State private var transfer = false
+  @State private var showLicenses = false
   @State private var link: SupportLink?
   @FocusState private var accountFocus: String?
   var body: some View {
@@ -96,6 +97,7 @@ struct SettingsScreen: View {
       teams = (try? await store.container.sports.teams(league: teamLeague)) ?? []
     }
     .sheet(item: $link) { item in SupportLinkSheet(item: item) }
+    .sheet(isPresented: $showLicenses) { PlaybackLicensesSheet() }
     .sheet(
       isPresented: $transfer,
       onDismiss: {
@@ -364,6 +366,7 @@ struct SettingsScreen: View {
             url: URL(string: "https://github.com/shivpatell25/rally/releases")!)
         }
       }
+      RallyAction(title: "Open Source Licenses") { showLicenses = true }
     }
   }
   // Full-width focus regions bridge the right-aligned inputs and compact left actions.
@@ -531,6 +534,30 @@ struct SettingsScreen: View {
         "Latest Rally release: \(release["tag_name"].text). Apple TV builds require App Store or TestFlight distribution."
     } catch { message = "Couldn’t check releases. Try again later." }
     busy = false
+  }
+}
+
+private struct PlaybackLicensesSheet: View {
+  private func bundledText(_ name: String) -> String {
+    guard let url = Bundle.main.url(forResource: name, withExtension: "txt"),
+      let text = try? String(contentsOf: url, encoding: .utf8)
+    else { return "License information could not be loaded." }
+    return text
+  }
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: RallyDesign.pt(20)) {
+        Text(bundledText("NOTICE")).font(RallyDesign.font(12))
+        ForEach(["MPVKit-LICENSE", "MPV-LGPL"], id: \.self) { name in
+          Text(bundledText(name)).font(RallyDesign.font(10)).foregroundStyle(RallyDesign.muted)
+        }
+      }.frame(maxWidth: .infinity, alignment: .leading)
+        .padding(RallyDesign.pt(30))
+    }
+    .presentationDetents([.large])
+    .presentationBackground(RallyDesign.black)
+    .accessibilityIdentifier("open-source-licenses")
   }
 }
 struct SupportLink: Identifiable {

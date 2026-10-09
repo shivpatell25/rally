@@ -1,8 +1,7 @@
 import AVKit
 import Observation
 import SwiftUI
-import Combine
-import AetherEngine
+import Libmpv
 import UIKit
 
 @MainActor private enum PlaybackScreenAwakeRegistry {
@@ -16,7 +15,9 @@ import UIKit
 
 @MainActor @Observable final class PlaybackSession {
   let player = AVPlayer()
-  private(set) var aetherEngine: AetherEngine?
+  @ObservationIgnored let metalLayer = RallyMetalVideoLayer()
+  @ObservationIgnored private let mpv = MPVPlaybackEngine()
+  @ObservationIgnored private var mpvState = MPVPlaybackEngine.Snapshot()
   private let playbackActivityID = UUID()
   var loading = true
   var playing = false
@@ -32,8 +33,8 @@ import UIKit
   var codecs = ""
   var audioTracks: [AVMediaSelectionOption] = []
   var captionTracks: [AVMediaSelectionOption] = []
-  var aetherAudioTracks: [TrackInfo] = []
-  var aetherCaptionTracks: [TrackInfo] = []
+  var mpvAudioTracks: [MPVPlaybackEngine.Track] = []
+  var mpvCaptionTracks: [MPVPlaybackEngine.Track] = []
   var selectedAudio: String?
   var selectedCaption: String?
   private(set) var target: String = ""
@@ -68,9 +69,6 @@ import UIKit
   @ObservationIgnored private var playlistPermission: PlaylistMediaPermission?
   @ObservationIgnored private var audioGroup: AVMediaSelectionGroup?
   @ObservationIgnored private var captionGroup: AVMediaSelectionGroup?
-  @ObservationIgnored private var aetherStateObservation: AnyCancellable?
-  @ObservationIgnored private var aetherClockObservation: AnyCancellable?
-  @ObservationIgnored private var resolvedSource: URL?
   private var generation = 0
   private var started = Date()
   private var settings: SettingsStore?
@@ -90,22 +88,23 @@ import UIKit
     }
   }
   var seekable: Bool {
-    if let engine = aetherEngine {
-      return engine.isLive ? engine.seekableLiveRange != nil : engine.duration > 0
-    }
+    if usesMPV { return mpvState.seekable }
     return player.currentItem?.seekableTimeRanges.isEmpty == false
   }
-  var aetherSelectedAudio: Int? { aetherEngine?.activeAudioTrackIndex }
-  var aetherSelectedCaption: Int? { aetherEngine?.activeSubtitleTrackIndex }
   var playbackRequested: Bool { wantsPlayback }
-  var usesAetherEngine: Bool { aetherEngine != nil }
-  var isLive: Bool { aetherEngine?.isLive ?? request?.isLive ?? (!duration.isFinite || duration == 0) }
+  var usesMPV: Bool { multiViewCount == nil && request != nil }
+  var isLive: Bool { request?.isLive ?? (!duration.isFinite || duration == 0) }
   var bufferedSeconds: Double {
-    if let engine = aetherEngine { return max(0, engine.bufferedPosition - elapsed) }
+    if usesMPV { return max(0, mpvState.cacheEnd - elapsed) }
     guard let ranges = player.currentItem?.loadedTimeRanges else { return 0 }
     return ranges.map { max(0, CMTimeRangeGetEnd($0.timeRangeValue).seconds - elapsed) }.max() ?? 0
   }
   init() {
+    metalLayer.backgroundColor = UIColor.black.cgColor
+    metalLayer.framebufferOnly = true
+    metalLayer.contentsGravity = .resize
+    metalLayer.bounds = CGRect(x: 0, y: 0, width: 640, height: 360)
+    metalLayer.drawableSize = CGSize(width: 1280, height: 720)
     player.automaticallyWaitsToMinimizeStalling = true
     // A periodic media-time observer stops firing during some stalls. Check wall time as well.
     watchdogTask = Task { [weak self] in
@@ -213,8 +212,8 @@ import UIKit
     codecs = ""
     audioTracks = []
     captionTracks = []
-    aetherAudioTracks = []
-    aetherCaptionTracks = []
+    mpvAudioTracks = []
+    mpvCaptionTracks = []
     audioGroup = nil
     captionGroup = nil
     selectedAudio = nil
@@ -224,11 +223,8 @@ import UIKit
     lastWatchedPosition = 0
     progress = PlaybackProgressWatchdog()
     settings = request.container.settings
-    aetherStateObservation = nil
-    aetherClockObservation = nil
-    aetherEngine?.stop()
-    aetherEngine = nil
-    resolvedSource = nil
+    mpvState = MPVPlaybackEngine.Snapshot()
+    mpv.stop()
     target = request.candidate?.id ?? request.target
     sourceTitle = request.candidate?.title ?? (request.event?.compactMatchup ?? "Live TV")
     headers = [:]
@@ -278,7 +274,6 @@ import UIKit
         }
       }
       guard revision == generation, !Task.isCancelled else { return }
-      resolvedSource = resolved
       let isAddonStream = request.candidate?.sourceKind == .stremio
       let permission = (isPlaylistChannel || isAddonStream) && resolved.scheme?.lowercased() == "http"
         ? PlaylistMediaPermission(resolved) : nil
@@ -286,16 +281,28 @@ import UIKit
       headers = requestHeaders
       playlistPermission = permission
       if multiViewCount == nil {
-        try await startAetherEngine(
-          source: resolved, headers: requestHeaders, event: request.event, isLive: request.isLive)
-        guard revision == generation else { return }
+        var media = resolved
+        var mediaProxy: HeaderMediaProxy?
+        if !requestHeaders.isEmpty || resolved.scheme?.lowercased() == "http" {
+          let nextProxy = HeaderMediaProxy(headers: requestHeaders)
+          mediaProxy = nextProxy
+          media = try await nextProxy.start(resolved)
+        }
+        guard revision == generation, !Task.isCancelled else { mediaProxy?.stop(); return }
+        proxy = mediaProxy
         target = request.candidate?.id ?? request.target
         sourceTitle = resolvedTitle
-        loading = false
-        playing = true
-        videoVisible = true
-        firstFrame = true
-        settings?.recordHealth(target, success: true, startup: Int(Date().timeIntervalSince(started) * 1000))
+        mpv.open(
+          url: media, layer: metalLayer, live: request.isLive,
+          lowLatency: request.container.settings.lowLatencyMode,
+          position: nil, playing: wantsPlayback && !sceneSuspended && !audioInterrupted,
+          muted: false
+        ) { [weak self] snapshot in
+          Task { @MainActor in
+            guard let self, revision == self.generation else { return }
+            self.receiveMPV(snapshot)
+          }
+        }
         return
       }
       // Playback validates the actual GET request. HEAD probes can reject working providers.
@@ -352,19 +359,25 @@ import UIKit
   private func checkProgress() {
     guard request != nil, error == nil, reconnectTask == nil else { return }
     let active = wantsPlayback && !sceneSuspended && !audioInterrupted
-    if let engine = aetherEngine {
-      elapsed = engine.currentTime
-      duration = engine.duration
-      loading = active && (engine.state == .loading || engine.state == .seeking || engine.isBuffering)
-      playing = engine.state == .playing
-      if engine.state == .playing {
-        PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID)
-      } else if !active || engine.state == .paused || engine.state == .ended {
+    if usesMPV {
+      if progress.check(wantsPlayback: active, ready: mpvState.ready, position: mpvState.position) {
+        reconnect("This source stopped updating. Choose another source or retry.")
+        return
+      }
+      if active && isLive && mpvState.ended {
+        reconnect("This live stream ended. Retry or choose another source.")
+        return
+      }
+      elapsed = mpvState.position
+      duration = mpvState.duration
+      loading = active && (!mpvState.ready || mpvState.buffering)
+      playing = mpvState.ready && !mpvState.paused && active
+      if playing { PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID) }
+      else if !active || mpvState.paused || mpvState.ended {
         PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
       }
       return
     }
-    checkVideoFrame(active: active)
     let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate || player.currentItem?.status != .readyToPlay
     let time = player.currentTime().seconds
     let advancing = time.isFinite && abs(time - lastWatchedPosition) > 0.01
@@ -378,130 +391,40 @@ import UIKit
       reconnect("This source stopped updating. Choose another source or retry.")
     }
   }
-  private func checkVideoFrame(active: Bool) {
-    guard multiViewCount == nil else { return }
-    guard active, !videoVisible, let item = player.currentItem,
-      item.status == .readyToPlay
-    else {
-      videoFrameWaitStarted = nil
-      return
+  private func receiveMPV(_ snapshot: MPVPlaybackEngine.Snapshot) {
+    let becameReady = !mpvState.ready && snapshot.ready
+    mpvState = snapshot
+    elapsed = snapshot.position
+    duration = snapshot.duration
+    loading = !snapshot.ready || snapshot.buffering
+    playing = snapshot.ready && !snapshot.paused && wantsPlayback
+    videoVisible = snapshot.ready
+    if snapshot.width > 0 && snapshot.height > 0 {
+      resolution = "\(Int(snapshot.width)) × \(Int(snapshot.height))"
     }
-    let now = Date()
-    let started = videoFrameWaitStarted ?? now
-    videoFrameWaitStarted = started
-    guard now.timeIntervalSince(started) >= 8 else { return }
-    if aetherEngine == nil, let resolvedSource, let request {
-      videoFrameWaitStarted = now
-      Task { [weak self] in
-        do {
-          try await self?.startAetherEngine(
-            source: resolvedSource, headers: self?.headers ?? [:], event: request.event,
-            isLive: request.isLive)
-        } catch {
-          await MainActor.run {
-            guard let self else { return }
-            self.loading = false
-            self.wantsPlayback = false
-            PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
-            self.error = "This source couldn’t be rendered by either player. Try another source."
-            RallyDiagnostics.shared.record("Playback", code: "AetherEngine fallback failed: \(error.localizedDescription)")
-          }
-        }
-      }
-      return
+    fps = snapshot.fps > 0 ? String(format: "%.2f fps", snapshot.fps) : ""
+    codecs = [snapshot.codec, snapshot.transfer].filter { !$0.isEmpty }.joined(separator: " · ")
+    bitrate = snapshot.inputBitrate > 0 ? String(format: "%.1f Mbps", snapshot.inputBitrate / 1_000_000) : ""
+    mpvAudioTracks = snapshot.tracks.filter { $0.type == "audio" }
+    mpvCaptionTracks = snapshot.tracks.filter { $0.type == "sub" }
+    if let selected = mpvAudioTracks.first(where: { $0.selected == true }) {
+      selectedAudio = selected.name
     }
-    guard aetherEngine != nil else { return }
-    guard now.timeIntervalSince(started) >= 70 else { return }
-    player.pause()
-    wantsPlayback = false
-    PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
-    playing = false
-    loading = false
-    error = "This source isn’t displaying video. Try another source."
-    RallyDiagnostics.shared.record("Playback", code: "No video frame after AetherEngine fallback")
-  }
-  private func startAetherEngine(
-    source: URL, headers: [String: String], event: SportEvent?, isLive: Bool
-  ) async throws {
-    player.pause()
-    player.replaceCurrentItem(with: nil)
-    let engine = try AetherEngine()
-    aetherEngine?.stop()
-    aetherEngine = engine
-    let eventIsLive = event?.status.isLive ?? isLive
-    aetherStateObservation = engine.$state.sink { [weak self] state in
-      Task { @MainActor in
-        guard let self, self.aetherEngine === engine else { return }
-        switch state {
-        case .idle: break
-        case .loading: self.loading = true
-        case .playing:
-          self.loading = false
-          self.playing = true
-          self.videoVisible = true
-          self.videoFrameWaitStarted = nil
-          self.firstFrame = true
-          PlaybackScreenAwakeRegistry.setActive(self.wantsPlayback, for: self.playbackActivityID)
-        case .paused:
-          self.loading = false
-          self.playing = false
-          PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
-        case .seeking: self.loading = true
-        case .ended:
-          self.loading = false
-          self.playing = false
-          self.wantsPlayback = false
-          PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
-        case .error(let message):
-          self.loading = false
-          self.playing = false
-          self.wantsPlayback = false
-          self.error = message
-          PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
-        }
-      }
+    if let selected = mpvCaptionTracks.first(where: { $0.selected == true }) {
+      selectedCaption = selected.name
     }
-    aetherClockObservation = engine.clock.$currentTime.sink { [weak self] time in
-      Task { @MainActor in
-        guard let self, self.aetherEngine === engine else { return }
-        self.elapsed = time
-        self.duration = engine.duration
-      }
+    if becameReady && !firstFrame {
+      firstFrame = true
+      settings?.recordHealth(target, success: true, startup: Int(Date().timeIntervalSince(started) * 1000))
     }
-    let options = LoadOptions(
-      httpHeaders: headers,
-      matchContentEnabled: true,
-      panelIsInHDRMode: UIScreen.main.currentEDRHeadroom > 1,
-      isLive: eventIsLive,
-      liveJoinProfile: eventIsLive ? .fastZap : .standard,
-      // Live IPTV responses can be slow or sparse. FFmpeg's 50 MB / 60 s defaults can
-      // make the initial demux probe look like a hung player. Sports streams expose
-      // video and audio quickly, so bound discovery while leaving enough headroom for TS.
-      probesize: 3 * 1024 * 1024,
-      maxAnalyzeDuration: 3_000_000,
-      autoplay: true
-    )
-    if let probe = try await engine.load(url: source, options: options) {
-      aetherAudioTracks = probe.audioTracks
-      aetherCaptionTracks = probe.subtitleTracks
-      resolution = probe.videoWidth > 0 && probe.videoHeight > 0
-        ? "\(probe.videoWidth) × \(probe.videoHeight)" : ""
-      fps = probe.videoFrameRate.map { String(format: "%.2f fps", $0) } ?? ""
-      let format: String
-      switch probe.videoFormat {
-      case .sdr: format = "SDR"
-      case .hdr10: format = "HDR10"
-      case .hdr10Plus: format = "HDR10+"
-      case .dolbyVision: format = "Dolby Vision"
-      case .hlg: format = "HLG"
-      }
-      codecs = [probe.videoCodecName, format].compactMap { $0 }.joined(separator: " · ")
-      selectedAudio = probe.audioTracks.first(where: { $0.id == engine.activeAudioTrackIndex })?.name
-      selectedCaption = probe.subtitleTracks.first(where: { $0.id == engine.activeSubtitleTrackIndex })?.name
+    if let failure = snapshot.failure {
+      loading = false
+      playing = false
+      wantsPlayback = false
+      PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
+      error = "This source couldn’t be played by the MPV decoder (\(failure)). Try another source."
+      RallyDiagnostics.shared.record("Playback", code: "MPV failure: \(failure)")
     }
-    videoVisible = true
-    videoFrameWaitStarted = nil
-    if wantsPlayback { engine.play() }
   }
   private func reconnect(_ message: String) {
     guard reconnectTask == nil, let request else { return }
@@ -537,23 +460,22 @@ import UIKit
     wantsPlayback = false
     PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     player.pause()
-    aetherEngine?.pause()
+    if usesMPV { mpv.pause(true) }
     playing = false
   }
   func resume() {
     wantsPlayback = true
     PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID)
     if !sceneSuspended && !audioInterrupted {
-      player.play()
-      aetherEngine?.play()
+      if usesMPV { mpv.pause(false) } else { player.play() }
       if !videoVisible { videoFrameWaitStarted = Date() }
     }
-    playing = aetherEngine?.state == .playing || player.rate > 0
+    playing = usesMPV ? mpvState.ready && !mpvState.paused : player.rate > 0
   }
   func suspendForScene() {
     guard !sceneSuspended else { return }
-    scenePosition = !isLive && (aetherEngine?.currentTime ?? player.currentTime().seconds).isFinite
-      ? (aetherEngine?.currentTime ?? player.currentTime().seconds) : nil
+    let currentPosition = usesMPV ? mpvState.position : player.currentTime().seconds
+    scenePosition = !isLive && currentPosition.isFinite ? currentPosition : nil
     sceneSuspended = true
     PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     generation += 1
@@ -562,8 +484,8 @@ import UIKit
     foregroundTask?.cancel()
     foregroundTask = nil
     observation = nil
+    if usesMPV { mpv.stop() }
     player.pause()
-    aetherEngine?.pause()
     player.replaceCurrentItem(with: nil)
     proxy?.stop()
     proxy = nil
@@ -583,14 +505,16 @@ import UIKit
   }
   func toggle() { wantsPlayback ? pause() : resume() }
   func restart() {
-    if let aetherEngine { Task { await aetherEngine.seek(to: 0); aetherEngine.play() }; return }
+    if usesMPV { mpv.seek(isLive ? mpvState.cacheStart : 0); resume(); return }
     guard let range = player.currentItem?.seekableTimeRanges.first?.timeRangeValue else { return }
     player.seek(to: range.start, toleranceBefore: .zero, toleranceAfter: .zero)
     resume()
   }
   func liveEdge() {
-    if let aetherEngine, let edge = aetherEngine.seekableLiveRange?.upperBound {
-      Task { await aetherEngine.seek(to: edge - 1); aetherEngine.play() }; return
+    if usesMPV {
+      mpv.seek(max(mpvState.cacheStart, mpvState.cacheEnd - 2))
+      resume()
+      return
     }
     guard let range = player.currentItem?.seekableTimeRanges.last?.timeRangeValue else { return }
     player.seek(
@@ -598,8 +522,11 @@ import UIKit
     resume()
   }
   func seek(_ seconds: Double) {
-    if let aetherEngine {
-      Task { await aetherEngine.seek(to: max(0, aetherEngine.currentTime + seconds)) }
+    if usesMPV {
+      guard seconds.isFinite, mpvState.seekable else { return }
+      let lower = isLive ? mpvState.cacheStart : 0
+      let upper = isLive ? max(lower, mpvState.cacheEnd - 2) : mpvState.duration
+      mpv.seek(min(upper, max(lower, mpvState.position + seconds)))
       return
     }
     guard seconds.isFinite, let item = player.currentItem else { return }
@@ -619,7 +546,7 @@ import UIKit
   }
   func setQuality(_ label: String) {
     quality = label
-    guard aetherEngine == nil else { return }
+    guard !usesMPV else { return }
     videoFrameWaitStarted = videoVisible ? nil : Date()
     guard let item = player.currentItem else { return }
     let heights = ["Auto": 0, "2160p": 2160, "1080p": 1080, "720p": 720, "480p": 480]
@@ -629,31 +556,29 @@ import UIKit
     item.preferredPeakBitRate = height == 480 ? 1_200_000 : height == 720 ? 2_500_000 : 0
   }
   func selectAudio(_ option: AVMediaSelectionOption?) {
-    guard aetherEngine == nil else { return }
+    guard !usesMPV else { return }
     if let group = audioGroup {
       player.currentItem?.select(option, in: group)
       selectedAudio = option?.displayName
     }
   }
   func selectCaption(_ option: AVMediaSelectionOption?) {
-    guard aetherEngine == nil else { return }
+    guard !usesMPV else { return }
     if let group = captionGroup {
       player.currentItem?.select(option, in: group)
       selectedCaption = option?.displayName
     }
   }
-  func selectAetherAudio(_ index: Int) {
-    guard let engine = aetherEngine else { return }
-    engine.selectAudioTrack(index: index)
-    selectedAudio = aetherAudioTracks.first(where: { $0.id == index })?.name
+  func selectMPVAudio(_ track: MPVPlaybackEngine.Track) {
+    mpv.audio(track.id)
+    selectedAudio = track.name
   }
-  func selectAetherCaption(_ index: Int) {
-    guard let engine = aetherEngine else { return }
-    engine.selectSubtitleTrack(index: index)
-    selectedCaption = aetherCaptionTracks.first(where: { $0.id == index })?.name
+  func selectMPVCaption(_ track: MPVPlaybackEngine.Track) {
+    mpv.caption(track.id)
+    selectedCaption = track.name
   }
   func clearCaption() {
-    if let aetherEngine { aetherEngine.clearSubtitle(); selectedCaption = nil; return }
+    if usesMPV { mpv.caption(nil); selectedCaption = nil; return }
     selectCaption(nil)
   }
   func setMultiViewCaps(count: Int) {
@@ -673,10 +598,8 @@ import UIKit
     wantsPlayback = false
     PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     player.pause()
-    aetherEngine?.stop()
-    aetherEngine = nil
-    aetherStateObservation = nil
-    aetherClockObservation = nil
+    mpv.stop()
+    mpvState = MPVPlaybackEngine.Snapshot()
     player.replaceCurrentItem(with: nil)
     observation = nil
     proxy?.stop()
@@ -785,8 +708,8 @@ struct RallyPlaybackSurface: View {
   let session: PlaybackSession
 
   var body: some View {
-    if let engine = session.aetherEngine {
-      AetherPlayerSurface(engine: engine).background(.black)
+    if session.usesMPV {
+      MPVPlayerSurface(session: session).background(.black)
     } else {
       RallyVideoSurface(player: session.player) { session.videoVisible = $0 }
     }

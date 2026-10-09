@@ -1,40 +1,13 @@
 {
-  "originHash" : "395a1133ed220a4bc1783ebe958a697a2671b7651a1d80a4de4ba7e8d85103f8",
+  "originHash" : "ef00e3d8fbb2d30a5feeffd901afe269da81ef29cbd621b41e76ca47bb5e65af",
   "pins" : [
     {
-      "identity" : "aetherengine",
+      "identity" : "mpvkit",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/superuser404notfound/AetherEngine.git",
+      "location" : "https://github.com/mpvkit/MPVKit.git",
       "state" : {
-        "revision" : "72b0cec29007dfdffbedbb34d0527369d21c77e8",
-        "version" : "6.89.1"
-      }
-    },
-    {
-      "identity" : "ffmpegbuild",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/superuser404notfound/FFmpegBuild",
-      "state" : {
-        "revision" : "4e58942403d37cceff3a3212e3e026f4205146a2",
-        "version" : "3.3.0"
-      }
-    },
-    {
-      "identity" : "libdovi",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/superuser404notfound/LibDovi",
-      "state" : {
-        "revision" : "0d7cce1d6836a30d13a3a2326e50a153af53f014",
-        "version" : "2.1.0"
-      }
-    },
-    {
-      "identity" : "smbclient",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kishikawakatsumi/SMBClient",
-      "state" : {
-        "revision" : "e636c2b2458930770932a36d311ec9d478575b90",
-        "version" : "0.3.1"
+        "revision" : "288527dffbc6d3e63cce147fc7b520c64a791603",
+        "version" : "1.0.0"
       }
     }
   ],

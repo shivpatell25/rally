@@ -1,6 +1,5 @@
 import AVFoundation
 import SwiftUI
-import AetherEngine
 
 private enum PlayerOverlay: String, Identifiable {
   case source, audio, captions, quality, diagnostics
@@ -661,79 +660,39 @@ struct GameViewScreen: View {
             }
             switch mode {
             case .audio:
-              if session.usesAetherEngine {
-                if session.aetherAudioTracks.isEmpty {
-                  Text("This source has one default audio track.").foregroundStyle(RallyDesign.muted)
-                }
-                ForEach(session.aetherAudioTracks) { track in
-                  RallyAction(
-                    title: [track.name, track.language].compactMap { $0 }.joined(separator: " · "),
-                    icon: session.aetherSelectedAudio == track.id ? "checkmark" : nil
-                  ) {
-                    session.selectAetherAudio(track.id)
-                    overlay = nil
-                  }
-                }
-              } else if session.audioTracks.isEmpty {
+              if session.mpvAudioTracks.isEmpty {
                 Text("This source has one default audio track.").foregroundStyle(RallyDesign.muted)
               }
-              if !session.usesAetherEngine {
-              ForEach(Array(session.audioTracks.enumerated()), id: \.offset) { _, option in
+              ForEach(Array(session.mpvAudioTracks.enumerated()), id: \.offset) { _, track in
                 RallyAction(
-                  title: option.displayName,
-                  icon: session.selectedAudio == option.displayName ? "checkmark" : nil
+                  title: track.name,
+                  icon: session.selectedAudio == track.name ? "checkmark" : nil
                 ) {
-                  session.selectAudio(option)
+                  session.selectMPVAudio(track)
                   overlay = nil
                 }
-              }
               }
             case .captions:
               RallyAction(title: "Off", icon: session.selectedCaption == nil ? "checkmark" : nil) {
                 session.clearCaption()
                 overlay = nil
               }
-              if session.usesAetherEngine {
-                if session.aetherCaptionTracks.isEmpty {
-                  Text("This source does not include captions.").foregroundStyle(RallyDesign.muted)
-                }
-                ForEach(session.aetherCaptionTracks) { track in
-                  RallyAction(
-                    title: [track.name, track.language].compactMap { $0 }.joined(separator: " · "),
-                    icon: session.aetherSelectedCaption == track.id ? "checkmark" : nil
-                  ) {
-                    session.selectAetherCaption(track.id)
-                    overlay = nil
-                  }
-                }
-              } else if session.captionTracks.isEmpty {
+              if session.mpvCaptionTracks.isEmpty {
                 Text("This source does not include captions.").foregroundStyle(RallyDesign.muted)
               }
-              if !session.usesAetherEngine {
-              ForEach(Array(session.captionTracks.enumerated()), id: \.offset) { _, option in
-                RallyAction(title: option.displayName) {
-                  session.selectCaption(option)
+              ForEach(Array(session.mpvCaptionTracks.enumerated()), id: \.offset) { _, track in
+                RallyAction(title: track.name) {
+                  session.selectMPVCaption(track)
                   overlay = nil
                 }
               }
-              }
             case .quality:
-              if session.usesAetherEngine {
-                Text("AetherEngine uses the source’s native resolution and HDR format.")
-                  .font(RallyDesign.font(14)).foregroundStyle(RallyDesign.muted)
-              } else {
-                ForEach(["Auto", "2160p", "1080p", "720p", "480p"], id: \.self) { q in
-                  RallyAction(title: q, icon: session.quality == q ? "checkmark" : nil) {
-                    session.setQuality(q)
-                    overlay = nil
-                  }
-                }
-                Text("Resolution caps apply to adaptive streams. Available quality depends on the source.")
-                  .font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
-              }
+              RallyAction(title: "Auto · Source quality", icon: "checkmark") { overlay = nil }
+              Text("MPV selects the stream’s available rendition and plays supported 4K HDR formats.")
+                .font(RallyDesign.font(14)).foregroundStyle(RallyDesign.muted)
             case .diagnostics:
               Text(
-                "\(session.usesAetherEngine ? "AetherEngine" : "AVPlayer") · \(session.resolution)\n\(session.bitrate) · \(session.fps)\nTime \(Int(session.elapsed))s · \(session.isLive ? "Live" : "On demand")\nBuffered \(Int(session.bufferedSeconds))s\nCodec \(session.codecs.isEmpty ? "Unavailable" : session.codecs)\nQuality \(session.quality)\nAudio \(session.selectedAudio ?? "Default")\nCaptions \(session.selectedCaption ?? "Off")"
+                "MPV · \(session.resolution)\n\(session.bitrate) · \(session.fps)\nTime \(Int(session.elapsed))s · \(session.isLive ? "Live" : "On demand")\nBuffered \(Int(session.bufferedSeconds))s\nCodec \(session.codecs.isEmpty ? "Unavailable" : session.codecs)\nQuality Auto · source selected\nAudio \(session.selectedAudio ?? "Default")\nCaptions \(session.selectedCaption ?? "Off")"
               ).font(RallyDesign.font(14)).lineSpacing(RallyDesign.pt(10))
               Text(SelectBestStream.trace(candidates: sources.candidates, selectedId: selected?.id))
                 .font(RallyDesign.font(10)).foregroundStyle(RallyDesign.muted)

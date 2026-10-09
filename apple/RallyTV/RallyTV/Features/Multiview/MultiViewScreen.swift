@@ -475,8 +475,7 @@ struct MultiViewScreen: View {
     }
     lastAudio = tile.id
     routeAudio()
-    // Mark this as a multiview session before opening so it stays on the
-    // resource-capped AVPlayer path instead of creating a full Aether decoder.
+    // Multiview uses the resource-capped AVPlayer path rather than a full MPV decoder.
     tile.session.setMultiViewCaps(count: max(1, tiles.filter { !$0.stats }.count))
     await tile.session.open(
       tile.channel?.id ?? candidate?.playbackTarget.absoluteString ?? "", event: event,
