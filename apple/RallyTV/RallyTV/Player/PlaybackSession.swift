@@ -54,6 +54,7 @@ import UIKit
     let event: SportEvent?
     let candidate: StreamCandidate?
     let container: AppContainer
+    let isLive: Bool
   }
   @ObservationIgnored nonisolated(unsafe) private var timeToken: Any?
   @ObservationIgnored nonisolated(unsafe) private var endToken: NSObjectProtocol?
@@ -98,7 +99,7 @@ import UIKit
   var aetherSelectedCaption: Int? { aetherEngine?.activeSubtitleTrackIndex }
   var playbackRequested: Bool { wantsPlayback }
   var usesAetherEngine: Bool { aetherEngine != nil }
-  var isLive: Bool { aetherEngine?.isLive ?? (!duration.isFinite || duration == 0) }
+  var isLive: Bool { aetherEngine?.isLive ?? request?.isLive ?? (!duration.isFinite || duration == 0) }
   var bufferedSeconds: Double {
     if let engine = aetherEngine { return max(0, engine.bufferedPosition - elapsed) }
     guard let ranges = player.currentItem?.loadedTimeRanges else { return 0 }
@@ -181,7 +182,11 @@ import UIKit
     reconnectAttempts = 0
     wantsPlayback = true
     PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID)
-    let next = PlaybackRequest(target: target, event: event, candidate: candidate, container: container)
+    let next = PlaybackRequest(
+      target: target, event: event, candidate: candidate, container: container,
+      isLive: candidate?.sourceKind == .iptv || candidate?.channel != nil
+        || (event?.status.isLive ?? (candidate == nil))
+    )
     request = next
     await load(next, refreshSource: refreshSource)
   }
@@ -246,7 +251,7 @@ import UIKit
           ?? candidates.first(where: { $0.title == request.candidate?.title })
           ?? candidates.first else { throw RallyNetworkError.invalidResponse }
         request = PlaybackRequest(target: selected.playbackTarget.absoluteString, event: event,
-          candidate: selected, container: request.container)
+          candidate: selected, container: request.container, isLive: request.isLive)
         guard revision == generation, !Task.isCancelled else { return }
         self.request = request
         target = selected.id
@@ -280,8 +285,9 @@ import UIKit
       guard NetworkPolicy.shared.permits(resolved) else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
       headers = requestHeaders
       playlistPermission = permission
-      if multiViewCount == nil {
-        try await startAetherEngine(source: resolved, headers: requestHeaders, event: request.event)
+      if multiViewCount == nil && Self.shouldUseAetherEngine(for: resolved, candidate: request.candidate) {
+        try await startAetherEngine(
+          source: resolved, headers: requestHeaders, event: request.event, isLive: request.isLive)
         guard revision == generation else { return }
         target = request.candidate?.id ?? request.target
         sourceTitle = resolvedTitle
@@ -382,12 +388,14 @@ import UIKit
     let now = Date()
     let started = videoFrameWaitStarted ?? now
     videoFrameWaitStarted = started
-    guard now.timeIntervalSince(started) >= 35 else { return }
+    guard now.timeIntervalSince(started) >= 8 else { return }
     if aetherEngine == nil, let resolvedSource, let request {
       videoFrameWaitStarted = now
       Task { [weak self] in
         do {
-          try await self?.startAetherEngine(source: resolvedSource, headers: self?.headers ?? [:], event: request.event)
+          try await self?.startAetherEngine(
+            source: resolvedSource, headers: self?.headers ?? [:], event: request.event,
+            isLive: request.isLive)
         } catch {
           await MainActor.run {
             guard let self else { return }
@@ -411,13 +419,22 @@ import UIKit
     error = "This source isn’t displaying video. Try another source."
     RallyDiagnostics.shared.record("Playback", code: "No video frame after AetherEngine fallback")
   }
-  private func startAetherEngine(source: URL, headers: [String: String], event: SportEvent?) async throws {
+  private static func shouldUseAetherEngine(for url: URL, candidate: StreamCandidate?) -> Bool {
+    let extensionName = url.pathExtension.lowercased()
+    let containersNeedingAether = ["mkv", "webm", "avi"]
+    return containersNeedingAether.contains(extensionName)
+      || candidate?.quality.is4K == true
+      || candidate?.quality.isHdr == true
+  }
+  private func startAetherEngine(
+    source: URL, headers: [String: String], event: SportEvent?, isLive: Bool
+  ) async throws {
     player.pause()
     player.replaceCurrentItem(with: nil)
     let engine = try AetherEngine()
     aetherEngine?.stop()
     aetherEngine = engine
-    let eventIsLive = event?.status.isLive ?? false
+    let eventIsLive = event?.status.isLive ?? isLive
     aetherStateObservation = engine.$state.sink { [weak self] state in
       Task { @MainActor in
         guard let self, self.aetherEngine === engine else { return }
@@ -462,6 +479,11 @@ import UIKit
       matchContentEnabled: true,
       panelIsInHDRMode: UIScreen.main.currentEDRHeadroom > 1,
       isLive: eventIsLive,
+      // Live IPTV responses can be slow or sparse. FFmpeg's 50 MB / 60 s defaults can
+      // make the initial demux probe look like a hung player. Sports streams expose
+      // video and audio quickly, so bound discovery while leaving enough headroom for TS.
+      probesize: 3 * 1024 * 1024,
+      maxAnalyzeDuration: 3_000_000,
       autoplay: true
     )
     if let probe = try await engine.load(url: source, options: options) {
