@@ -31,8 +31,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // Stabilization release; never reuse a published version code.
-        versionCode = 14
-        versionName = "1.0-beta13"
+        versionCode = 15
+        versionName = "1.0-beta16"
         buildConfigField("String", "RALLY_RELEASE_CERT_SHA256", "\"${releaseIdentity.getProperty("production.sha256")}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/shivpatell25/rally/releases/latest">Download Rally TV Beta 11</a>
+  <a href="https://github.com/shivpatell25/rally/releases/latest">Download Rally TV Beta 16</a>
   ·
   <a href="https://github.com/shivpatell25/rally/issues">Get help</a>
 </p>
@@ -28,7 +28,7 @@ Rally is designed for Android TV, Google TV, and Apple TV, with a clear, cinemat
 
 ## Get started
 
-1. Download the Android APK from the [latest stable Rally TV release](https://github.com/shivpatell25/rally/releases/latest), or get the [Apple TV Beta 14 prerelease](https://github.com/shivpatell25/rally/releases/tag/v1.0-beta14).
+1. Download the Android APK from the [latest stable Rally TV release](https://github.com/shivpatell25/rally/releases/latest), or get the Apple TV Beta 16 prerelease from the [latest Rally release](https://github.com/shivpatell25/rally/releases/latest).
 2. Install the APK on a compatible Android TV or Google TV device. The Apple TV IPA is unsigned and must be signed by a compatible tvOS sideloading tool during installation.
 3. Open **Settings → Sources** to connect a provider or add-on you are authorized to use.
 4. Browse the Home screen, follow your teams in **My Rally**, and start watching.
@@ -52,4 +52,4 @@ Credit to Jacob Halladay (LinkedIn: https://www.linkedin.com/in/jacobhalladay) f
 
 ## About this build
 
-Rally TV Beta 14 is an Apple TV prerelease with the latest tvOS navigation, playback and screen updates. Android TV remains on Beta 13. The Apple TV IPA is unsigned for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. Android releases use Rally’s recovered production signing identity with a verified migration for compatible Android 9+ beta installs, preserving existing app data.
+Rally TV Beta 16 includes the VideoLAN playback engine for 4K/HDR and file-based media on Apple TV. Android TV is version 1.0-beta16. The Apple TV IPA is unsigned for a tvOS sideloading tool to sign during installation; it is not an App Store or TestFlight build. Android releases use Rally’s recovered production signing identity with a verified migration for compatible Android 9+ beta installs, preserving existing app data.

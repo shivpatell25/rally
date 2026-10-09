@@ -157,10 +157,15 @@ fun SettingsScreen(
         runCatching { firstFocus.requestFocus() }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    var section by remember { mutableStateOf("Sources") }
+    Row(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.width(208.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf("Sources", "Playback", "Appearance & Accessibility", "Personalization", "Notifications", "About Rally").forEach { category ->
+                SettingsButton(category, { section = category }, selected = section == category, modifier = Modifier.fillMaxWidth())
+            }
+        }
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                .padding(horizontal = 66.dp, vertical = 30.dp)
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 8.dp)
         ) {
             Column(Modifier.widthIn(max = 1120.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -180,7 +185,7 @@ fun SettingsScreen(
                     Text(it, color = RallyTvPalette.Live, fontFamily = RallyBodyFont, fontSize = 13.sp)
                 }
                 Spacer(Modifier.height(30.dp))
-                SourcesSettings(
+                if (section == "Sources") SourcesSettings(
                     iptvProvider = iptvProvider,
                     portalUrl = portalUrl,
                     macAddress = macAddress,
@@ -218,6 +223,7 @@ fun SettingsScreen(
                     onRunDiagnostics = viewModel::runProviderDiagnostics,
                     onClearDiagnostics = viewModel::clearLocalDiagnostics
                 )
+                if (section == "Personalization") {
                 SportsSettings(
                     sportsOrder = sportsOrder,
                     enabledLeagues = enabledLeagues,
@@ -232,13 +238,19 @@ fun SettingsScreen(
                     onToggleTeam = viewModel::toggleFavoriteTeam,
                     onAddTeam = viewModel::addFavoriteTeam
                 )
-                AlertsSettings(
+                PreferencesSettings(
+                    onExportPreferences = { preferencesExport.launch("rally-preferences.json") },
+                    onImportPreferences = { preferencesImport.launch(arrayOf("application/json", "text/plain")) }
+                )
+                }
+                if (section == "Notifications") AlertsSettings(
                     liveGameAlertsEnabled = liveGameAlertsEnabled,
                     redZoneAlertsEnabled = redZoneAlertsEnabled,
                     onToggleLiveGameAlerts = viewModel::toggleLiveGameAlerts,
                     onToggleRedZoneAlerts = viewModel::toggleRedZoneAlerts
                 )
-                ViewingSettings(
+                if (section == "Playback" || section == "Appearance & Accessibility") ViewingSettings(
+                    playbackOnly = section == "Playback",
                     lowLatencyMode = lowLatencyMode,
                     reducedMotion = reducedMotion,
                     highContrastFocus = highContrastFocus,
@@ -256,15 +268,13 @@ fun SettingsScreen(
                     onToggleAudioNormalization = viewModel::toggleAudioNormalization,
                     onToggleAdaptiveQuality = viewModel::toggleAdaptiveQuality
                 )
-                SupportSettings(
+                if (section == "About Rally") SupportSettings(
                     diagnostics = providerDiagnostics,
                     message = supportMessage,
                     updateState = updateState,
                     onRunDiagnostics = viewModel::runProviderDiagnostics,
                     onExportDiagnostics = { diagnosticsExport.launch("rally-support-${BuildConfig.VERSION_NAME}.txt") },
                     onClearDiagnostics = viewModel::clearLocalDiagnostics,
-                    onExportPreferences = { preferencesExport.launch("rally-preferences.json") },
-                    onImportPreferences = { preferencesImport.launch(arrayOf("application/json", "text/plain")) },
                     onCheckForUpdates = viewModel::checkForUpdates,
                     onDownloadUpdate = viewModel::downloadUpdate,
                     onInstallUpdate = viewModel::installUpdate,
@@ -285,6 +295,7 @@ fun SettingsScreen(
 
 @Composable
 private fun ViewingSettings(
+    playbackOnly: Boolean,
     lowLatencyMode: Boolean,
     reducedMotion: Boolean,
     highContrastFocus: Boolean,
@@ -302,13 +313,14 @@ private fun ViewingSettings(
     onToggleAudioNormalization: () -> Unit,
     onToggleAdaptiveQuality: () -> Unit
 ) {
-    SettingsPage("Viewing", "Tune playback, accessibility, and the idle TV experience.") {
+    SettingsPage(if (playbackOnly) "Playback" else "Appearance & Accessibility", "Tune playback, accessibility, and the idle TV experience.") {
+        if (playbackOnly) {
         SettingsPanel("Playback", "Designed for live sports on TV hardware") {
             ViewingToggle("Low-latency live playback", "Keeps live streams closer to the broadcast while retaining a safe buffer.", lowLatencyMode, onToggleLowLatency)
             ViewingToggle("Adaptive stream quality", "Steps down before a high-bitrate stream can stall, then restores quality after the connection stabilizes.", adaptiveQualityEnabled, onToggleAdaptiveQuality)
             ViewingToggle("Normalize broadcast audio", "Reduces abrupt volume changes between broadcasts while preserving crowd and commentary detail.", audioNormalizationEnabled, onToggleAudioNormalization)
         }
-        Spacer(Modifier.height(16.dp))
+        } else {
         SettingsPanel("Accessibility", "Comfortable navigation from across the room") {
             ViewingToggle("Reduce motion", "Removes nonessential focus and background animation.", reducedMotion, onToggleReducedMotion)
             ViewingToggle("High-contrast focus", "Uses a brighter, thicker outline on the selected control.", highContrastFocus, onToggleHighContrast)
@@ -318,6 +330,7 @@ private fun ViewingSettings(
         Spacer(Modifier.height(16.dp))
         SettingsPanel("Idle display", "A quiet, TV-safe score view after five minutes") {
             ViewingToggle("Score saver", "Shows current scores and upcoming games instead of a static screen.", scoreSaverEnabled, onToggleScoreSaver)
+        }
         }
     }
 }
@@ -367,15 +380,13 @@ private fun SupportSettings(
     onRunDiagnostics: () -> Unit,
     onExportDiagnostics: () -> Unit,
     onClearDiagnostics: () -> Unit,
-    onExportPreferences: () -> Unit,
-    onImportPreferences: () -> Unit,
     onCheckForUpdates: () -> Unit,
     onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenReleases: () -> Unit
 ) {
-    SettingsPage("Support", "Private diagnostics, portable preferences, and release information.") {
+    SettingsPage("About Rally", "Private diagnostics and release information.") {
         SettingsPanel("Rally for Android TV", "Version ${BuildConfig.VERSION_NAME} · Build ${BuildConfig.VERSION_CODE}") {
             Text(
                 "Sports, kept simple. Rally combines public sports data with sources you configure and control.",
@@ -455,6 +466,28 @@ private fun SupportSettings(
         }
 
         Spacer(Modifier.height(16.dp))
+
+        Spacer(Modifier.height(16.dp))
+        SettingsPanel("Content and providers", "Rally does not include or sell television service") {
+            Text(
+                "Schedules and statistics come from public sports feeds. IPTV providers and addon manifests are optional user-configured services. Use only sources and subscriptions you are authorized to access.",
+                color = RallyTvPalette.Muted,
+                fontFamily = RallyBodyFont,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
+        }
+
+        message?.let {
+            Spacer(Modifier.height(14.dp))
+            Text(it, color = RallyTvPalette.Accent, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun PreferencesSettings(onExportPreferences: () -> Unit, onImportPreferences: () -> Unit) {
+    SettingsPage("Import / Export Preferences", "Move personalization without provider credentials.") {
         SettingsPanel("Preferences backup", "Moves personalization without copying provider credentials") {
             Text(
                 "Backups include sports order, favorites, alerts, playback preferences, and accessibility settings. IPTV credentials and addon addresses stay on this TV.",
@@ -470,21 +503,6 @@ private fun SupportSettings(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-        SettingsPanel("Content and providers", "Rally does not include or sell television service") {
-            Text(
-                "Schedules and statistics come from public sports feeds. IPTV portals and Stremio addons are optional user-configured services. Use only sources and subscriptions you are authorized to access.",
-                color = RallyTvPalette.Muted,
-                fontFamily = RallyBodyFont,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
-        }
-
-        message?.let {
-            Spacer(Modifier.height(14.dp))
-            Text(it, color = RallyTvPalette.Accent, fontFamily = RallyBodyFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
     }
 }
 
@@ -600,7 +618,7 @@ private fun SourcesSettings(
         }
 
         Spacer(Modifier.height(18.dp))
-        SettingsPanel("Stremio Addons", "Manifest URLs used to discover event streams") {
+        SettingsPanel("Addon Manifests", "Manifest URLs used to discover event streams") {
             addonUrls.forEach { url ->
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
@@ -620,9 +638,10 @@ private fun SourcesSettings(
                 SettingsButton("Add", { onAddAddon(null) })
             }
             Spacer(Modifier.height(10.dp))
-            SettingsButton("Clear Addons", onResetAddons)
+            SettingsButton("Remove All Manifests", onResetAddons)
         }
 
+        Text("Rally is a media player and aggregation interface. Rally does not provide, host, sell, or redistribute third-party streams or channels. Only connect services and content sources that you are legally authorized to access. You are responsible for complying with applicable laws, copyright requirements, and the terms of the services you use.", color = RallyTvPalette.Muted, fontFamily = RallyBodyFont, fontSize = 12.sp, lineHeight = 18.sp)
         Spacer(Modifier.height(18.dp))
         SettingsPanel("Connection diagnostics", "Private checks run locally on this TV") {
             SettingsButton(if (diagnostics.running) "Checking…" else "Run checks", onRunDiagnostics, enabled = !diagnostics.running)

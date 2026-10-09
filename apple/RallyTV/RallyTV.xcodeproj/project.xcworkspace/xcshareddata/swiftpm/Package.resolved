@@ -1,22 +1,12 @@
 {
-  "originHash" : "acb133665d2c6f788337e013f765d84b5914388a89850cefa4b62ba80bc73458",
+  "originHash" : "cd59e1e9ea14b95b2b258137179c68de3e6bc61cf7912ee278d1e4ab6e66cc7f",
   "pins" : [
     {
-      "identity" : "ffmpegkit",
+      "identity" : "vlckit",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kingslay/FFmpegKit.git",
+      "location" : "https://github.com/videolan/vlckit.git",
       "state" : {
-        "revision" : "c32be9bfb628042737ad3ef622e930c5c7b15954",
-        "version" : "6.1.4"
-      }
-    },
-    {
-      "identity" : "ksplayer",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kingslay/KSPlayer.git",
-      "state" : {
-        "revision" : "bdfa2da39bb18865b317c4ffd08cdef5f8efc043",
-        "version" : "2.3.4"
+        "revision" : "2e0868f5ed40fe59cd92f377645fdcc260c6e759"
       }
     }
   ],

@@ -420,18 +420,43 @@ final class RallyParityTests: XCTestCase {
     }
   }
 
-  @MainActor func testPlaybackEngineKeepsStandardHLSNativeAndSelectsKSPlayerFor4KHDR() {
+  @MainActor func testPlaybackEngineKeepsStandardHLSNativeAndSelectsVideoLANFor4KHDR() {
     let hls = URL(string: "https://media.example/live/master.m3u8")!
     let standard = StreamCandidate(
       addon: StremioStreamOption(title: "1080p broadcast", streamUrl: hls, quality: "1080p"))
-    XCTAssertFalse(PlaybackSession.prefersKSPlayer(candidate: standard, url: hls))
+    XCTAssertFalse(PlaybackSession.prefersVLC(candidate: standard, url: hls))
 
     let hdr = StreamCandidate(
       addon: StremioStreamOption(title: "2160p HDR", streamUrl: hls, quality: "2160p HDR"))
-    XCTAssertTrue(PlaybackSession.prefersKSPlayer(candidate: hdr, url: hls))
+    XCTAssertTrue(PlaybackSession.prefersVLC(candidate: hdr, url: hls))
     XCTAssertTrue(
-      PlaybackSession.prefersKSPlayer(
+      PlaybackSession.prefersVLC(
         candidate: nil, url: URL(string: "https://media.example/highlights.mp4")!))
+  }
+
+  @MainActor func testVideoLANStartsAndRendersHLSInSimulatorWindow() async throws {
+    let window = UIWindow(frame: UIScreen.main.bounds)
+    let root = UIViewController()
+    window.rootViewController = root
+    window.makeKeyAndVisible()
+    let renderView = UIView(frame: root.view.bounds)
+    renderView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    root.view.addSubview(renderView)
+    let engine = VLCPlaybackEngine()
+    engine.attach(to: renderView)
+    defer { engine.stop(); window.isHidden = true }
+    engine.open(
+      url: TVOSFixtures.video, live: false, lowLatency: false,
+      position: nil, playing: true, muted: false, update: { _ in })
+
+    for _ in 0..<120 {
+      if engine.latestSnapshot.failure != nil
+        || (engine.latestSnapshot.ready && engine.latestSnapshot.position > 0) { break }
+      try await Task.sleep(for: .milliseconds(250))
+    }
+    XCTAssertNil(engine.latestSnapshot.failure)
+    XCTAssertTrue(engine.latestSnapshot.ready, "VideoLAN should create a video output")
+    XCTAssertGreaterThan(engine.latestSnapshot.position, 0, "VideoLAN playback time should advance")
   }
 
   func testBackupsOmitCredentialsAndPreserveImportedTeamKeys() throws {

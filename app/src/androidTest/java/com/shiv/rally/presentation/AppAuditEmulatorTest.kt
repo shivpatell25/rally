@@ -123,11 +123,21 @@ class AppAuditEmulatorTest {
         compose.onNode(hasSetTextAction()).performTextClearance()
         compose.onNodeWithContentDescription("Settings").performClick()
         waitText("Make Rally yours")
-        listOf("SPORTS", "MY RALLY", "LIVE ALERTS", "VIEWING", "SUPPORT").forEach { heading ->
-            compose.onNodeWithText(heading).performScrollTo().assertIsDisplayed()
+        listOf("Sources", "Playback", "Appearance & Accessibility", "Personalization", "Notifications", "About Rally").forEach { category ->
+            // Activate the sidebar, then verify its detail panel. Presence of a
+            // sidebar label alone does not prove that the destination works.
+            compose.onAllNodesWithText(category).onFirst().performScrollTo().performClick()
+            compose.waitForIdle()
+            capture("settings-${category.substringBefore(' ').lowercase()}")
+            when (category) {
+                "Sources" -> compose.onNodeWithText("IPTV provider").assertIsDisplayed()
+                "Playback" -> compose.onNodeWithText("Low-latency live playback").assertIsDisplayed()
+                "Appearance & Accessibility" -> compose.onNodeWithText("Reduce motion").assertIsDisplayed()
+                "Personalization" -> compose.onNodeWithText("SPORTS").assertIsDisplayed()
+                "Notifications" -> compose.onNodeWithText("Game updates").assertIsDisplayed()
+                "About Rally" -> compose.onNodeWithText("Check for updates").performScrollTo().assertIsDisplayed()
+            }
         }
-        compose.onNodeWithText("Reduce motion").performScrollTo().assertIsDisplayed()
-        capture("settings-viewing")
         compose.onNodeWithText("Check for updates").performScrollTo().performClick()
         Thread.sleep(2_000)
         capture("settings-support")

@@ -78,7 +78,7 @@ fun OnboardingScreen(onContinue: () -> Unit) {
             Spacer(Modifier.height(30.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 OnboardingCard("01", "Choose your sports", "Arrange leagues and favorite teams so Rally promotes the games that matter to you.", Modifier.weight(1f))
-                OnboardingCard("02", "Connect your sources", "Add only the IPTV portals and Stremio addons you are authorized to use.", Modifier.weight(1f))
+                OnboardingCard("02", "Connect your sources", "Add only the IPTV portals and addon manifests you are authorized to use.", Modifier.weight(1f))
                 OnboardingCard("03", "Watch your way", "Use automatic source selection, Game View, current highlights, and Multi-View from one remote-first interface.", Modifier.weight(1f))
             }
             Spacer(Modifier.height(28.dp))

@@ -446,7 +446,7 @@ class SettingsViewModel @Inject constructor(
             return false
         }
         if (_stremioAddonUrls.value.any { PortalUrlNormalizer.normalizeAddon(it) == null }) {
-            _configurationError.value = "One or more Stremio addon URLs are invalid."
+            _configurationError.value = "One or more addon manifest URLs are invalid."
             return false
         }
         if (_newAddonUrl.value.isNotBlank()) {

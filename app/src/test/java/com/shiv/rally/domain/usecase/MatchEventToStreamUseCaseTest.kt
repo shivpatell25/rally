@@ -31,6 +31,26 @@ class MatchEventToStreamUseCaseTest {
     private val matcher = MatchEventToStreamUseCase(fakeSportsRepository)
 
     @Test
+    fun `shared city does not create false regional game matchup`() = runTest {
+        val event = SportEvent("nhl", "Islanders vs Rangers", Team("r", "New York Rangers", "NYR"), Team("i", "New York Islanders", "NYI"), Instant.now(), EventStatus.LIVE, sport = "Hockey", league = "NHL")
+        val sources = matcher.getRelevantChannelsForEvent(event, listOf(IptvChannel("yes", "1", "YES NETWORK 4K", "Sports")))
+        assertFalse(sources.any { it.matchBadge == "Game Matchup" })
+    }
+
+    @Test
+    fun `misclassified series loops are excluded but World Series is retained`() = runTest {
+        val event = SportEvent("mlb", "Dodgers vs Braves", Team("lad", "Los Angeles Dodgers", "LAD"), Team("atl", "Atlanta Braves", "ATL"), Instant.now(), EventStatus.LIVE, sport = "Baseball", league = "MLB")
+        val channels = listOf(
+            IptvChannel("series", "1", "MLB 4K PEACOCK ALL TIME FAVOURITE SERIES", "Sports"),
+            IptvChannel("ott", "2", "24X7 OTT SERIES 4K", "Sports"),
+            IptvChannel("category", "4", "4K PEACOCK TRENDING 2026", "ENGLISH | 24X7 OTT SERIES"),
+            IptvChannel("cricket", "5", "A SPORTS 4K", "SPORTS | CRICKET"),
+            IptvChannel("world", "3", "MLB World Series FOX", "Sports")
+        )
+        assertEquals(listOf("world"), matcher.getRelevantChannelsForEvent(event, channels).map { it.channel.id })
+    }
+
+    @Test
     fun matchesEventWithTeamAndLeague() = runTest {
         val lakers = Team("1", "Los Angeles Lakers", "LAL")
         val warriors = Team("2", "Golden State Warriors", "GSW")
@@ -119,7 +139,7 @@ class MatchEventToStreamUseCaseTest {
 
         val relevant = matcher.getRelevantChannelsForEvent(event, channels)
 
-        assertEquals(5, relevant.size)
+        assertEquals(4, relevant.size)
         // 1st: Direct Matchup
         assertEquals("c_match", relevant[0].channel.id)
         assertEquals("Game Matchup", relevant[0].matchBadge)
@@ -137,8 +157,8 @@ class MatchEventToStreamUseCaseTest {
         assertEquals("c_espn", relevant[3].channel.id)
         assertEquals("Sports Network", relevant[3].matchBadge)
 
-        // 5th: General Sports Channel (Golf)
-        assertEquals("c_golf", relevant[4].channel.id)
+        // A dedicated golf channel is not a fallback for an NFL game.
+        assertFalse(relevant.any { it.channel.id == "c_golf" })
     }
 
     @Test
@@ -173,10 +193,9 @@ class MatchEventToStreamUseCaseTest {
         assertEquals("c_seahawks_feed", relevant[1].channel.id)
         assertEquals("Seattle Seahawks Feed", relevant[1].matchBadge)
 
-        // MILB channels must NOT have "Game Matchup" or be ranked at the top
-        val milbPatriots = relevant.first { it.channel.id == "c_milb_patriots" }
-        assertFalse(milbPatriots.matchBadge == "Game Matchup")
-        assertTrue(relevant.indexOf(milbPatriots) > 1)
+        // Shared nicknames cannot reintroduce unrelated baseball broadcasts.
+        assertFalse(relevant.any { it.channel.id == "c_milb_patriots" })
+        assertFalse(relevant.any { it.channel.id == "c_milb_seadogs" })
     }
 
     @Test
@@ -314,5 +333,3 @@ class MatchEventToStreamUseCaseTest {
         assertEquals("c_secn", relevant.first().channel.id) // First/top recommendation!
     }
 }
-
-

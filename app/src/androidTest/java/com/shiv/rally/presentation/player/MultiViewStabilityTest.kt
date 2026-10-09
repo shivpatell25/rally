@@ -192,6 +192,28 @@ class MultiViewStabilityTest {
         verifyVisibleVideo("portal-four")
     }
 
+    @Test fun extendedFourStreamLiveSoak() {
+        val seconds = InstrumentationRegistry.getArguments().getString("rallySoakSeconds")?.toLongOrNull() ?: 0L
+        Assume.assumeTrue("Opt in to a 10-minute or longer hardware soak with rallySoakSeconds", seconds >= 600L)
+        start(portal = true)
+        val until = android.os.SystemClock.elapsedRealtime() + seconds * 1000L
+        var sample = 0
+        while (android.os.SystemClock.elapsedRealtime() < until) {
+            settle(15_000)
+            playing(4)
+            assertTrue("A multiview slot entered an error state", vm.uiState.value.slots.all { it.error == null })
+            if (++sample % 4 == 0) {
+                compose.runOnIdle { vm.setAudioSlot((sample / 4) % 4) }
+                verifyVisibleVideo("soak-$sample")
+                val memory = android.os.Debug.MemoryInfo()
+                android.os.Debug.getMemoryInfo(memory)
+                android.util.Log.i("RallySoak", "sample=$sample pssKb=${memory.totalPss} slots=4")
+            }
+        }
+        verifyVisibleVideo("soak-final")
+        assertEquals(0, server.badHeaders.get())
+    }
+
     @Test fun permanentlyUnavailableSourceStopsRetryingWhileOtherGamesKeepPlaying() {
         start(portal = false)
         server.offlineGames.add("game1")

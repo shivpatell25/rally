@@ -1,10 +1,8 @@
-Rally's tvOS playback path uses KSPlayer 2.3.4 and FFmpegKit 6.1.4.
-The pinned public package versions currently use GNU GPL version 3. Their full
-license texts are included in KSPlayer-GPL.txt and FFmpegKit-GPL.txt.
+Rally's alternate tvOS playback path uses VideoLAN VLCKit from the official
+VideoLAN repository at revision 2e0868f5ed40fe59cd92f377645fdcc260c6e759.
+VLCKit is licensed under LGPL 2.1 or later. Its license text is included in
+VLCKit-LGPL.txt. Exact source: https://github.com/videolan/vlckit/tree/2e0868f5ed40fe59cd92f377645fdcc260c6e759
 
-KSPlayer source: https://github.com/kingslay/KSPlayer/tree/2.3.4
-FFmpegKit source: https://github.com/kingslay/FFmpegKit/tree/6.1.4
-
-This dependency configuration must not be distributed as part of a Rally
-proprietary app unless Rally has secured compatible licensing or changed its
-distribution/licensing terms. Do not describe this build as LGPL licensed.
+The bundled XCFramework is the upstream VideoLAN build downloaded through the
+official Swift Package manifest. Rally does not modify VLCKit. Check the exact
+license files of included VLC modules and codecs before distributing a build.

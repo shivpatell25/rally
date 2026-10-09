@@ -148,6 +148,10 @@ class MatchEventToStreamUseCase @Inject constructor(
             val nameLower = channel.name.lowercase()
             val categoryLower = channel.category.lowercase()
 
+            // Some providers put entertainment loops in Sports categories.
+            // Preserve genuine World Series broadcasts while excluding those loops.
+            if (categoryLower.contains("series") || categoryLower.contains("vod") || (nameLower.contains("series") && listOf("ott series", "favourite series", "favorite series", "most watched series", "trending").any(nameLower::contains))) continue
+
             // Filter out dead, test, or replay/vault channels
             val isReplayOrDead = nameLower.contains("replay") ||
                     nameLower.contains("classic") ||
@@ -240,7 +244,7 @@ class MatchEventToStreamUseCase @Inject constructor(
             val isDirectGameMatch = isBothTeamsMatch || isLeaguePackageMatch || isSingleTeamMatch
 
             // 3. Filter: Only sports-related channels
-            val isSports = isDirectGameMatch || isOfficialBroadcast || isSportsChannel(channel)
+            val isSports = isDirectGameMatch || isOfficialBroadcast || (!isConflicting && isSportsChannel(channel))
             if (!isSports) continue
 
             // 4. Calculate Likelihood Score based on ESPN data
@@ -551,9 +555,9 @@ class MatchEventToStreamUseCase @Inject constructor(
         // Baltimore / Washington: MASN
         if ((city == "baltimore" || city == "washington" || nickname == "orioles" || nickname == "nationals") && channelNameLower.contains("masn")) return true
         // NY Yankees / Brooklyn: YES Network
-        if ((city == "new york" || nickname == "yankees" || nickname == "nets") && (channelNameLower.contains("yes network") || channelNameLower.contains("yes hd"))) return true
+        if ((nickname == "yankees" || nickname == "nets") && (channelNameLower.contains("yes network") || channelNameLower.contains("yes hd"))) return true
         // NY Mets: SNY
-        if ((city == "new york" || nickname == "mets") && channelNameLower.contains("sny")) return true
+        if ((nickname == "mets") && channelNameLower.contains("sny")) return true
         // Chicago Cubs: Marquee
         if ((city == "chicago" || nickname == "cubs") && channelNameLower.contains("marquee")) return true
         // LA Dodgers / Lakers: SportsNet LA / Spectrum

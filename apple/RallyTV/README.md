@@ -1,8 +1,8 @@
 # Rally for Apple TV
 
 Native tvOS port of the Android app in this repository. SwiftUI owns navigation,
-focus and presentation. AVPlayer handles standard HLS; KSPlayer's FFmpeg/Metal
-engine handles sources identified as 4K/HDR and file-based media.
+focus and presentation. AVPlayer handles standard HLS; VideoLAN VLCKit handles
+sources identified as 4K/HDR and file-based media.
 The current Android composition and the user's later design refinements take
 precedence over older mockup examples. See [the parity inventory](PARITY.md).
 
@@ -79,7 +79,7 @@ not bundle a provider account or invent playable sports streams.
 | `Features` | Home, Schedule, Event, Game View, Multiview and all other routes |
 | `Models`, `Networking`, `Repositories` | Codable feed parsing, bounded requests, caching |
 | `IPTV`, `Addons` | Provider authentication/catalogs, addon discovery and source resolution |
-| `Player` | AVPlayer and KSPlayer lifecycles, guarded header proxy, track selection, Now Playing |
+| `Player` | AVPlayer and VideoLAN VLCKit lifecycles, guarded header proxy, track selection, Now Playing |
 | `Storage`, `Services` | Keychain, preferences, caches, matching, ranking, diagnostics |
 | `Tests`, `UITests` | Data/playback regressions and actual Siri Remote UI navigation |
 
@@ -130,10 +130,16 @@ verification record are in [QA](QA/README.md).
 Set `TEST_RUNNER_RALLY_LIVE_QA=1` when running the test command to include that
 network-dependent shipping-data walkthrough.
 
-## KSPlayer beta licensing
+## VideoLAN licensing and playback validation
 
-The KSPlayer beta release uses KSPlayer 2.3.4 and FFmpegKit 6.1.4 under GPLv3.
-This beta's Rally source is distributed under GPLv3; see the repository's
-`LICENSE` file. Third-party notices and license texts are bundled in Settings →
-Playback Licenses. This release is for testing and still needs 4K/HDR validation
-on a physical Apple TV.
+The alternate tvOS playback engine uses the official VideoLAN VLCKit package,
+licensed under LGPL 2.1 or later. Rally does not modify the bundled framework;
+the license and notice are included in Settings → Playback Licenses. Verify the
+licenses for the exact included modules/codecs and meet LGPL distribution
+requirements before shipping. The chosen source revision and package details are
+in `Resources/ThirdParty/NOTICE.txt`.
+
+The VLC route is selected for sources identified as 4K/HDR and file-based media;
+standard HLS and multiview remain on AVPlayer. A successful build does not certify
+4K/HDR output. Validate the actual stream and display mode on physical Apple TV
+hardware before calling HDR support verified.

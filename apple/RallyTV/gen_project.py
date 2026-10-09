@@ -57,9 +57,9 @@ def main() -> None:
         "resourcesPhase": uid("PBXResourcesBuildPhase:RallyTV"),
         "frameworksPhase": uid("PBXFrameworksBuildPhase:RallyTV"),
         "testFrameworksPhase": uid("PBXFrameworksBuildPhase:RallyTVUITests"),
-        "ksPackage": uid("XCRemoteSwiftPackageReference:KSPlayer"),
-        "ksProduct": uid("XCSwiftPackageProductDependency:KSPlayer"),
-        "ksBuild": uid("PBXBuildFile:KSPlayer"),
+        "vlcPackage": uid("XCRemoteSwiftPackageReference:VLCKit"),
+        "vlcProduct": uid("XCSwiftPackageProductDependency:VLCKit"),
+        "vlcBuild": uid("PBXBuildFile:VLCKit"),
         "testTarget": uid("PBXNativeTarget:RallyTVUITests"),
         "testProduct": uid("PBXFileReference:RallyTVUITests.xctest"),
         "testSourcesPhase": uid("PBXSourcesBuildPhase:RallyTVUITests"),
@@ -105,7 +105,7 @@ def main() -> None:
         L.append(f"/* End {name} section */")
     # PBXBuildFile
     section("PBXBuildFile")
-    L.append(f"\t\t{ids['ksBuild']} = {{isa = PBXBuildFile; productRef = {ids['ksProduct']}; }};")
+    L.append(f"\t\t{ids['vlcBuild']} = {{isa = PBXBuildFile; productRef = {ids['vlcProduct']}; }};")
     for rel in sources:
         L.append(f"\t\t{build_ids[rel]} = {{isa = PBXBuildFile; fileRef = {file_ids[rel]}; }};")
     for rel in resources:
@@ -133,7 +133,7 @@ def main() -> None:
 
     # PBXFrameworksBuildPhase
     section("PBXFrameworksBuildPhase")
-    L.append(f"\t\t{ids['frameworksPhase']} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({ids['ksBuild']}); runOnlyForDeploymentPostprocessing = 0; }};")
+    L.append(f"\t\t{ids['frameworksPhase']} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({ids['vlcBuild']}); runOnlyForDeploymentPostprocessing = 0; }};")
     L.append(f"\t\t{ids['testFrameworksPhase']} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
     end_section("PBXFrameworksBuildPhase")
 
@@ -157,7 +157,7 @@ def main() -> None:
         f"buildPhases = ({ids['sourcesPhase']}, {ids['frameworksPhase']}, {ids['resourcesPhase']}); "
         f"buildRules = (); dependencies = (); name = RallyTV; "
         f"productName = RallyTV; productReference = {ids['appRef']}; "
-        f"packageProductDependencies = ({ids['ksProduct']}); productType = \"com.apple.product-type.application\"; }};"
+        f"packageProductDependencies = ({ids['vlcProduct']}); productType = \"com.apple.product-type.application\"; }};"
     )
     L.append(
         f"\t\t{ids['testTarget']} = {{isa = PBXNativeTarget; "
@@ -195,7 +195,7 @@ def main() -> None:
         f"compatibilityVersion = \"Xcode 16.0\"; developmentRegion = en; "
         f"hasScannedForEncodings = 0; knownRegions = (en, Base); "
         f"mainGroup = {ids['mainGroup']}; productRefGroup = {ids['productsGroup']}; "
-        f"packageReferences = ({ids['ksPackage']}); "
+        f"packageReferences = ({ids['vlcPackage']}); "
         f"projectDirPath = \"\"; projectRoot = \"\"; targets = ({ids['target']}, {ids['testTarget']}, {uid("unitTarget")}); }};"
     )
     end_section("PBXProject")
@@ -219,10 +219,10 @@ def main() -> None:
     end_section("PBXSourcesBuildPhase")
 
     section("XCRemoteSwiftPackageReference")
-    L.append(f"\t\t{ids['ksPackage']} = {{isa = XCRemoteSwiftPackageReference; repositoryURL = \"https://github.com/kingslay/KSPlayer.git\"; requirement = {{kind = exactVersion; version = 2.3.4; }}; }};")
+    L.append(f"\t\t{ids['vlcPackage']} = {{isa = XCRemoteSwiftPackageReference; repositoryURL = \"https://github.com/videolan/vlckit.git\"; requirement = {{kind = revision; revision = 2e0868f5ed40fe59cd92f377645fdcc260c6e759; }}; }};")
     end_section("XCRemoteSwiftPackageReference")
     section("XCSwiftPackageProductDependency")
-    L.append(f"\t\t{ids['ksProduct']} = {{isa = XCSwiftPackageProductDependency; package = {ids['ksPackage']}; productName = KSPlayer; }};")
+    L.append(f"\t\t{ids['vlcProduct']} = {{isa = XCSwiftPackageProductDependency; package = {ids['vlcPackage']}; productName = VLCKit; }};")
     end_section("XCSwiftPackageProductDependency")
 
     # XCBuildConfiguration
@@ -243,7 +243,7 @@ def main() -> None:
         "ASSETCATALOG_COMPILER_APPICON_NAME = Rally; "
         "CODE_SIGN_STYLE = Automatic; "
         "COPY_PHASE_STRIP = NO; "
-        "CURRENT_PROJECT_VERSION = 18; "
+        "CURRENT_PROJECT_VERSION = 19; "
         "ENABLE_PREVIEWS = YES; "
         "GENERATE_INFOPLIST_FILE = YES; "
         "INFOPLIST_KEY_CFBundleDisplayName = Rally; INFOPLIST_FILE = RallyTV/App/Info.plist; "

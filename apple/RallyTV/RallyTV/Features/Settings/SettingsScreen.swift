@@ -549,7 +549,7 @@ private struct PlaybackLicensesSheet: View {
     ScrollView {
       VStack(alignment: .leading, spacing: RallyDesign.pt(20)) {
         Text(bundledText("NOTICE")).font(RallyDesign.font(12))
-        ForEach(["KSPlayer-GPL", "FFmpegKit-GPL"], id: \.self) { name in
+        ForEach(["VLCKit-LGPL"], id: \.self) { name in
           Text(bundledText(name)).font(RallyDesign.font(10)).foregroundStyle(RallyDesign.muted)
         }
       }.frame(maxWidth: .infinity, alignment: .leading)
