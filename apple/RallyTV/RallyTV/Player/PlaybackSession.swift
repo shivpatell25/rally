@@ -285,7 +285,7 @@ import UIKit
       guard NetworkPolicy.shared.permits(resolved) else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
       headers = requestHeaders
       playlistPermission = permission
-      if multiViewCount == nil && Self.shouldUseAetherEngine(for: resolved, candidate: request.candidate) {
+      if multiViewCount == nil {
         try await startAetherEngine(
           source: resolved, headers: requestHeaders, event: request.event, isLive: request.isLive)
         guard revision == generation else { return }
@@ -379,6 +379,7 @@ import UIKit
     }
   }
   private func checkVideoFrame(active: Bool) {
+    guard multiViewCount == nil else { return }
     guard active, !videoVisible, let item = player.currentItem,
       item.status == .readyToPlay
     else {
@@ -418,13 +419,6 @@ import UIKit
     loading = false
     error = "This source isn’t displaying video. Try another source."
     RallyDiagnostics.shared.record("Playback", code: "No video frame after AetherEngine fallback")
-  }
-  private static func shouldUseAetherEngine(for url: URL, candidate: StreamCandidate?) -> Bool {
-    let extensionName = url.pathExtension.lowercased()
-    let containersNeedingAether = ["mkv", "webm", "avi"]
-    return containersNeedingAether.contains(extensionName)
-      || candidate?.quality.is4K == true
-      || candidate?.quality.isHdr == true
   }
   private func startAetherEngine(
     source: URL, headers: [String: String], event: SportEvent?, isLive: Bool
@@ -479,6 +473,7 @@ import UIKit
       matchContentEnabled: true,
       panelIsInHDRMode: UIScreen.main.currentEDRHeadroom > 1,
       isLive: eventIsLive,
+      liveJoinProfile: eventIsLive ? .fastZap : .standard,
       // Live IPTV responses can be slow or sparse. FFmpeg's 50 MB / 60 s defaults can
       // make the initial demux probe look like a hung player. Sports streams expose
       // video and audio quickly, so bound discovery while leaving enough headroom for TS.
