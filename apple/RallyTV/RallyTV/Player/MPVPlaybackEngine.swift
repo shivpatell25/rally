@@ -116,26 +116,24 @@ final class MPVPlaybackEngine: @unchecked Sendable {
       handle = next
       var window = Int64(Int(bitPattern: Unmanaged.passUnretained(layer).toOpaque()))
       mpv_set_option(next, "wid", MPV_FORMAT_INT64, &window)
-      let options: [String: String] = [
+      var options: [String: String] = [
         "config": "no", "load-scripts": "no", "osc": "no", "input-default-bindings": "no",
         "vo": "gpu-next", "gpu-api": "vulkan", "gpu-context": "moltenvk",
-        "hwdec": "videotoolbox", "ao": "avfoundation,audiounit",
-        "audio-channels": "stereo", "audio-fallback-to-null": "no",
-        "vulkan-swap-mode": "fifo", "vulkan-queue-count": "1",
-        "vulkan-async-compute": "no", "vulkan-async-transfer": "no",
-        "vulkan-disable-interop": "yes", "target-colorspace-hint": "yes",
-        "tone-mapping": "auto", "hdr-compute-peak": "yes",
+        "hwdec": "videotoolbox", "target-colorspace-hint": "yes",
         "keep-open": "yes", "loop-file": "no", "network-timeout": "15",
-        // Opaque proxy URLs must enter FFmpeg's HLS demuxer, never mpv's M3U clip playlist.
-        "demuxer": "lavf",
         "cache": "yes", "cache-pause": "yes", "cache-pause-wait": lowLatency ? "1" : "2",
         "demuxer-readahead-secs": live ? (lowLatency ? "4" : "12") : "30",
         "demuxer-max-bytes": String(cacheBytes), "demuxer-max-back-bytes": String(cacheBytes / 2),
         "demuxer-seekable-cache": "yes",
-        "demuxer-lavf-o": "live_start_index=-2,http_persistent=0,allowed_extensions=ALL",
         "pause": playing ? "no" : "yes", "mute": muted ? "yes" : "no",
         "msg-level": "all=no",  // Engine messages may contain private provider URLs.
       ]
+      // Provider-authenticated HLS is rewritten to an opaque loopback URL. Force
+      // FFmpeg's HLS demuxer only for that proxy; direct .m3u8 URLs are auto-detected.
+      if url.host == "127.0.0.1" {
+        options["demuxer"] = "lavf"
+        options["demuxer-lavf-o"] = "allowed_extensions=ALL"
+      }
       for (name, value) in options {
         let result = mpv_set_option_string(next, name, value)
         if result < 0

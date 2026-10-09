@@ -112,9 +112,17 @@ public struct StreamCandidate: Sendable, Hashable, Identifiable {
     self.preflightContentType = preflightContentType
   }
   public init(addon: StremioStreamOption) {
+    let parsedQuality = QualityParsing.parseQuality(
+      fromChannelName: [addon.quality, addon.title].compactMap { $0 }.joined(separator: " "))
     self.init(
       id: addon.id, playbackTarget: addon.streamUrl, title: addon.title,
-      sourceKind: .stremio, quality: StreamQualityInfo(resolution: addon.quality),
+      sourceKind: .stremio,
+      quality: StreamQualityInfo(
+        resolution: addon.quality ?? parsedQuality.resolution,
+        fps: parsedQuality.fps,
+        is4K: parsedQuality.is4K,
+        is60Fps: parsedQuality.is60Fps,
+        isHdr: parsedQuality.isHdr),
       qualityRank: 0, exactGameMatch: false, matchConfidence: 0,
       matchEvidence: addon.addonName ?? "Addon", headers: addon.headers, stremioStream: addon)
   }

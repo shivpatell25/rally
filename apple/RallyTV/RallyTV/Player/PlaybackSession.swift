@@ -49,6 +49,7 @@ import UIKit
   private var lastWatchedPosition: Double = 0
   private var scenePosition: Double?
   private var multiViewCount: Int?
+  private var mpvPlaybackSelected = false
   private var progress = PlaybackProgressWatchdog()
   private struct PlaybackRequest {
     let target: String
@@ -92,7 +93,7 @@ import UIKit
     return player.currentItem?.seekableTimeRanges.isEmpty == false
   }
   var playbackRequested: Bool { wantsPlayback }
-  var usesMPV: Bool { multiViewCount == nil && request != nil }
+  var usesMPV: Bool { multiViewCount == nil && request != nil && mpvPlaybackSelected }
   var isLive: Bool { request?.isLive ?? (!duration.isFinite || duration == 0) }
   var bufferedSeconds: Double {
     if usesMPV { return max(0, mpvState.cacheEnd - elapsed) }
@@ -223,6 +224,7 @@ import UIKit
     lastWatchedPosition = 0
     progress = PlaybackProgressWatchdog()
     settings = request.container.settings
+    mpvPlaybackSelected = false
     mpvState = MPVPlaybackEngine.Snapshot()
     mpv.stop()
     target = request.candidate?.id ?? request.target
@@ -280,7 +282,9 @@ import UIKit
       guard NetworkPolicy.shared.permits(resolved) else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
       headers = requestHeaders
       playlistPermission = permission
-      if multiViewCount == nil {
+      mpvPlaybackSelected = multiViewCount == nil
+        && Self.prefersMPV(candidate: request.candidate, url: resolved, title: resolvedTitle)
+      if usesMPV {
         var media = resolved
         var mediaProxy: HeaderMediaProxy?
         if !requestHeaders.isEmpty || resolved.scheme?.lowercased() == "http" {
@@ -356,6 +360,27 @@ import UIKit
       reconnect("Couldn’t open this source. Check your provider connection and retry.")
     }
   }
+  /// Use MPV for explicitly identified 4K/HDR streams and file-based media. Keep
+  /// adaptive HLS broadcasts on AVPlayer, whose tvOS HLS renderer and rendition
+  /// selection are native and reliable for standard 720p/1080p sports feeds.
+  static func prefersMPV(candidate: StreamCandidate?, url: URL, title: String = "") -> Bool {
+    let metadata = [
+      candidate?.quality.resolution,
+      candidate?.title,
+      candidate?.stremioStream?.quality,
+      title,
+      candidate?.playbackTarget.absoluteString,
+      url.absoluteString,
+    ].compactMap { $0 }.joined(separator: " ")
+    let parsed = QualityParsing.parseQuality(fromChannelName: metadata)
+    if candidate?.quality.is4K == true || candidate?.quality.isHdr == true
+      || parsed.is4K || parsed.isHdr
+    {
+      return true
+    }
+    return ["mp4", "m4v", "mov", "mkv", "webm"].contains(url.pathExtension.lowercased())
+  }
+
   private func checkProgress() {
     guard request != nil, error == nil, reconnectTask == nil else { return }
     let active = wantsPlayback && !sceneSuspended && !audioInterrupted

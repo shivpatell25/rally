@@ -419,6 +419,21 @@ final class RallyParityTests: XCTestCase {
       XCTAssertEqual(session.player.currentItem?.preferredMaximumResolution.height, 720)
     }
   }
+
+  @MainActor func testPlaybackEngineKeepsStandardHLSNativeAndSelectsMPVFor4KHDR() {
+    let hls = URL(string: "https://media.example/live/master.m3u8")!
+    let standard = StreamCandidate(
+      addon: StremioStreamOption(title: "1080p broadcast", streamUrl: hls, quality: "1080p"))
+    XCTAssertFalse(PlaybackSession.prefersMPV(candidate: standard, url: hls))
+
+    let hdr = StreamCandidate(
+      addon: StremioStreamOption(title: "2160p HDR", streamUrl: hls, quality: "2160p HDR"))
+    XCTAssertTrue(PlaybackSession.prefersMPV(candidate: hdr, url: hls))
+    XCTAssertTrue(
+      PlaybackSession.prefersMPV(
+        candidate: nil, url: URL(string: "https://media.example/highlights.mp4")!))
+  }
+
   func testBackupsOmitCredentialsAndPreserveImportedTeamKeys() throws {
     let source = settings()
     source.xtreamUsername = "sensitive-user"
