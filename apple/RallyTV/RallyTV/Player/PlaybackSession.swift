@@ -1,7 +1,6 @@
 import AVKit
 import Observation
 import SwiftUI
-import Libmpv
 import UIKit
 
 @MainActor private enum PlaybackScreenAwakeRegistry {
@@ -15,9 +14,8 @@ import UIKit
 
 @MainActor @Observable final class PlaybackSession {
   let player = AVPlayer()
-  @ObservationIgnored let metalLayer = RallyMetalVideoLayer()
-  @ObservationIgnored private let mpv = MPVPlaybackEngine()
-  @ObservationIgnored private var mpvState = MPVPlaybackEngine.Snapshot()
+  @ObservationIgnored let ksEngine = KSPlaybackEngine()
+  @ObservationIgnored private var ksState = KSPlaybackEngine.Snapshot()
   private let playbackActivityID = UUID()
   var loading = true
   var playing = false
@@ -33,8 +31,8 @@ import UIKit
   var codecs = ""
   var audioTracks: [AVMediaSelectionOption] = []
   var captionTracks: [AVMediaSelectionOption] = []
-  var mpvAudioTracks: [MPVPlaybackEngine.Track] = []
-  var mpvCaptionTracks: [MPVPlaybackEngine.Track] = []
+  var ksAudioTracks: [KSPlaybackEngine.Track] = []
+  var ksCaptionTracks: [KSPlaybackEngine.Track] = []
   var selectedAudio: String?
   var selectedCaption: String?
   private(set) var target: String = ""
@@ -49,7 +47,7 @@ import UIKit
   private var lastWatchedPosition: Double = 0
   private var scenePosition: Double?
   private var multiViewCount: Int?
-  private var mpvPlaybackSelected = false
+  private var ksPlaybackSelected = false
   private var progress = PlaybackProgressWatchdog()
   private struct PlaybackRequest {
     let target: String
@@ -89,23 +87,18 @@ import UIKit
     }
   }
   var seekable: Bool {
-    if usesMPV { return mpvState.seekable }
+    if usesKSPlayer { return ksState.seekable }
     return player.currentItem?.seekableTimeRanges.isEmpty == false
   }
   var playbackRequested: Bool { wantsPlayback }
-  var usesMPV: Bool { multiViewCount == nil && request != nil && mpvPlaybackSelected }
+  var usesKSPlayer: Bool { multiViewCount == nil && request != nil && ksPlaybackSelected }
   var isLive: Bool { request?.isLive ?? (!duration.isFinite || duration == 0) }
   var bufferedSeconds: Double {
-    if usesMPV { return max(0, mpvState.cacheEnd - elapsed) }
+    if usesKSPlayer { return max(0, ksState.cacheEnd - elapsed) }
     guard let ranges = player.currentItem?.loadedTimeRanges else { return 0 }
     return ranges.map { max(0, CMTimeRangeGetEnd($0.timeRangeValue).seconds - elapsed) }.max() ?? 0
   }
   init() {
-    metalLayer.backgroundColor = UIColor.black.cgColor
-    metalLayer.framebufferOnly = true
-    metalLayer.contentsGravity = .resize
-    metalLayer.bounds = CGRect(x: 0, y: 0, width: 640, height: 360)
-    metalLayer.drawableSize = CGSize(width: 1280, height: 720)
     player.automaticallyWaitsToMinimizeStalling = true
     // A periodic media-time observer stops firing during some stalls. Check wall time as well.
     watchdogTask = Task { [weak self] in
@@ -213,8 +206,8 @@ import UIKit
     codecs = ""
     audioTracks = []
     captionTracks = []
-    mpvAudioTracks = []
-    mpvCaptionTracks = []
+    ksAudioTracks = []
+    ksCaptionTracks = []
     audioGroup = nil
     captionGroup = nil
     selectedAudio = nil
@@ -224,9 +217,9 @@ import UIKit
     lastWatchedPosition = 0
     progress = PlaybackProgressWatchdog()
     settings = request.container.settings
-    mpvPlaybackSelected = false
-    mpvState = MPVPlaybackEngine.Snapshot()
-    mpv.stop()
+    ksPlaybackSelected = false
+    ksState = KSPlaybackEngine.Snapshot()
+    ksEngine.stop()
     target = request.candidate?.id ?? request.target
     sourceTitle = request.candidate?.title ?? (request.event?.compactMatchup ?? "Live TV")
     headers = [:]
@@ -282,9 +275,9 @@ import UIKit
       guard NetworkPolicy.shared.permits(resolved) else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
       headers = requestHeaders
       playlistPermission = permission
-      mpvPlaybackSelected = multiViewCount == nil
-        && Self.prefersMPV(candidate: request.candidate, url: resolved, title: resolvedTitle)
-      if usesMPV {
+      ksPlaybackSelected = multiViewCount == nil
+        && Self.prefersKSPlayer(candidate: request.candidate, url: resolved, title: resolvedTitle)
+      if usesKSPlayer {
         var media = resolved
         var mediaProxy: HeaderMediaProxy?
         if !requestHeaders.isEmpty || resolved.scheme?.lowercased() == "http" {
@@ -296,15 +289,15 @@ import UIKit
         proxy = mediaProxy
         target = request.candidate?.id ?? request.target
         sourceTitle = resolvedTitle
-        mpv.open(
-          url: media, layer: metalLayer, live: request.isLive,
+        ksEngine.open(
+          url: media, live: request.isLive,
           lowLatency: request.container.settings.lowLatencyMode,
           position: nil, playing: wantsPlayback && !sceneSuspended && !audioInterrupted,
           muted: false
         ) { [weak self] snapshot in
           Task { @MainActor in
             guard let self, revision == self.generation else { return }
-            self.receiveMPV(snapshot)
+            self.receiveKSPlayer(snapshot)
           }
         }
         return
@@ -360,10 +353,9 @@ import UIKit
       reconnect("Couldn’t open this source. Check your provider connection and retry.")
     }
   }
-  /// Use MPV for explicitly identified 4K/HDR streams and file-based media. Keep
-  /// adaptive HLS broadcasts on AVPlayer, whose tvOS HLS renderer and rendition
-  /// selection are native and reliable for standard 720p/1080p sports feeds.
-  static func prefersMPV(candidate: StreamCandidate?, url: URL, title: String = "") -> Bool {
+  /// Use KSPlayer for explicitly identified 4K/HDR streams and file-based media. Keep
+  /// standard adaptive HLS broadcasts on Rally’s native AVPlayer path.
+  static func prefersKSPlayer(candidate: StreamCandidate?, url: URL, title: String = "") -> Bool {
     let metadata = [
       candidate?.quality.resolution,
       candidate?.title,
@@ -384,21 +376,21 @@ import UIKit
   private func checkProgress() {
     guard request != nil, error == nil, reconnectTask == nil else { return }
     let active = wantsPlayback && !sceneSuspended && !audioInterrupted
-    if usesMPV {
-      if progress.check(wantsPlayback: active, ready: mpvState.ready, position: mpvState.position) {
+    if usesKSPlayer {
+      if progress.check(wantsPlayback: active, ready: ksState.ready, position: ksState.position) {
         reconnect("This source stopped updating. Choose another source or retry.")
         return
       }
-      if active && isLive && mpvState.ended {
+      if active && isLive && ksState.ended {
         reconnect("This live stream ended. Retry or choose another source.")
         return
       }
-      elapsed = mpvState.position
-      duration = mpvState.duration
-      loading = active && (!mpvState.ready || mpvState.buffering)
-      playing = mpvState.ready && !mpvState.paused && active
+      elapsed = ksState.position
+      duration = ksState.duration
+      loading = active && (!ksState.ready || ksState.buffering)
+      playing = ksState.ready && !ksState.paused && active
       if playing { PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID) }
-      else if !active || mpvState.paused || mpvState.ended {
+      else if !active || ksState.paused || ksState.ended {
         PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
       }
       return
@@ -416,9 +408,9 @@ import UIKit
       reconnect("This source stopped updating. Choose another source or retry.")
     }
   }
-  private func receiveMPV(_ snapshot: MPVPlaybackEngine.Snapshot) {
-    let becameReady = !mpvState.ready && snapshot.ready
-    mpvState = snapshot
+  private func receiveKSPlayer(_ snapshot: KSPlaybackEngine.Snapshot) {
+    let becameReady = !ksState.ready && snapshot.ready
+    ksState = snapshot
     elapsed = snapshot.position
     duration = snapshot.duration
     loading = !snapshot.ready || snapshot.buffering
@@ -430,12 +422,12 @@ import UIKit
     fps = snapshot.fps > 0 ? String(format: "%.2f fps", snapshot.fps) : ""
     codecs = [snapshot.codec, snapshot.transfer].filter { !$0.isEmpty }.joined(separator: " · ")
     bitrate = snapshot.inputBitrate > 0 ? String(format: "%.1f Mbps", snapshot.inputBitrate / 1_000_000) : ""
-    mpvAudioTracks = snapshot.tracks.filter { $0.type == "audio" }
-    mpvCaptionTracks = snapshot.tracks.filter { $0.type == "sub" }
-    if let selected = mpvAudioTracks.first(where: { $0.selected == true }) {
+    ksAudioTracks = snapshot.tracks.filter { $0.type == "audio" }
+    ksCaptionTracks = snapshot.tracks.filter { $0.type == "sub" }
+    if let selected = ksAudioTracks.first(where: { $0.selected == true }) {
       selectedAudio = selected.name
     }
-    if let selected = mpvCaptionTracks.first(where: { $0.selected == true }) {
+    if let selected = ksCaptionTracks.first(where: { $0.selected == true }) {
       selectedCaption = selected.name
     }
     if becameReady && !firstFrame {
@@ -447,8 +439,8 @@ import UIKit
       playing = false
       wantsPlayback = false
       PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
-      error = "This source couldn’t be played by the MPV decoder (\(failure)). Try another source."
-      RallyDiagnostics.shared.record("Playback", code: "MPV failure: \(failure)")
+      error = "This source couldn’t be played by KSPlayer (\(failure)). Try another source."
+      RallyDiagnostics.shared.record("Playback", code: "KSPlayer failure: \(failure)")
     }
   }
   private func reconnect(_ message: String) {
@@ -485,21 +477,21 @@ import UIKit
     wantsPlayback = false
     PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     player.pause()
-    if usesMPV { mpv.pause(true) }
+    if usesKSPlayer { ksEngine.pause(true) }
     playing = false
   }
   func resume() {
     wantsPlayback = true
     PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID)
     if !sceneSuspended && !audioInterrupted {
-      if usesMPV { mpv.pause(false) } else { player.play() }
+      if usesKSPlayer { ksEngine.pause(false) } else { player.play() }
       if !videoVisible { videoFrameWaitStarted = Date() }
     }
-    playing = usesMPV ? mpvState.ready && !mpvState.paused : player.rate > 0
+    playing = usesKSPlayer ? ksState.ready && !ksState.paused : player.rate > 0
   }
   func suspendForScene() {
     guard !sceneSuspended else { return }
-    let currentPosition = usesMPV ? mpvState.position : player.currentTime().seconds
+    let currentPosition = usesKSPlayer ? ksState.position : player.currentTime().seconds
     scenePosition = !isLive && currentPosition.isFinite ? currentPosition : nil
     sceneSuspended = true
     PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
@@ -509,7 +501,7 @@ import UIKit
     foregroundTask?.cancel()
     foregroundTask = nil
     observation = nil
-    if usesMPV { mpv.stop() }
+    if usesKSPlayer { ksEngine.stop() }
     player.pause()
     player.replaceCurrentItem(with: nil)
     proxy?.stop()
@@ -530,14 +522,14 @@ import UIKit
   }
   func toggle() { wantsPlayback ? pause() : resume() }
   func restart() {
-    if usesMPV { mpv.seek(isLive ? mpvState.cacheStart : 0); resume(); return }
+    if usesKSPlayer { ksEngine.seek(isLive ? ksState.cacheStart : 0); resume(); return }
     guard let range = player.currentItem?.seekableTimeRanges.first?.timeRangeValue else { return }
     player.seek(to: range.start, toleranceBefore: .zero, toleranceAfter: .zero)
     resume()
   }
   func liveEdge() {
-    if usesMPV {
-      mpv.seek(max(mpvState.cacheStart, mpvState.cacheEnd - 2))
+    if usesKSPlayer {
+      ksEngine.seek(max(ksState.cacheStart, ksState.cacheEnd - 2))
       resume()
       return
     }
@@ -547,11 +539,11 @@ import UIKit
     resume()
   }
   func seek(_ seconds: Double) {
-    if usesMPV {
-      guard seconds.isFinite, mpvState.seekable else { return }
-      let lower = isLive ? mpvState.cacheStart : 0
-      let upper = isLive ? max(lower, mpvState.cacheEnd - 2) : mpvState.duration
-      mpv.seek(min(upper, max(lower, mpvState.position + seconds)))
+    if usesKSPlayer {
+      guard seconds.isFinite, ksState.seekable else { return }
+      let lower = isLive ? ksState.cacheStart : 0
+      let upper = isLive ? max(lower, ksState.cacheEnd - 2) : ksState.duration
+      ksEngine.seek(min(upper, max(lower, ksState.position + seconds)))
       return
     }
     guard seconds.isFinite, let item = player.currentItem else { return }
@@ -571,7 +563,7 @@ import UIKit
   }
   func setQuality(_ label: String) {
     quality = label
-    guard !usesMPV else { return }
+    guard !usesKSPlayer else { return }
     videoFrameWaitStarted = videoVisible ? nil : Date()
     guard let item = player.currentItem else { return }
     let heights = ["Auto": 0, "2160p": 2160, "1080p": 1080, "720p": 720, "480p": 480]
@@ -581,29 +573,29 @@ import UIKit
     item.preferredPeakBitRate = height == 480 ? 1_200_000 : height == 720 ? 2_500_000 : 0
   }
   func selectAudio(_ option: AVMediaSelectionOption?) {
-    guard !usesMPV else { return }
+    guard !usesKSPlayer else { return }
     if let group = audioGroup {
       player.currentItem?.select(option, in: group)
       selectedAudio = option?.displayName
     }
   }
   func selectCaption(_ option: AVMediaSelectionOption?) {
-    guard !usesMPV else { return }
+    guard !usesKSPlayer else { return }
     if let group = captionGroup {
       player.currentItem?.select(option, in: group)
       selectedCaption = option?.displayName
     }
   }
-  func selectMPVAudio(_ track: MPVPlaybackEngine.Track) {
-    mpv.audio(track.id)
+  func selectKSAudio(_ track: KSPlaybackEngine.Track) {
+    ksEngine.audio(Int(track.id))
     selectedAudio = track.name
   }
-  func selectMPVCaption(_ track: MPVPlaybackEngine.Track) {
-    mpv.caption(track.id)
+  func selectKSCaption(_ track: KSPlaybackEngine.Track) {
+    ksEngine.caption(Int(track.id))
     selectedCaption = track.name
   }
   func clearCaption() {
-    if usesMPV { mpv.caption(nil); selectedCaption = nil; return }
+    if usesKSPlayer { ksEngine.caption(nil); selectedCaption = nil; return }
     selectCaption(nil)
   }
   func setMultiViewCaps(count: Int) {
@@ -623,8 +615,8 @@ import UIKit
     wantsPlayback = false
     PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     player.pause()
-    mpv.stop()
-    mpvState = MPVPlaybackEngine.Snapshot()
+    ksEngine.stop()
+    ksState = KSPlaybackEngine.Snapshot()
     player.replaceCurrentItem(with: nil)
     observation = nil
     proxy?.stop()
@@ -733,8 +725,8 @@ struct RallyPlaybackSurface: View {
   let session: PlaybackSession
 
   var body: some View {
-    if session.usesMPV {
-      MPVPlayerSurface(session: session).background(.black)
+    if session.usesKSPlayer {
+      KSPlayerSurface(engine: session.ksEngine).background(.black)
     } else {
       RallyVideoSurface(player: session.player) { session.videoVisible = $0 }
     }

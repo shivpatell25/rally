@@ -420,17 +420,17 @@ final class RallyParityTests: XCTestCase {
     }
   }
 
-  @MainActor func testPlaybackEngineKeepsStandardHLSNativeAndSelectsMPVFor4KHDR() {
+  @MainActor func testPlaybackEngineKeepsStandardHLSNativeAndSelectsKSPlayerFor4KHDR() {
     let hls = URL(string: "https://media.example/live/master.m3u8")!
     let standard = StreamCandidate(
       addon: StremioStreamOption(title: "1080p broadcast", streamUrl: hls, quality: "1080p"))
-    XCTAssertFalse(PlaybackSession.prefersMPV(candidate: standard, url: hls))
+    XCTAssertFalse(PlaybackSession.prefersKSPlayer(candidate: standard, url: hls))
 
     let hdr = StreamCandidate(
       addon: StremioStreamOption(title: "2160p HDR", streamUrl: hls, quality: "2160p HDR"))
-    XCTAssertTrue(PlaybackSession.prefersMPV(candidate: hdr, url: hls))
+    XCTAssertTrue(PlaybackSession.prefersKSPlayer(candidate: hdr, url: hls))
     XCTAssertTrue(
-      PlaybackSession.prefersMPV(
+      PlaybackSession.prefersKSPlayer(
         candidate: nil, url: URL(string: "https://media.example/highlights.mp4")!))
   }
 

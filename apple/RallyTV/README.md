@@ -1,7 +1,8 @@
 # Rally for Apple TV
 
 Native tvOS port of the Android app in this repository. SwiftUI owns navigation,
-focus and presentation; AVFoundation owns video, media selection and seeking.
+focus and presentation. AVPlayer handles standard HLS; KSPlayer's FFmpeg/Metal
+engine handles sources identified as 4K/HDR and file-based media.
 The current Android composition and the user's later design refinements take
 precedence over older mockup examples. See [the parity inventory](PARITY.md).
 
@@ -78,7 +79,7 @@ not bundle a provider account or invent playable sports streams.
 | `Features` | Home, Schedule, Event, Game View, Multiview and all other routes |
 | `Models`, `Networking`, `Repositories` | Codable feed parsing, bounded requests, caching |
 | `IPTV`, `Addons` | Provider authentication/catalogs, addon discovery and source resolution |
-| `Player` | AVPlayer lifecycle, guarded header proxy, media selection, Now Playing |
+| `Player` | AVPlayer and KSPlayer lifecycles, guarded header proxy, track selection, Now Playing |
 | `Storage`, `Services` | Keychain, preferences, caches, matching, ranking, diagnostics |
 | `Tests`, `UITests` | Data/playback regressions and actual Siri Remote UI navigation |
 
@@ -128,3 +129,11 @@ separately with real ESPN data and published clips. Screenshots and the exact
 verification record are in [QA](QA/README.md).
 Set `TEST_RUNNER_RALLY_LIVE_QA=1` when running the test command to include that
 network-dependent shipping-data walkthrough.
+
+## KSPlayer beta licensing
+
+The KSPlayer beta release uses KSPlayer 2.3.4 and FFmpegKit 6.1.4 under GPLv3.
+This beta's Rally source is distributed under GPLv3; see the repository's
+`LICENSE` file. Third-party notices and license texts are bundled in Settings →
+Playback Licenses. This release is for testing and still needs 4K/HDR validation
+on a physical Apple TV.

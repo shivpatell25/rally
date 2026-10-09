@@ -1,15 +1,10 @@
-Rally uses MPVKit, libmpv, FFmpeg and their media dependencies.
-MPVKit product: MPVKit (non-GPL), LGPL v3.0.
-Source and build configuration: https://github.com/NuvioMedia/MPVKit/tree/bb1d0250ddcfa9d220761fcdad6011ac9fecf15e
-libmpv: https://github.com/mpv-player/mpv/tree/v0.41.0
-FFmpeg: https://github.com/FFmpeg/FFmpeg/tree/n8.1.2
-Additional dependency versions, source locations, build instructions and binary
-checksums are recorded in the pinned MPVKit package and its build scripts.
-The MPVKit-GPL product is not linked into Rally.
+Rally's tvOS playback path uses KSPlayer 2.3.4 and FFmpegKit 6.1.4.
+The pinned public package versions currently use GNU GPL version 3. Their full
+license texts are included in KSPlayer-GPL.txt and FFmpegKit-GPL.txt.
 
-Redistributors must preserve these notices and meet the applicable LGPL
-relinking/source obligations. The Xcode project and pinned package are used to
-rebuild the player. The device package links the media engines as replaceable dynamic frameworks.
-Library replacement on iOS requires re-signing with your installation identity.
-Preserve the corresponding source and build scripts at the exact versions above.
-If packaging these libraries statically, provide relinkable application objects.
+KSPlayer source: https://github.com/kingslay/KSPlayer/tree/2.3.4
+FFmpegKit source: https://github.com/kingslay/FFmpegKit/tree/6.1.4
+
+This dependency configuration must not be distributed as part of a Rally
+proprietary app unless Rally has secured compatible licensing or changed its
+distribution/licensing terms. Do not describe this build as LGPL licensed.

@@ -660,15 +660,15 @@ struct GameViewScreen: View {
             }
             switch mode {
             case .audio:
-              if session.mpvAudioTracks.isEmpty {
+              if session.ksAudioTracks.isEmpty {
                 Text("This source has one default audio track.").foregroundStyle(RallyDesign.muted)
               }
-              ForEach(Array(session.mpvAudioTracks.enumerated()), id: \.offset) { _, track in
+              ForEach(Array(session.ksAudioTracks.enumerated()), id: \.offset) { _, track in
                 RallyAction(
                   title: track.name,
                   icon: session.selectedAudio == track.name ? "checkmark" : nil
                 ) {
-                  session.selectMPVAudio(track)
+                  session.selectKSAudio(track)
                   overlay = nil
                 }
               }
@@ -677,22 +677,22 @@ struct GameViewScreen: View {
                 session.clearCaption()
                 overlay = nil
               }
-              if session.mpvCaptionTracks.isEmpty {
+              if session.ksCaptionTracks.isEmpty {
                 Text("This source does not include captions.").foregroundStyle(RallyDesign.muted)
               }
-              ForEach(Array(session.mpvCaptionTracks.enumerated()), id: \.offset) { _, track in
+              ForEach(Array(session.ksCaptionTracks.enumerated()), id: \.offset) { _, track in
                 RallyAction(title: track.name) {
-                  session.selectMPVCaption(track)
+                  session.selectKSCaption(track)
                   overlay = nil
                 }
               }
             case .quality:
               RallyAction(title: "Auto · Source quality", icon: "checkmark") { overlay = nil }
-              Text("MPV selects the stream’s available rendition and plays supported 4K HDR formats.")
+              Text("KSPlayer selects the stream’s available rendition and plays supported 4K HDR formats.")
                 .font(RallyDesign.font(14)).foregroundStyle(RallyDesign.muted)
             case .diagnostics:
               Text(
-                "MPV · \(session.resolution)\n\(session.bitrate) · \(session.fps)\nTime \(Int(session.elapsed))s · \(session.isLive ? "Live" : "On demand")\nBuffered \(Int(session.bufferedSeconds))s\nCodec \(session.codecs.isEmpty ? "Unavailable" : session.codecs)\nQuality Auto · source selected\nAudio \(session.selectedAudio ?? "Default")\nCaptions \(session.selectedCaption ?? "Off")"
+                "KSPlayer · \(session.resolution)\n\(session.bitrate) · \(session.fps)\nTime \(Int(session.elapsed))s · \(session.isLive ? "Live" : "On demand")\nBuffered \(Int(session.bufferedSeconds))s\nCodec \(session.codecs.isEmpty ? "Unavailable" : session.codecs)\nQuality Auto · source selected\nAudio \(session.selectedAudio ?? "Default")\nCaptions \(session.selectedCaption ?? "Off")"
               ).font(RallyDesign.font(14)).lineSpacing(RallyDesign.pt(10))
               Text(SelectBestStream.trace(candidates: sources.candidates, selectedId: selected?.id))
                 .font(RallyDesign.font(10)).foregroundStyle(RallyDesign.muted)
