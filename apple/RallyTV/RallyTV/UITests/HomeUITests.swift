@@ -104,7 +104,8 @@ final class RallyParityUITests: XCTestCase {
     try focus(app.buttons["nav-Home"])
     remote.press(.select)
     XCTAssertTrue(app.buttons["upcoming-0"].waitForExistence(timeout: 4))
-    XCTAssertFalse(app.buttons["SEE FULL SCHEDULE"].exists)
+    XCTAssertTrue(app.buttons["SEE FULL SCHEDULE"].exists)
+    XCTAssertTrue(app.staticTexts["STARTING SOON"].exists)
   }
   func testNoLiveUsesRealHighlightCards() throws {
     launch(noLive: true)
@@ -245,7 +246,7 @@ final class RallyParityUITests: XCTestCase {
       XCTAssertLessThanOrEqual(moment.frame.maxY, app.frame.height - 30)
     }
     try focus(app.buttons["Pause"])
-    for title in ["Fullscreen", "Restart", "Multiview", "Audio", "Captions", "Pick Source"] {
+    for title in ["Restart", "Fullscreen", "Pick Source", "Audio", "Captions", "Multiview"] {
       remote.press(.right)
       XCTAssertTrue(app.buttons[title].hasFocus, title + "\n" + app.debugDescription)
       assertFocusFits(app.buttons[title])
@@ -255,7 +256,7 @@ final class RallyParityUITests: XCTestCase {
     remote.press(.down)
     XCTAssertTrue(app.descendants(matching: .any)["stats-leaders"].hasFocus, app.debugDescription)
     remote.press(.left)
-    XCTAssertTrue(app.buttons["Pick Source"].hasFocus, app.debugDescription)
+    XCTAssertTrue(app.buttons["Multiview"].hasFocus, app.debugDescription)
     remote.press(.up)
     XCTAssertTrue(app.buttons["Video player"].hasFocus)
     remote.press(.right)
@@ -334,12 +335,13 @@ final class RallyParityUITests: XCTestCase {
   func testSettingsRemoteSectionsAndBackups() throws {
     launch("settings")
     XCTAssertTrue(app.buttons["tab-Sources"].waitForExistence(timeout: 10))
-    for tab in ["Account", "Playback", "Appearance", "Alerts", "Sources", "Addons", "Support"] {
+    for tab in ["Account", "Playback", "Appearance", "Alerts", "Sources", "Addon Manifests", "Support"] {
       try focus(app.buttons["tab-\(tab)"])
       remote.press(.select)
       shot("settings-\(tab.lowercased().replacingOccurrences(of:" ",with:"-"))")
     }
-    try focus(app.buttons["Export / Import Preferences"])
+    try focus(app.buttons["tab-Account"]); remote.press(.select)
+    try focus(app.buttons["Import / Export Preferences"])
     remote.press(.select)
     XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 5))
     shot("settings-transfer")
@@ -351,8 +353,8 @@ final class RallyParityUITests: XCTestCase {
   func testSettingsAllPreferenceControlsAndSupportMenus() throws {
     launch("settings")
     for (section, labels) in [
-      ("Playback", ["Low Latency", "Adaptive Quality", "Spoken Score Summaries"]),
-      ("Appearance", ["Reduce Motion", "High Contrast Focus", "Larger Text", "Score Saver"]),
+      ("Playback", ["Low Latency", "Adaptive Quality"]),
+      ("Appearance", ["Reduce Motion", "High Contrast Focus", "Larger Text", "Score Saver", "Spoken Score Summaries"]),
       ("Alerts", ["Live game alerts", "NFL RedZone alerts"])
     ] {
       try focus(app.buttons["tab-" + section]); remote.press(.select)
@@ -410,16 +412,16 @@ final class RallyParityUITests: XCTestCase {
   }
   func testAddonInputAndActionsDirectionalNavigation() throws {
     launch("settings")
-    try focus(app.buttons["tab-Addons"])
+    try focus(app.buttons["tab-Addon Manifests"])
     remote.press(.select)
     remote.press(.down)
     let manifest = app.textFields["settings-input-Manifest URL"]
     XCTAssertTrue(manifest.hasFocus, app.debugDescription)
     remote.press(.down)
-    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+    XCTAssertTrue(app.buttons["Add Manifest"].hasFocus, app.debugDescription)
     remote.press(.select)
     XCTAssertTrue(app.staticTexts["Settings status"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+    XCTAssertTrue(app.buttons["Add Manifest"].hasFocus, app.debugDescription)
     remote.press(.up)
     XCTAssertTrue(manifest.hasFocus, app.debugDescription)
     remote.press(.select)
@@ -429,11 +431,11 @@ final class RallyParityUITests: XCTestCase {
       predicate: NSPredicate(format: "hasFocus == true"), object: manifest)
     XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 5), .completed)
     remote.press(.down)
-    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+    XCTAssertTrue(app.buttons["Add Manifest"].hasFocus, app.debugDescription)
     remote.press(.down)
-    XCTAssertTrue(app.buttons["Reset Addons"].hasFocus, app.debugDescription)
+    XCTAssertTrue(app.buttons["Remove All Manifests"].hasFocus, app.debugDescription)
     remote.press(.up)
-    XCTAssertTrue(app.buttons["Add Addon"].hasFocus, app.debugDescription)
+    XCTAssertTrue(app.buttons["Add Manifest"].hasFocus, app.debugDescription)
   }
   func testProviderInputsReachActions() throws {
     launch("settings")
@@ -477,7 +479,7 @@ final class RallyParityUITests: XCTestCase {
   }
   func testSettingsTextEntryAndCancel() throws {
     launch("settings")
-    try focus(app.buttons["tab-Addons"])
+    try focus(app.buttons["tab-Addon Manifests"])
     remote.press(.select)
     let manifest = app.textFields["settings-input-Manifest URL"]
     remote.press(.down)
@@ -511,7 +513,7 @@ final class RallyParityUITests: XCTestCase {
     try openAndReturn("Manifest URL")
     try focus(app.buttons["tab-Sources"])
     remote.press(.select)
-    try focus(app.buttons["tab-Providers"])
+    try focus(app.buttons["tab-IPTV"])
     remote.press(.select)
     try focus(app.buttons["Stalker / Ministra"])
     remote.press(.down)

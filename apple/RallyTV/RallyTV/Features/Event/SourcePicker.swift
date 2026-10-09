@@ -45,7 +45,7 @@ import SwiftUI
       } else if !container.settings.stremioAddonUrls.isEmpty {
         error = "Your configured addons returned no matching sources for this game. Try Refresh sources, or check the addon connection in Settings."
       } else {
-        error = "Connect your IPTV provider or add a sports addon in Settings."
+        error = "Connect an authorized IPTV provider or addon manifest in Settings."
       }
     }
   }
@@ -79,7 +79,7 @@ struct SourcePicker: View {
             RallyEmptyState(
               title: "No matching sources",
               message: model.error
-                ?? "Connect your IPTV provider or add a sports addon in Settings.",
+                ?? "Connect an authorized IPTV provider or addon manifest in Settings.",
               actionTitle: "Open Settings", action: settings)
           } else {
             ScrollView {

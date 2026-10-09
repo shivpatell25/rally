@@ -330,7 +330,7 @@ public enum ESPNWire {
     let plays = publishedPlays.enumerated().compactMap { i, p -> GamePlay? in
       guard !p["text"].text.isEmpty else { return nil }
       return GamePlay(
-        id: p["id"].string ?? "\(base.id):\(i)", sequence: p["sequenceNumber"].int ?? i,
+        id: p["id"].string ?? "\(base.id):\(i)", sequence: base.sport == "baseball" ? i : p["sequenceNumber"].int ?? i,
         text: p["text"].text, awayScore: p["awayScore"].int, homeScore: p["homeScore"].int,
         period: p["period"]["number"].int, clock: p["clock"]["displayValue"].string,
         isScoringPlay: p["scoringPlay"].bool || scoringIDs.contains(p["id"].text))

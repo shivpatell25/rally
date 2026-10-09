@@ -71,11 +71,11 @@ struct HomeScreen: View {
               actionTitle: "Browse Live TV"
             ) { navigate(.iptvBrowser) }.frame(height: RallyDesign.pt(190))
           }
-          mediaRail.frame(height: RallyDesign.pt(166), alignment: .top)
+          mediaRail.frame(height: RallyDesign.pt(178), alignment: .top)
           Color.clear.frame(height: RallyDesign.pt(8))
-          upcomingSection.frame(height: RallyDesign.pt(guide ? 170 : 100), alignment: .top)
+          upcomingSection.frame(height: RallyDesign.pt(guide ? 170 : 94), alignment: .top)
           Color.clear.frame(height: RallyDesign.pt(14))
-          VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
+          VStack(alignment: .leading, spacing: RallyDesign.pt(8)) {
             RallySectionHeader(title: "Browse by Sport")
             HStack(spacing: RallyDesign.pt(10)) {
               ForEach(
@@ -95,7 +95,7 @@ struct HomeScreen: View {
         ).clipped()
         .animation(
           store.settings.reducedMotion
-            ? nil : .easeInOut(duration: 0.3), value: guide)
+            ? nil : .timingCurve(0.2, 0.65, 0.25, 1, duration: 0.3), value: guide)
       }
     }.task(id: retryRevision) { await model.run(store) }
       .onChange(of: railCount) { _, count in page = min(page, max(0, (count - 1) / 3)) }
@@ -107,7 +107,7 @@ struct HomeScreen: View {
       }
   }
   private var mediaRail: some View {
-    VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
+    VStack(alignment: .leading, spacing: RallyDesign.pt(8)) {
       RallySectionHeader(
         title: model.live.isEmpty ? "Recent Highlights" : "Live Now", actionTitle: "See All"
       ) { navigate(model.live.isEmpty ? .highlights : .live) }
@@ -118,7 +118,7 @@ struct HomeScreen: View {
           actionTitle: "Browse Live TV"
         ) { navigate(.iptvBrowser) }.frame(height: RallyDesign.pt(128))
       } else {
-        HStack(alignment: .top, spacing: RallyDesign.pt(12)) {
+        HStack(alignment: .top, spacing: RallyDesign.pt(18)) {
           if model.live.isEmpty {
             ForEach(
               Array(model.highlights.dropFirst(page * 3).prefix(3).enumerated()), id: \.element.id
@@ -140,6 +140,15 @@ struct HomeScreen: View {
           }
           Spacer(minLength: RallyDesign.pt(0))
         }.focusSection()
+          .task {
+            // Loading replaces a non-focusable placeholder. Request focus after
+            // the rail has entered the tree, rather than leaving the remote
+            // without a destination when real network data arrives.
+            if focus == nil {
+              await Task.yield()
+              focus = "media-0"
+            }
+          }
       }
     }
   }
@@ -156,11 +165,11 @@ struct HomeScreen: View {
     }
   }
   private var upcomingSection: some View {
-    VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
+    VStack(alignment: .leading, spacing: RallyDesign.pt(8)) {
       RallySectionHeader(
-        title: guide ? "Tonight’s Schedule" : "Starting Soon",
-        actionTitle: guide ? "See Full Schedule" : nil,
-        action: guide ? { navigate(.schedule) } : nil)
+        title: guide ? (model.upcoming.prefix(4).allSatisfy { Calendar.current.isDateInToday($0.startTime) } ? "Tonight’s Schedule" : "Upcoming Schedule") : "Starting Soon",
+        actionTitle: "See Full Schedule",
+        action: { navigate(.schedule) })
       if model.upcoming.isEmpty {
         RallyEmptyState(
           title: "No upcoming games", message: "See the full schedule for other dates.",
@@ -179,7 +188,7 @@ struct HomeScreen: View {
             }
           }
         }.frame(
-          width: RallyDesign.pt(840), height: RallyDesign.pt(guide ? 136 : 64),
+          width: RallyDesign.pt(840), height: RallyDesign.pt(guide ? 139 : 60),
           alignment: .topLeading
         ).focusSection()
           .background(
@@ -199,22 +208,22 @@ struct HomeScreen: View {
       } label: {
         ZStack(alignment: .topLeading) {
           Text(event.startTime.formatted(date: .omitted, time: .shortened)).font(
-            RallyDesign.font(guide ? 11 : 9)
+            RallyDesign.font(guide ? 11 : 10)
           ).foregroundStyle(RallyDesign.muted).offset(
-            x: RallyDesign.pt(guide ? 14 : 0), y: RallyDesign.pt(guide ? 7 : 0))
-          RallyTeamLogo(team: event.awayTeam, size: guide ? 24 : 26).offset(
-            x: RallyDesign.pt(guide ? 110 : 0), y: RallyDesign.pt(guide ? 1 : 23))
-          RallyTeamLogo(team: event.homeTeam, size: guide ? 24 : 26).offset(
-            x: RallyDesign.pt(guide ? 173 : 34), y: RallyDesign.pt(guide ? 1 : 23))
-          Text(event.compactMatchup).font(RallyDesign.font(guide ? 11 : 9, .medium)).lineLimit(
+            x: RallyDesign.pt(guide ? 12 : 4), y: RallyDesign.pt(guide ? 7 : 0))
+          RallyTeamLogo(team: event.awayTeam, size: 28).offset(
+            x: RallyDesign.pt(guide ? 124 : 4), y: RallyDesign.pt(guide ? 0 : 19))
+          RallyTeamLogo(team: event.homeTeam, size: 28).offset(
+            x: RallyDesign.pt(guide ? 167 : 37), y: RallyDesign.pt(guide ? 0 : 19))
+          Text(event.compactMatchup).font(RallyDesign.font(guide ? 11 : 9.5, .medium)).lineLimit(
             guide ? 1 : 2
           ).frame(width: RallyDesign.pt(guide ? 430 : 124), alignment: .leading).offset(
-            x: RallyDesign.pt(guide ? 235 : 70), y: RallyDesign.pt(guide ? 7 : 21))
+            x: RallyDesign.pt(guide ? 225 : 72), y: RallyDesign.pt(guide ? 7 : 19))
           Text(event.league).font(RallyDesign.font(guide ? 10 : 8)).foregroundStyle(
             RallyDesign.muted
-          ).offset(x: RallyDesign.pt(guide ? 690 : 70), y: RallyDesign.pt(guide ? 7 : 45))
+          ).offset(x: RallyDesign.pt(guide ? 690 : 72), y: RallyDesign.pt(guide ? 7 : 38))
         }.frame(
-          width: RallyDesign.pt(guide ? 770 : 196), height: RallyDesign.pt(guide ? 26 : 56),
+          width: RallyDesign.pt(guide ? 770 : 193), height: RallyDesign.pt(guide ? 28 : 54),
           alignment: .topLeading
         )
         .background(

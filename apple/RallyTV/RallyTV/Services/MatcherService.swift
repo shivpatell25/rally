@@ -25,6 +25,8 @@ public struct MatchEventToStream: MatcherService {
     var results: [MatchResult] = []
     for channel in channels {
       let lower = channel.name.lowercased()
+      let category = channel.category.lowercased()
+      if category.contains("series") || category.contains("vod") || (lower.contains("series") && ["ott series", "favourite series", "favorite series", "most watched series", "trending"].contains(where: lower.contains)) { continue }
       let stationMatch = stations.contains { !$0.isEmpty && $0.count > 2 && lower.contains($0) }
       let hits = keywords.filter { lower.contains($0) }.count
       guard hits > 0 || stationMatch else { continue }

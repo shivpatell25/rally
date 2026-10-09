@@ -295,8 +295,9 @@ final class RallyParityTests: XCTestCase {
     let container = AppContainer(settings: config, sportsOverride: TVOSFixtures.container().sports)
     let remote = try await container.iptv.channels()
     XCTAssertEqual(remote.count, 1)
-    XCTAssertEqual(remote[0].name, "Native HLS")
-    XCTAssertEqual(remote[0].streamUrl, TVOSFixtures.video)
+    let firstRemote = try XCTUnwrap(remote.first)
+    XCTAssertEqual(firstRemote.name, "Native HLS")
+    XCTAssertEqual(firstRemote.streamUrl, TVOSFixtures.video)
     let text =
       "#EXTM3U\n#EXTINF:-1 group-title=\"Sports\",Imported Sports\n#EXTVLCOPT:http-user-agent=Rally M3U Test\n\(TVOSFixtures.video.absoluteString)"
     XCTAssertEqual(
@@ -369,13 +370,16 @@ final class RallyParityTests: XCTestCase {
     session.suspendForScene()
     session.restoreForScene()
     for _ in 0..<120 {
-      if session.player.currentItem?.status == .readyToPlay { break }
+      if session.player.currentItem?.status == .readyToPlay && !session.loading && session.seekable { break }
       try await Task.sleep(for: .milliseconds(100))
     }
     XCTAssertEqual(
       session.player.rate, 0, "Returning to the foreground must preserve an explicit user pause")
     session.seek(30)
-    try await Task.sleep(for: .seconds(1))
+    for _ in 0..<100 {
+      if session.player.currentTime().seconds > 20 { break }
+      try await Task.sleep(for: .milliseconds(100))
+    }
     XCTAssertGreaterThan(session.player.currentTime().seconds, 20)
     session.restart()
     try await Task.sleep(for: .seconds(1))
@@ -567,6 +571,14 @@ final class RallyParityTests: XCTestCase {
     XCTAssertEqual(result.plays.last?.period, 1)
     XCTAssertEqual(result.plays.first { $0.id == "td" }?.text, "Passing touchdown")
   }
+  func testBaseballPitchCountersResetWithoutScramblingTimeline() throws {
+    let base = SportEvent(id: "MLB:qa", name: "Away vs Home", startTime: Date(), status: .live, sport: "baseball", league: "MLB")
+    let summary = try wire(["plays": [
+      ["id": "early", "sequenceNumber": "9", "text": "Earlier pitch", "period": ["number": 1, "type": "Top"]],
+      ["id": "latest", "sequenceNumber": "1", "text": "Next batter", "period": ["number": 6, "type": "Bottom"]]
+    ]])
+    XCTAssertEqual(ESPNWire.enrich(base, summary: summary).plays.map(\.id), ["latest", "early"])
+  }
   func testPlaybackWatchdogDetectsStallsAndRespectsPause() {
     var progress = PlaybackProgressWatchdog()
     let start = Date().timeIntervalSinceReferenceDate
@@ -689,6 +701,16 @@ final class StremioDiscoveryTests: XCTestCase {
     let resource = StremioRepositoryImpl.resourceURL(root: URL(string: "https://addon.test/config/?key=test")!, resource: "catalog", type: "tv", id: "games", extras: ["search": "New York & Boston"])
     XCTAssertEqual(URLComponents(url: resource, resolvingAgainstBaseURL: false)?.percentEncodedPath, "/config/catalog/tv/games/search=New%20York%20%26%20Boston.json")
     XCTAssertEqual(resource.query, "key=test")
+  }
+  func testMatcherExcludesMisclassifiedSeriesLoops() async {
+    let event = SportEvent(id: "mlb", name: "World Series", startTime: Date(), status: .live, sport: "baseball", league: "MLB")
+    let channels = [
+      IptvChannel(id: "series", number: "1", name: "MLB 4K PEACOCK ALL TIME FAVOURITE SERIES", category: "Sports"),
+      IptvChannel(id: "catalog", number: "3", name: "MLB 4K PEACOCK TRENDING 2026", category: "ENGLISH | 24X7 OTT SERIES"),
+      IptvChannel(id: "world", number: "2", name: "MLB World Series FOX", category: "Sports")
+    ]
+    let matches = await MatchEventToStream().relevantChannels(for: event, channels: channels)
+    XCTAssertEqual(matches.map { $0.channel.id }, ["world"])
   }
   func testSportsStreamsCollegeNamesAndNotWebReadySources() async {
     let (repo, _) = fixture { path in

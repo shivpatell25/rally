@@ -16,22 +16,26 @@ struct RallyHero: View {
         } else {
           BundleArt.image(
             "hero_landscape_\(event.sport == "basketball" ? "basketball" : event.sport == "hockey" ? "hockey" : event.sport == "soccer" ? "soccer" : event.sport == "baseball" ? "baseball" : "football")_rally.jpg"
-          ).resizable().scaledToFill().saturation(0).brightness(-0.1)
+          ).resizable().scaledToFill()
         }
-      }.frame(width: RallyDesign.pt(620), height: RallyDesign.pt(detailed ? 240 : 200)).clipped()
+      }.frame(width: RallyDesign.pt(detailed ? 768 : 749), height: RallyDesign.pt(detailed ? 270 : 190))
+        .clipped()
+        // Fade the visible artwork bounds, so navigation never slices through
+        // the middle of an oversized image's top fade.
+        .frame(height: RallyDesign.pt(detailed ? 230 : 178))
+        .clipped().opacity(detailed ? 0.66 : 0.72)
         .mask(
           LinearGradient(
             stops: [
-              .init(color: .clear, location: 0), .init(color: .white.opacity(0.25), location: 0.2),
-              .init(color: .white, location: 0.48), .init(color: .white, location: 0.8),
-              .init(color: .clear, location: 1),
+              .init(color: .clear, location: 0), .init(color: .white.opacity(0.3), location: 0.34),
+              .init(color: .white, location: 0.68), .init(color: .white.opacity(0.82), location: 1),
             ], startPoint: .leading, endPoint: .trailing)
         )
         .mask(
           LinearGradient(
             stops: [
-              .init(color: .clear, location: 0), .init(color: .white, location: 0.14),
-              .init(color: .white, location: 0.7),
+              .init(color: .clear, location: 0), .init(color: .white.opacity(0.72), location: 0.18),
+              .init(color: .white, location: 0.62),
               .init(color: .clear, location: 1),
             ], startPoint: .top, endPoint: .bottom)
         )
@@ -44,11 +48,11 @@ struct RallyHero: View {
             Circle().fill(.red).frame(width: RallyDesign.pt(6), height: RallyDesign.pt(6))
           }
           Text(event.status == .notStarted ? "UPCOMING" : event.statusLabel).foregroundStyle(
-            event.status.isLive ? .red : RallyDesign.muted)
+            event.status.isLive ? Color(hex: "EAFB78") : RallyDesign.muted)
         }.font(RallyDesign.font(12, .medium))
         Text(event.compactMatchup.isEmpty ? event.name : event.compactMatchup).font(
-          RallyDesign.font(detailed ? 30 : 28, .bold)
-        ).lineLimit(2).minimumScaleFactor(0.75).frame(
+          RallyDesign.font(detailed ? 30 : 31, .bold)
+        ).tracking(RallyDesign.pt(-0.45)).lineLimit(1).minimumScaleFactor(0.75).frame(
           maxWidth: RallyDesign.pt(500), alignment: .leading)
         if event.status == .notStarted {
           Text(
@@ -64,7 +68,7 @@ struct RallyHero: View {
         if let venue = event.venue {
           Text(venue).font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
         }
-        HStack(spacing: RallyDesign.pt(12)) {
+        HStack(spacing: RallyDesign.pt(10)) {
           if event.status.isLive {
             RallyAction(title: "Watch Live", icon: "play.fill", primary: true, action: watch)
           }
@@ -81,7 +85,7 @@ struct RallyHero: View {
         }.padding(.top, RallyDesign.pt(5)).focusSection()
       }.frame(maxWidth: RallyDesign.pt(510), alignment: .leading).padding(
         .leading, RallyDesign.pt(10))
-    }.frame(height: RallyDesign.pt(detailed ? 178 : 178))
+    }.frame(height: RallyDesign.pt(detailed ? 230 : 178))
   }
 }
 struct RallyMatchArtwork: View {
@@ -93,23 +97,24 @@ struct RallyMatchArtwork: View {
     ZStack {
       LinearGradient(
         stops: [
-          .init(color: away.opacity(0.8), location: 0),
-          .init(color: away.opacity(0.38), location: 0.35),
-          .init(color: home.opacity(0.38), location: 0.65),
-          .init(color: home.opacity(0.8), location: 1),
+          .init(color: away.opacity(0.9), location: 0),
+          .init(color: away.opacity(0.34), location: 0.42),
+          .init(color: Color(hex: "071116"), location: 0.5),
+          .init(color: home.opacity(0.34), location: 0.58),
+          .init(color: home.opacity(0.9), location: 1),
         ], startPoint: .leading, endPoint: .trailing)
       HStack {
-        RallyTeamLogo(team: event.awayTeam, size: compact ? 13 : 48)
+        RallyTeamLogo(team: event.awayTeam, size: compact ? 13 : 58)
         Spacer()
         HStack(spacing: RallyDesign.pt(compact ? 2 : 8)) {
           Text(event.scoreAway.map(String.init) ?? "—")
           Text("–").font(RallyDesign.font(compact ? 5 : 16))
           Text(event.scoreHome.map(String.init) ?? "—")
-        }.font(RallyDesign.font(compact ? 7 : 23, .bold)).monospacedDigit().fixedSize()
+        }.font(RallyDesign.font(compact ? 7 : 14, .bold)).monospacedDigit().fixedSize()
           .foregroundStyle(.white)
         Spacer()
-        RallyTeamLogo(team: event.homeTeam, size: compact ? 13 : 48)
-      }.padding(.horizontal, RallyDesign.pt(compact ? 4 : 20))
+        RallyTeamLogo(team: event.homeTeam, size: compact ? 13 : 58)
+      }.padding(.horizontal, RallyDesign.pt(compact ? 4 : 34))
       VStack {
         Spacer()
         HStack {
@@ -126,17 +131,17 @@ struct RallyMatchArtwork: View {
 }
 struct RallyLiveCard: View {
   let event: SportEvent
-  var width: CGFloat = 272
+  var width: CGFloat = 268
   let action: () -> Void
   var body: some View {
     Button(action: action) {
-      VStack(alignment: .leading, spacing: RallyDesign.pt(8)) {
+      VStack(alignment: .leading, spacing: RallyDesign.pt(4)) {
         RallyMatchArtwork(event: event).frame(
-          width: RallyDesign.pt(width), height: RallyDesign.pt(96)
+          width: RallyDesign.pt(width), height: RallyDesign.pt(width * 0.36)
         ).clipShape(
-          RoundedRectangle(cornerRadius: RallyDesign.pt(7)))
-        Text(event.compactMatchup).font(RallyDesign.font(14, .medium)).lineLimit(1)
-        Text(event.metadata).font(RallyDesign.font(10)).foregroundStyle(RallyDesign.muted)
+          RoundedRectangle(cornerRadius: RallyDesign.pt(10))).padding(.bottom, RallyDesign.pt(10))
+        Text(event.compactMatchup).font(RallyDesign.font(15, .semibold)).lineLimit(1)
+        Text(event.metadata).font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
           .lineLimit(1)
       }.frame(width: RallyDesign.pt(width), alignment: .leading)
     }.buttonStyle(RallyMediaFocus()).focusEffectDisabled().accessibilityIdentifier(
@@ -154,7 +159,7 @@ struct RallyMediaFocus: ButtonStyle {
     var body: some View {
       label.foregroundStyle(.white).brightness(focused ? 0.04 : 0)
         .overlay(
-          RoundedRectangle(cornerRadius: RallyDesign.pt(7)).stroke(
+          RoundedRectangle(cornerRadius: RallyDesign.pt(10)).stroke(
             .white.opacity(focused ? 0.45 : 0), lineWidth: 0.7)
         ).scaleEffect(focused ? 1.025 : 1).zIndex(focused ? 1 : 0).animation(
           store.settings.reducedMotion ? nil : .easeOut(duration: 0.16), value: focused)
@@ -163,7 +168,7 @@ struct RallyMediaFocus: ButtonStyle {
 }
 struct RallyHighlightCard: View {
   let item: HighlightItem
-  var width: CGFloat = 272
+  var width: CGFloat = 268
   let action: () -> Void
   var body: some View {
     Button(action: action) {
@@ -176,8 +181,8 @@ struct RallyHighlightCard: View {
           ).font(RallyDesign.font(9, .semibold)).padding(RallyDesign.pt(5)).background(
             .black.opacity(0.7), in: RoundedRectangle(cornerRadius: RallyDesign.pt(4))
           ).padding(RallyDesign.pt(7))
-        }.frame(width: RallyDesign.pt(width), height: RallyDesign.pt(96)).clipShape(
-          RoundedRectangle(cornerRadius: RallyDesign.pt(7)))
+        }.frame(width: RallyDesign.pt(width), height: RallyDesign.pt(width * 0.36)).clipShape(
+          RoundedRectangle(cornerRadius: RallyDesign.pt(10)))
         Text(item.clip.title).font(RallyDesign.font(13, .medium)).lineLimit(1)
         Text(item.league + " · Highlights").font(RallyDesign.font(10)).foregroundStyle(
           RallyDesign.muted)
@@ -228,10 +233,10 @@ struct RallyLeagueShortcut: View {
   let action: () -> Void
   var body: some View {
     Button(action: action) {
-      VStack(spacing: RallyDesign.pt(7)) {
-        RallyLeagueMark(league: league, size: 28)
+      VStack(spacing: RallyDesign.pt(4)) {
+        RallyLeagueMark(league: league, size: 29)
         Text(league == "Champions League" ? "UCL" : league == "Serie A" ? "Serie A" : league).font(
-          RallyDesign.font(9, .medium)
+          RallyDesign.font(8.5, .semibold)
         ).lineLimit(1).minimumScaleFactor(0.75)
       }
       .frame(maxWidth: .infinity).frame(height: RallyDesign.pt(57)).background(

@@ -170,19 +170,16 @@ struct RallyTopNav: View {
     ("Highlights", .highlights), ("My Rally", .watchlist),
   ]
   var body: some View {
-    HStack(spacing: RallyDesign.pt(25)) {
+    HStack(spacing: RallyDesign.pt(16)) {
       BundleArt.image("rally_wordmark_color_ui.png").resizable().scaledToFit()
         .frame(width: RallyDesign.pt(94), height: RallyDesign.pt(40)).accessibilityLabel("Rally")
-      Spacer().frame(width: RallyDesign.pt(23))
+      Spacer(minLength: RallyDesign.pt(12))
       ForEach(tabs, id: \.0) { name, route in
         Button {
           navigate(route)
         } label: {
-          Text(name).font(RallyDesign.font(12, selected == name ? .semibold : .regular))
-            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
-            .foregroundStyle(selected == name ? .white : RallyDesign.muted)
-            .padding(.horizontal, RallyDesign.pt(6)).padding(.vertical, RallyDesign.pt(8))
-        }.buttonStyle(RallyButtonStyle(bare: true, selected: selected == name))
+          Text(name).lineLimit(1).fixedSize(horizontal: true, vertical: false)
+        }.buttonStyle(RallyNavigationStyle(selected: selected == name))
           .focusEffectDisabled().accessibilityIdentifier(
             "nav-\(name)")
       }

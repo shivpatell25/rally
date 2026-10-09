@@ -21,9 +21,9 @@ struct EventScreen: View {
             watch: { navigate(.player(target: "auto", eventId: event.id)) }, info: {},
             saved: store.settings.savedEventIds.contains(event.id),
             save: { store.save(event.id) }
-          ).frame(height: RallyDesign.pt(178))
+          ).frame(height: RallyDesign.pt(230))
           RallyTabs(
-            tabs: ["Overview", "Stats", "Lineups", "Plays", "Sources", "Highlights"],
+            tabs: ["Overview", "Stats", "Lineups", "Plays", "Highlights", "Sources"],
             selection: $tab)
           ScrollView {
             VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
@@ -45,7 +45,7 @@ struct EventScreen: View {
                 } else if sources.candidates.isEmpty {
                   RallyEmptyState(
                     title: "No matching sources",
-                    message: sources.error ?? "Add your provider or sports addons in Settings.",
+                    message: sources.error ?? "Add your authorized provider or addon manifests in Settings.",
                     actionTitle: "Settings"
                   ) { navigate(.settings) }
                 } else {
@@ -114,7 +114,7 @@ struct EventScreen: View {
   }
   private func overview(_ e: SportEvent) -> some View {
     HStack(alignment: .top, spacing: RallyDesign.pt(12)) {
-      RallyPanel("Game Info", minimumHeight: 168) {
+      RallyPanel("Game Info", minimumHeight: 144) {
         Label(e.venue ?? "Venue not published", systemImage: "sportscourt")
         if let city = e.liveStats["Venue City"] {
           Text(city).foregroundStyle(RallyDesign.muted).font(RallyDesign.font(9))
@@ -128,7 +128,7 @@ struct EventScreen: View {
             systemImage: "cloud.sun")
         }
       }.font(RallyDesign.font(11)).frame(maxWidth: .infinity)
-      RallyPanel("Team Form", minimumHeight: 168) {
+      RallyPanel("Team Form", compact: true, minimumHeight: 144) {
         HStack {
           VStack(spacing: RallyDesign.pt(5)) {
             RallyTeamLogo(team: e.awayTeam, size: 45)
@@ -167,7 +167,7 @@ struct EventScreen: View {
             RallyDesign.muted)
         }
       }.font(RallyDesign.font(11)).frame(maxWidth: .infinity)
-      RallyPanel("Player Stats", minimumHeight: 168) {
+      RallyPanel("Player Stats", compact: true, minimumHeight: 144) {
         if e.playerLeaders.isEmpty {
           Text("Stats will appear when published.").foregroundStyle(RallyDesign.muted).font(
             RallyDesign.font(11))

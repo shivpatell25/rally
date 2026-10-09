@@ -33,7 +33,7 @@ struct GameViewScreen: View {
   @FocusState private var controlFocus: String?
   @Namespace private var playerFocusScope
   @State private var lastControl = "play-pause"
-  private let controlOrder = ["play-pause", "Fullscreen", "Restart", "Multiview", "Audio", "Captions", "Pick Source"]
+  private let controlOrder = ["play-pause", "Restart", "Fullscreen", "Pick Source", "Audio", "Captions", "Multiview"]
   private var showsSeekControl: Bool {
     session.seekable && session.duration.isFinite && session.duration > 0
   }
@@ -376,15 +376,6 @@ struct GameViewScreen: View {
       control(
         session.playbackRequested ? "Pause" : "Play", icon: session.playbackRequested ? "pause.fill" : "play.fill"
       ) { session.toggle() }
-      if !fullscreen || eventId != nil {
-        control(
-          fullscreen ? "Game View" : "Fullscreen",
-          icon: fullscreen ? "rectangle.inset.filled" : "arrow.up.left.and.arrow.down.right"
-        ) {
-          full.toggle()
-          controls = true
-        }
-      }
       control("Restart", icon: "arrow.counterclockwise") {
         if session.seekable {
           session.restart()
@@ -395,6 +386,18 @@ struct GameViewScreen: View {
           }
         }
       }
+      if !fullscreen || eventId != nil {
+        control(
+          fullscreen ? "Game View" : "Fullscreen",
+          icon: fullscreen ? "rectangle.inset.filled" : "arrow.up.left.and.arrow.down.right"
+        ) {
+          full.toggle()
+          controls = true
+        }
+      }
+      control("Pick Source", icon: "antenna.radiowaves.left.and.right") { overlay = .source }
+      control("Audio", icon: "speaker.wave.2") { overlay = .audio }
+      control("Captions", icon: "captions.bubble") { overlay = .captions }
       control("Multiview", icon: "square.grid.2x2") {
         if let candidate = selected ?? initialCandidate {
           navigate(.multiViewSource(candidate: candidate, eventId: eventId))
@@ -408,9 +411,6 @@ struct GameViewScreen: View {
             .multiView(channelId: eventId == nil ? target : nil, eventId: eventId, eventIds: []))
         }
       }
-      control("Audio", icon: "speaker.wave.2") { overlay = .audio }
-      control("Captions", icon: "captions.bubble") { overlay = .captions }
-      control("Pick Source", icon: "antenna.radiowaves.left.and.right") { overlay = .source }
       if fullscreen { control("Diagnostics", icon: "waveform.path.ecg") { overlay = .diagnostics } }
     }.focusSection().onMoveCommand { direction in
       recordControlInteraction()

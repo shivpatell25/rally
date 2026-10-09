@@ -262,12 +262,12 @@ import SwiftUI
           guard let self, revision == self.generation, item === self.player.currentItem else { return }
           switch item.status {
           case .readyToPlay:
-            self.loading = false
             self.error = nil
             if let resumePosition, resumePosition.isFinite, resumePosition > 0 {
               await self.player.seek(to: CMTime(seconds: resumePosition, preferredTimescale: 600))
             }
             guard revision == self.generation, item === self.player.currentItem else { return }
+            self.loading = false
             if self.wantsPlayback && !self.sceneSuspended && !self.audioInterrupted { self.player.play() }
             await self.loadTracks(asset)
           case .failed:
@@ -377,8 +377,19 @@ import SwiftUI
     resume()
   }
   func seek(_ seconds: Double) {
-    guard let range = player.currentItem?.seekableTimeRanges.last?.timeRangeValue else { return }
-    let next = min(CMTimeRangeGetEnd(range).seconds, max(range.start.seconds, elapsed + seconds))
+    guard seconds.isFinite, let item = player.currentItem else { return }
+    // A restored VOD item can be ready before its HLS seekable ranges arrive.
+    // Its finite duration still permits normal seeking; live streams require
+    // the actual DVR window. Use media time, not the delayed display observer.
+    let range: CMTimeRange
+    if let available = item.seekableTimeRanges.last?.timeRangeValue {
+      range = available
+    } else if item.duration.seconds.isFinite, item.duration.seconds > 0 {
+      range = CMTimeRange(start: .zero, duration: item.duration)
+    } else { return }
+    let position = player.currentTime().seconds
+    guard position.isFinite else { return }
+    let next = min(CMTimeRangeGetEnd(range).seconds, max(range.start.seconds, position + seconds))
     player.seek(to: CMTime(seconds: next, preferredTimescale: 600))
   }
   func setQuality(_ label: String) {

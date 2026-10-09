@@ -6,7 +6,7 @@ struct SettingsScreen: View {
   let navigate: (RallyRoute) -> Void
   @State private var tab = "Sources"
   @State private var accountTab = "My Rally"
-  @State private var streamTab = "Providers"
+  @State private var streamTab = "IPTV"
   @State private var provider = IptvProvider.stalker
   @State private var portal = ""
   @State private var mac = ""
@@ -33,7 +33,7 @@ struct SettingsScreen: View {
       Text("Settings").font(RallyDesign.font(25, .semibold))
       HStack(alignment: .top, spacing: RallyDesign.pt(30)) {
         VStack(alignment: .leading, spacing: RallyDesign.pt(8)) {
-          ForEach(["Account", "Playback", "Appearance", "Sources", "Alerts", "Support"], id: \.self) { section in
+          ForEach(["Sources", "Playback", "Appearance", "Account", "Alerts", "Support"], id: \.self) { section in
             Button { tab = section } label: {
               Text(sectionTitle(section)).font(RallyDesign.font(14, tab == section ? .semibold : .regular))
                 .frame(width: RallyDesign.pt(154), height: RallyDesign.pt(28), alignment: .leading)
@@ -51,9 +51,10 @@ struct SettingsScreen: View {
             VStack(alignment: .leading, spacing: RallyDesign.pt(18)) {
               switch tab {
               case "Sources":
-                RallyTabs(tabs: ["Providers", "Addons"], selection: $streamTab)
-                if streamTab == "Providers" { sourceSettings } else { addonSettings }
+                RallyTabs(tabs: ["IPTV", "Addon Manifests"], selection: $streamTab)
+                if streamTab == "IPTV" { sourceSettings } else { addonSettings }
               case "Account":
+                RallyAction(title: "Import / Export Preferences") { transfer = true }
                 RallyTabs(tabs: ["My Rally", "Sports"], selection: $accountTab, focus: $accountFocus) { _, direction in
                   if direction == .down, accountTab == "Sports",
                      let league = store.settings.sportsOrder.first {
@@ -111,6 +112,9 @@ struct SettingsScreen: View {
     }
 
   }
+  private var sourceNotice: some View {
+    Text("Rally is a media player and aggregation interface. Rally does not provide, host, sell, or redistribute third-party streams or channels. Only connect services and content sources that you are legally authorized to access. You are responsible for complying with applicable laws, copyright requirements, and the terms of the services you use.").font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
+  }
   private var sourceSettings: some View {
     VStack(alignment: .leading, spacing: RallyDesign.pt(14)) {
       HStack {
@@ -162,17 +166,18 @@ struct SettingsScreen: View {
           message = "Provider removed."
         }
       }.frame(maxWidth: .infinity, alignment: .leading).focusSection().disabled(busy)
+      sourceNotice
     }
   }
   private var addonSettings: some View {
     VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
-      Text("Sports addons").font(RallyDesign.font(18, .semibold))
+      Text("Addon Manifests").font(RallyDesign.font(18, .semibold))
       field("Manifest URL", text: $addon)
       actionRow {
-        RallyAction(title: "Add Addon", icon: "plus") { Task { await addAddon() } }.disabled(busy)
+        RallyAction(title: "Add Manifest", icon: "plus") { Task { await addAddon() } }.disabled(busy)
       }
       if store.settings.stremioAddonUrls.isEmpty {
-        Text("No addons configured. Rally does not bundle stream sources.").foregroundStyle(
+        Text("No manifests configured. Rally does not bundle stream sources.").foregroundStyle(
           RallyDesign.muted)
       }
       ForEach(store.settings.stremioAddonUrls, id: \.self) { url in
@@ -188,13 +193,14 @@ struct SettingsScreen: View {
         }.frame(maxWidth: .infinity, alignment: .leading).focusSection()
       }
       actionRow {
-        RallyAction(title: "Reset Addons") {
+        RallyAction(title: "Remove All Manifests") {
           store.settings.stremioAddonUrls = []
           NetworkPolicy.shared.configure(store.settings)
           store.settingsRevision += 1
-          message = "Addons reset."
+          message = "Manifests removed."
         }
       }
+      sourceNotice
     }
   }
   private var sportSettings: some View {
@@ -275,9 +281,11 @@ struct SettingsScreen: View {
   }
   private func sectionTitle(_ section: String) -> String {
     switch section {
-    case "Sources": return "Sources / Streaming"
-    case "Alerts": return "Notifications / Alerts"
-    case "Support": return "App / About"
+    case "Account": return "Personalization"
+    case "Appearance": return "Appearance & Accessibility"
+    case "Sources": return "Sources"
+    case "Alerts": return "Notifications"
+    case "Support": return "About Rally"
     default: return section
     }
   }
@@ -286,6 +294,8 @@ struct SettingsScreen: View {
       toggle("Reduce Motion", get: { store.settings.reducedMotion }, set: { store.settings.reducedMotion = $0 })
       toggle("High Contrast Focus", get: { store.settings.highContrastFocus }, set: { store.settings.highContrastFocus = $0 })
       toggle("Larger Text", get: { store.settings.largeText }, set: { store.settings.largeText = $0 })
+      toggle("Spoken Score Summaries", get: { store.settings.spokenScoreSummaries },
+             set: { store.settings.spokenScoreSummaries = $0 })
       toggle("Score Saver", get: { store.settings.scoreSaverEnabled }, set: { store.settings.scoreSaverEnabled = $0 })
     }
   }
@@ -297,8 +307,6 @@ struct SettingsScreen: View {
       toggle(
         "Adaptive Quality", get: { store.settings.adaptiveQualityEnabled },
         set: { store.settings.adaptiveQualityEnabled = $0 })
-      toggle("Spoken Score Summaries", get: { store.settings.spokenScoreSummaries },
-             set: { store.settings.spokenScoreSummaries = $0 })
       VStack(alignment: .leading, spacing: RallyDesign.pt(12)) {
         Text("Audio Normalization").font(RallyDesign.font(15, .semibold))
         Text(
@@ -339,7 +347,6 @@ struct SettingsScreen: View {
           RallyDesign.pt(5))
       }
       HStack {
-        RallyAction(title: "Export / Import Preferences") { transfer = true }
         RallyAction(title: "Check for Updates") { Task { await checkUpdates() } }.disabled(busy)
       }
       Text(

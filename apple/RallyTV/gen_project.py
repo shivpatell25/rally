@@ -30,7 +30,7 @@ def collect() -> tuple[list[str], list[str]]:
             rel = os.path.relpath(full, ROOT)
             if name.endswith(".swift"):
                 sources.append(rel)
-            elif name.lower().endswith((".jpg", ".jpeg", ".png", ".ttf", ".ts")):
+            elif name.lower().endswith((".jpg", ".jpeg", ".png", ".ttf", ".ts", ".xcprivacy")):
                 resources.append(rel)
     return sorted(sources), sorted(resources)
 
@@ -119,7 +119,7 @@ def main() -> None:
     for rel in resources:
         name = os.path.basename(rel)
         ext = os.path.splitext(name)[1].lower()
-        ftype = "folder.assetcatalog" if ext == ".xcassets" else "file" if ext in (".ttf", ".ts") else ("image.png" if ext == ".png" else "image.jpeg")
+        ftype = "folder.assetcatalog" if ext == ".xcassets" else "file" if ext in (".ttf", ".ts", ".xcprivacy") else ("image.png" if ext == ".png" else "image.jpeg")
         L.append(f"\t\t{res_file_ids[rel]} = {{isa = PBXFileReference; lastKnownFileType = {ftype}; name = \"{name}\"; path = \"{name}\"; sourceTree = \"<group>\"; }};")
     for rel in testSources + unitSources:
         name = os.path.basename(rel)
@@ -229,7 +229,7 @@ def main() -> None:
         "ASSETCATALOG_COMPILER_APPICON_NAME = Rally; "
         "CODE_SIGN_STYLE = Automatic; "
         "COPY_PHASE_STRIP = NO; "
-        "CURRENT_PROJECT_VERSION = 16; "
+        "CURRENT_PROJECT_VERSION = 17; "
         "ENABLE_PREVIEWS = YES; "
         "GENERATE_INFOPLIST_FILE = YES; "
         "INFOPLIST_KEY_CFBundleDisplayName = Rally; INFOPLIST_FILE = RallyTV/App/Info.plist; "

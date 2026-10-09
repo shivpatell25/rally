@@ -5,11 +5,11 @@ import UIKit
 /// Shared composition grid in the same 960×540 design units as Android TV.
 /// Convert design units to native points; fonts and video render at display resolution.
 enum RallyDesign {
-  static let black = Color(hex: "050507"), surface = Color(hex: "101317"),
-    edge = Color(hex: "252B30"), muted = Color(hex: "AEB4BD")
+  static let black = Color(hex: "020203"), surface = Color(hex: "0A1015"),
+    edge = Color(hex: "252B30"), muted = Color(hex: "B0B6C0")
   static let margin: CGFloat = 60, gap: CGFloat = 12, radius: CGFloat = 8
   static let accent = LinearGradient(
-    colors: [Color(hex: "E5EE92"), Color(hex: "AAE7CE"), Color(hex: "5EDBF0")],
+    colors: [Color(hex: "EAFB78"), Color(hex: "B8F3C7"), Color(hex: "6FCFF6")],
     startPoint: .leading, endPoint: .trailing)
   static let fontName: String = {
     guard let url = Bundle.main.url(forResource: "inter_variable", withExtension: "ttf") else {
@@ -136,7 +136,7 @@ struct RallySectionHeader: View {
   var action: (() -> Void)?
   var body: some View {
     HStack {
-      Text(title.uppercased()).font(RallyDesign.font(11, .regular)).tracking(RallyDesign.pt(1.4))
+      Text(title.uppercased()).font(RallyDesign.font(11, .semibold)).tracking(RallyDesign.pt(1.65))
         .foregroundStyle(RallyDesign.muted)
         .padding(
           .leading, RallyDesign.pt(10))
@@ -144,7 +144,7 @@ struct RallySectionHeader: View {
       if let actionTitle, let action {
         Button(action: action) {
           HStack(spacing: RallyDesign.pt(7)) {
-            Text(actionTitle.uppercased()).font(RallyDesign.font(11)).tracking(RallyDesign.pt(1.4))
+            Text(actionTitle.uppercased()).font(RallyDesign.font(11, .bold)).tracking(RallyDesign.pt(1.15))
               .foregroundStyle(RallyDesign.muted)
             Image(systemName: "chevron.right").font(RallyDesign.font(10))
           }
@@ -330,4 +330,38 @@ extension SportEvent {
     }
   }
   var metadata: String { "\(league) · \(gameStatusDetail ?? statusLabel)" }
+}
+
+/// Navigation geometry is canonical; tvOS supplies the glass rendering and
+/// directional focus engine. The selected tab remains distinct from focus.
+struct RallyNavigationStyle: ButtonStyle {
+  var selected = false
+  func makeBody(configuration: Configuration) -> some View {
+    Surface(label: configuration.label, selected: selected, pressed: configuration.isPressed)
+  }
+  private struct Surface<Label: View>: View {
+    let label: Label
+    let selected: Bool
+    let pressed: Bool
+    @Environment(\.isFocused) private var focused
+    @Environment(RallyStore.self) private var store
+    var body: some View {
+      label.font(RallyDesign.font(13, selected ? .bold : .medium))
+        .tracking(RallyDesign.pt(0.15))
+        .foregroundStyle(selected || focused ? .white : RallyDesign.muted)
+        .padding(.horizontal, RallyDesign.pt(12)).padding(.vertical, RallyDesign.pt(7))
+        .background { if selected || focused { selection } }
+        .overlay { if focused { RoundedRectangle(cornerRadius: RallyDesign.pt(8)).stroke(.white.opacity(store.settings.highContrastFocus ? 1 : 0.35), lineWidth: 0.7) } }
+        .scaleEffect(pressed ? 0.99 : focused ? 1.02 : 1)
+        .animation(store.settings.reducedMotion ? nil : .spring(response: 0.2, dampingFraction: 1), value: focused)
+    }
+    @ViewBuilder private var selection: some View {
+      if #available(tvOS 26.0, *) {
+        RoundedRectangle(cornerRadius: RallyDesign.pt(8)).fill(.clear)
+          .glassEffect(.regular, in: RoundedRectangle(cornerRadius: RallyDesign.pt(8)))
+      } else {
+        RoundedRectangle(cornerRadius: RallyDesign.pt(8)).fill(.ultraThinMaterial)
+      }
+    }
+  }
 }
