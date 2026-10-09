@@ -249,9 +249,7 @@ struct MultiViewScreen: View {
           overlay = .manage
         } label: {
           ZStack(alignment: .bottomLeading) {
-            RallyVideoSurface(player: tile.session.player) { ready in
-              tile.session.videoVisible = ready
-            }.allowsHitTesting(false)
+            RallyPlaybackSurface(session: tile.session).allowsHitTesting(false)
             if tile.session.loading {
               ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -477,6 +475,9 @@ struct MultiViewScreen: View {
     }
     lastAudio = tile.id
     routeAudio()
+    // Mark this as a multiview session before opening so it stays on the
+    // resource-capped AVPlayer path instead of creating a full Aether decoder.
+    tile.session.setMultiViewCaps(count: max(1, tiles.filter { !$0.stats }.count))
     await tile.session.open(
       tile.channel?.id ?? candidate?.playbackTarget.absoluteString ?? "", event: event,
       candidate: candidate, container: store.container)

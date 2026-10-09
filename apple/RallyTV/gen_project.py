@@ -56,6 +56,10 @@ def main() -> None:
         "sourcesPhase": uid("PBXSourcesBuildPhase:RallyTV"),
         "resourcesPhase": uid("PBXResourcesBuildPhase:RallyTV"),
         "frameworksPhase": uid("PBXFrameworksBuildPhase:RallyTV"),
+        "testFrameworksPhase": uid("PBXFrameworksBuildPhase:RallyTVUITests"),
+        "aetherPackage": uid("XCRemoteSwiftPackageReference:AetherEngine"),
+        "aetherProduct": uid("XCSwiftPackageProductDependency:AetherEngine"),
+        "aetherBuild": uid("PBXBuildFile:AetherEngine"),
         "testTarget": uid("PBXNativeTarget:RallyTVUITests"),
         "testProduct": uid("PBXFileReference:RallyTVUITests.xctest"),
         "testSourcesPhase": uid("PBXSourcesBuildPhase:RallyTVUITests"),
@@ -101,6 +105,7 @@ def main() -> None:
         L.append(f"/* End {name} section */")
     # PBXBuildFile
     section("PBXBuildFile")
+    L.append(f"\t\t{ids['aetherBuild']} = {{isa = PBXBuildFile; productRef = {ids['aetherProduct']}; }};")
     for rel in sources:
         L.append(f"\t\t{build_ids[rel]} = {{isa = PBXBuildFile; fileRef = {file_ids[rel]}; }};")
     for rel in resources:
@@ -128,7 +133,8 @@ def main() -> None:
 
     # PBXFrameworksBuildPhase
     section("PBXFrameworksBuildPhase")
-    L.append(f"\t\t{ids['frameworksPhase']} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
+    L.append(f"\t\t{ids['frameworksPhase']} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({ids['aetherBuild']}); runOnlyForDeploymentPostprocessing = 0; }};")
+    L.append(f"\t\t{ids['testFrameworksPhase']} = {{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; }};")
     end_section("PBXFrameworksBuildPhase")
 
     # PBXGroup
@@ -151,12 +157,12 @@ def main() -> None:
         f"buildPhases = ({ids['sourcesPhase']}, {ids['frameworksPhase']}, {ids['resourcesPhase']}); "
         f"buildRules = (); dependencies = (); name = RallyTV; "
         f"productName = RallyTV; productReference = {ids['appRef']}; "
-        f"productType = \"com.apple.product-type.application\"; }};"
+        f"packageProductDependencies = ({ids['aetherProduct']}); productType = \"com.apple.product-type.application\"; }};"
     )
     L.append(
         f"\t\t{ids['testTarget']} = {{isa = PBXNativeTarget; "
         f"buildConfigurationList = {ids['testConfigList']}; "
-        f"buildPhases = ({ids['testSourcesPhase']}, {ids['frameworksPhase']}); "
+        f"buildPhases = ({ids['testSourcesPhase']}, {ids['testFrameworksPhase']}); "
         f"buildRules = (); dependencies = ({ids['testDep']}); name = RallyTVUITests; "
         f"productName = RallyTVUITests; productReference = {ids['testProduct']}; "
         f"productType = \"com.apple.product-type.bundle.ui-testing\"; }};"
@@ -189,6 +195,7 @@ def main() -> None:
         f"compatibilityVersion = \"Xcode 16.0\"; developmentRegion = en; "
         f"hasScannedForEncodings = 0; knownRegions = (en, Base); "
         f"mainGroup = {ids['mainGroup']}; productRefGroup = {ids['productsGroup']}; "
+        f"packageReferences = ({ids['aetherPackage']}); "
         f"projectDirPath = \"\"; projectRoot = \"\"; targets = ({ids['target']}, {ids['testTarget']}, {uid("unitTarget")}); }};"
     )
     end_section("PBXProject")
@@ -210,6 +217,13 @@ def main() -> None:
     test_files = ", ".join(test_build_ids[rel] for rel in testSources)
     L.append(f"\t\t{ids['testSourcesPhase']} = {{isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({test_files}); runOnlyForDeploymentPostprocessing = 0; }};")
     end_section("PBXSourcesBuildPhase")
+
+    section("XCRemoteSwiftPackageReference")
+    L.append(f"\t\t{ids['aetherPackage']} = {{isa = XCRemoteSwiftPackageReference; repositoryURL = \"https://github.com/superuser404notfound/AetherEngine.git\"; requirement = {{kind = exactVersion; version = 6.89.1; }}; }};")
+    end_section("XCRemoteSwiftPackageReference")
+    section("XCSwiftPackageProductDependency")
+    L.append(f"\t\t{ids['aetherProduct']} = {{isa = XCSwiftPackageProductDependency; package = {ids['aetherPackage']}; productName = AetherEngine; }};")
+    end_section("XCSwiftPackageProductDependency")
 
     # XCBuildConfiguration
     section("XCBuildConfiguration")

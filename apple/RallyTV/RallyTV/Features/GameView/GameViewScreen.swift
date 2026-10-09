@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftUI
+import AetherEngine
 
 private enum PlayerOverlay: String, Identifiable {
   case source, audio, captions, quality, diagnostics
@@ -40,7 +41,7 @@ struct GameViewScreen: View {
   var body: some View {
     ZStack {
       if full {
-        RallyVideoSurface(player: session.player).frame(
+        RallyPlaybackSurface(session: session).frame(
           width: RallyDesign.pt(960), height: RallyDesign.pt(540)
         ).background(.black)
           .focusable(!controls).focusEffectDisabled().onTapGesture { controls = true }.onMoveCommand
@@ -176,7 +177,8 @@ struct GameViewScreen: View {
           controls = true
         } label: {
           ZStack(alignment: .topLeading) {
-            RallyVideoSurface(player: session.player).allowsHitTesting(false)
+            RallyPlaybackSurface(session: session)
+              .allowsHitTesting(false)
             BundleArt.image("rally_mark_ui.png").resizable().scaledToFit()
               .frame(width: RallyDesign.pt(16), height: RallyDesign.pt(18))
               .padding(RallyDesign.pt(12)).opacity(0.6)
@@ -659,9 +661,23 @@ struct GameViewScreen: View {
             }
             switch mode {
             case .audio:
-              if session.audioTracks.isEmpty {
+              if session.usesAetherEngine {
+                if session.aetherAudioTracks.isEmpty {
+                  Text("This source has one default audio track.").foregroundStyle(RallyDesign.muted)
+                }
+                ForEach(session.aetherAudioTracks) { track in
+                  RallyAction(
+                    title: [track.name, track.language].compactMap { $0 }.joined(separator: " · "),
+                    icon: session.aetherSelectedAudio == track.id ? "checkmark" : nil
+                  ) {
+                    session.selectAetherAudio(track.id)
+                    overlay = nil
+                  }
+                }
+              } else if session.audioTracks.isEmpty {
                 Text("This source has one default audio track.").foregroundStyle(RallyDesign.muted)
               }
+              if !session.usesAetherEngine {
               ForEach(Array(session.audioTracks.enumerated()), id: \.offset) { _, option in
                 RallyAction(
                   title: option.displayName,
@@ -671,33 +687,53 @@ struct GameViewScreen: View {
                   overlay = nil
                 }
               }
+              }
             case .captions:
               RallyAction(title: "Off", icon: session.selectedCaption == nil ? "checkmark" : nil) {
-                session.selectCaption(nil)
+                session.clearCaption()
                 overlay = nil
               }
-              if session.captionTracks.isEmpty {
+              if session.usesAetherEngine {
+                if session.aetherCaptionTracks.isEmpty {
+                  Text("This source does not include captions.").foregroundStyle(RallyDesign.muted)
+                }
+                ForEach(session.aetherCaptionTracks) { track in
+                  RallyAction(
+                    title: [track.name, track.language].compactMap { $0 }.joined(separator: " · "),
+                    icon: session.aetherSelectedCaption == track.id ? "checkmark" : nil
+                  ) {
+                    session.selectAetherCaption(track.id)
+                    overlay = nil
+                  }
+                }
+              } else if session.captionTracks.isEmpty {
                 Text("This source does not include captions.").foregroundStyle(RallyDesign.muted)
               }
+              if !session.usesAetherEngine {
               ForEach(Array(session.captionTracks.enumerated()), id: \.offset) { _, option in
                 RallyAction(title: option.displayName) {
                   session.selectCaption(option)
                   overlay = nil
                 }
               }
-            case .quality:
-              ForEach(["Auto", "2160p", "1080p", "720p", "480p"], id: \.self) { q in
-                RallyAction(title: q, icon: session.quality == q ? "checkmark" : nil) {
-                  session.setQuality(q)
-                  overlay = nil
-                }
               }
-              Text(
-                "Resolution caps apply to adaptive streams. Available quality depends on the source."
-              ).font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
+            case .quality:
+              if session.usesAetherEngine {
+                Text("AetherEngine uses the source’s native resolution and HDR format.")
+                  .font(RallyDesign.font(14)).foregroundStyle(RallyDesign.muted)
+              } else {
+                ForEach(["Auto", "2160p", "1080p", "720p", "480p"], id: \.self) { q in
+                  RallyAction(title: q, icon: session.quality == q ? "checkmark" : nil) {
+                    session.setQuality(q)
+                    overlay = nil
+                  }
+                }
+                Text("Resolution caps apply to adaptive streams. Available quality depends on the source.")
+                  .font(RallyDesign.font(11)).foregroundStyle(RallyDesign.muted)
+              }
             case .diagnostics:
               Text(
-                "AVPlayer · \(session.resolution)\n\(session.bitrate) · \(session.fps)\nTime \(Int(session.elapsed))s · \(session.isLive ? "Live" : "On demand")\nBuffered \(Int(session.bufferedSeconds))s\nCodec \(session.codecs.isEmpty ? "Unavailable" : session.codecs)\nQuality \(session.quality)\nAudio \(session.selectedAudio ?? "Default")\nCaptions \(session.selectedCaption ?? "Off")"
+                "\(session.usesAetherEngine ? "AetherEngine" : "AVPlayer") · \(session.resolution)\n\(session.bitrate) · \(session.fps)\nTime \(Int(session.elapsed))s · \(session.isLive ? "Live" : "On demand")\nBuffered \(Int(session.bufferedSeconds))s\nCodec \(session.codecs.isEmpty ? "Unavailable" : session.codecs)\nQuality \(session.quality)\nAudio \(session.selectedAudio ?? "Default")\nCaptions \(session.selectedCaption ?? "Off")"
               ).font(RallyDesign.font(14)).lineSpacing(RallyDesign.pt(10))
               Text(SelectBestStream.trace(candidates: sources.candidates, selectedId: selected?.id))
                 .font(RallyDesign.font(10)).foregroundStyle(RallyDesign.muted)

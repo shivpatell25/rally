@@ -1,9 +1,23 @@
 import AVKit
 import Observation
 import SwiftUI
+import Combine
+import AetherEngine
+import UIKit
+
+@MainActor private enum PlaybackScreenAwakeRegistry {
+  private static var activeSessions = Set<UUID>()
+
+  static func setActive(_ active: Bool, for id: UUID) {
+    if active { activeSessions.insert(id) } else { activeSessions.remove(id) }
+    UIApplication.shared.isIdleTimerDisabled = !activeSessions.isEmpty
+  }
+}
 
 @MainActor @Observable final class PlaybackSession {
   let player = AVPlayer()
+  private(set) var aetherEngine: AetherEngine?
+  private let playbackActivityID = UUID()
   var loading = true
   var playing = false
   var videoVisible = false
@@ -18,6 +32,8 @@ import SwiftUI
   var codecs = ""
   var audioTracks: [AVMediaSelectionOption] = []
   var captionTracks: [AVMediaSelectionOption] = []
+  var aetherAudioTracks: [TrackInfo] = []
+  var aetherCaptionTracks: [TrackInfo] = []
   var selectedAudio: String?
   var selectedCaption: String?
   private(set) var target: String = ""
@@ -51,10 +67,14 @@ import SwiftUI
   @ObservationIgnored private var playlistPermission: PlaylistMediaPermission?
   @ObservationIgnored private var audioGroup: AVMediaSelectionGroup?
   @ObservationIgnored private var captionGroup: AVMediaSelectionGroup?
+  @ObservationIgnored private var aetherStateObservation: AnyCancellable?
+  @ObservationIgnored private var aetherClockObservation: AnyCancellable?
+  @ObservationIgnored private var resolvedSource: URL?
   private var generation = 0
   private var started = Date()
   private var settings: SettingsStore?
   private var firstFrame = false
+  private var videoFrameWaitStarted: Date?
   private var lastRemoteTransport = Date.distantPast
   enum RemoteTransport { case play, pause, toggle }
   func remoteTransport(_ action: RemoteTransport) {
@@ -68,10 +88,19 @@ import SwiftUI
     case .toggle: toggle()
     }
   }
-  var seekable: Bool { player.currentItem?.seekableTimeRanges.isEmpty == false }
+  var seekable: Bool {
+    if let engine = aetherEngine {
+      return engine.isLive ? engine.seekableLiveRange != nil : engine.duration > 0
+    }
+    return player.currentItem?.seekableTimeRanges.isEmpty == false
+  }
+  var aetherSelectedAudio: Int? { aetherEngine?.activeAudioTrackIndex }
+  var aetherSelectedCaption: Int? { aetherEngine?.activeSubtitleTrackIndex }
   var playbackRequested: Bool { wantsPlayback }
-  var isLive: Bool { !duration.isFinite || duration == 0 }
+  var usesAetherEngine: Bool { aetherEngine != nil }
+  var isLive: Bool { aetherEngine?.isLive ?? (!duration.isFinite || duration == 0) }
   var bufferedSeconds: Double {
+    if let engine = aetherEngine { return max(0, engine.bufferedPosition - elapsed) }
     guard let ranges = player.currentItem?.loadedTimeRanges else { return 0 }
     return ranges.map { max(0, CMTimeRangeGetEnd($0.timeRangeValue).seconds - elapsed) }.max() ?? 0
   }
@@ -99,6 +128,7 @@ import SwiftUI
         self?.playing = false
         self?.wantsPlayback = false
         self?.loading = false
+        if let self { PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID) }
       }
     }
     interruptionToken = NotificationCenter.default.addObserver(
@@ -113,6 +143,7 @@ import SwiftUI
           self.resumeAfterInterruption = self.wantsPlayback
           self.audioInterrupted = true
           self.player.pause()
+          PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
           self.playing = false
         } else {
           self.audioInterrupted = false
@@ -149,6 +180,7 @@ import SwiftUI
     reconnectTask = nil
     reconnectAttempts = 0
     wantsPlayback = true
+    PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID)
     let next = PlaybackRequest(target: target, event: event, candidate: candidate, container: container)
     request = next
     await load(next, refreshSource: refreshSource)
@@ -167,6 +199,7 @@ import SwiftUI
     error = nil
     firstFrame = false
     videoVisible = false
+    videoFrameWaitStarted = nil
     elapsed = 0
     duration = 0
     resolution = ""
@@ -175,6 +208,8 @@ import SwiftUI
     codecs = ""
     audioTracks = []
     captionTracks = []
+    aetherAudioTracks = []
+    aetherCaptionTracks = []
     audioGroup = nil
     captionGroup = nil
     selectedAudio = nil
@@ -184,6 +219,11 @@ import SwiftUI
     lastWatchedPosition = 0
     progress = PlaybackProgressWatchdog()
     settings = request.container.settings
+    aetherStateObservation = nil
+    aetherClockObservation = nil
+    aetherEngine?.stop()
+    aetherEngine = nil
+    resolvedSource = nil
     target = request.candidate?.id ?? request.target
     sourceTitle = request.candidate?.title ?? (request.event?.compactMatchup ?? "Live TV")
     headers = [:]
@@ -233,10 +273,25 @@ import SwiftUI
         }
       }
       guard revision == generation, !Task.isCancelled else { return }
+      resolvedSource = resolved
       let isAddonStream = request.candidate?.sourceKind == .stremio
       let permission = (isPlaylistChannel || isAddonStream) && resolved.scheme?.lowercased() == "http"
         ? PlaylistMediaPermission(resolved) : nil
       guard NetworkPolicy.shared.permits(resolved) else { throw URLError(.appTransportSecurityRequiresSecureConnection) }
+      headers = requestHeaders
+      playlistPermission = permission
+      if multiViewCount == nil {
+        try await startAetherEngine(source: resolved, headers: requestHeaders, event: request.event)
+        guard revision == generation else { return }
+        target = request.candidate?.id ?? request.target
+        sourceTitle = resolvedTitle
+        loading = false
+        playing = true
+        videoVisible = true
+        firstFrame = true
+        settings?.recordHealth(target, success: true, startup: Int(Date().timeIntervalSince(started) * 1000))
+        return
+      }
       // Playback validates the actual GET request. HEAD probes can reject working providers.
       var media = resolved
       var mediaProxy: HeaderMediaProxy?
@@ -253,7 +308,10 @@ import SwiftUI
       let asset = AVURLAsset(url: media, options: [AVURLAssetHTTPUserAgentKey: requestHeaders["User-Agent"] ?? "Rally-tvOS/1.0"])
       let item = AVPlayerItem(asset: asset)
       item.preferredForwardBufferDuration = request.container.settings.lowLatencyMode ? 3 : 12
-      item.preferredMaximumResolution = request.container.settings.adaptiveQualityEnabled ? .zero : CGSize(width: 1920, height: 1080)
+      // Leave HLS quality selection to AVPlayer unless the user explicitly chooses a
+      // resolution. A fixed 1080p ceiling here prevented Auto from ever requesting 4K,
+      // even on Apple TV 4K displays.
+      item.preferredMaximumResolution = .zero
       player.replaceCurrentItem(with: item)
       if quality != "Auto" { setQuality(quality) }
       if let multiViewCount { setMultiViewCaps(count: multiViewCount) }
@@ -268,7 +326,10 @@ import SwiftUI
             }
             guard revision == self.generation, item === self.player.currentItem else { return }
             self.loading = false
-            if self.wantsPlayback && !self.sceneSuspended && !self.audioInterrupted { self.player.play() }
+            if self.wantsPlayback && !self.sceneSuspended && !self.audioInterrupted {
+              self.player.play()
+              self.videoFrameWaitStarted = Date()
+            }
             await self.loadTracks(asset)
           case .failed:
             self.reconnect("This source could not be played. Try another source or retry.")
@@ -285,6 +346,19 @@ import SwiftUI
   private func checkProgress() {
     guard request != nil, error == nil, reconnectTask == nil else { return }
     let active = wantsPlayback && !sceneSuspended && !audioInterrupted
+    if let engine = aetherEngine {
+      elapsed = engine.currentTime
+      duration = engine.duration
+      loading = active && (engine.state == .loading || engine.state == .seeking || engine.isBuffering)
+      playing = engine.state == .playing
+      if engine.state == .playing {
+        PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID)
+      } else if !active || engine.state == .paused || engine.state == .ended {
+        PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
+      }
+      return
+    }
+    checkVideoFrame(active: active)
     let waiting = player.timeControlStatus == .waitingToPlayAtSpecifiedRate || player.currentItem?.status != .readyToPlay
     let time = player.currentTime().seconds
     let advancing = time.isFinite && abs(time - lastWatchedPosition) > 0.01
@@ -297,6 +371,120 @@ import SwiftUI
       position: time.isFinite ? time : 0) {
       reconnect("This source stopped updating. Choose another source or retry.")
     }
+  }
+  private func checkVideoFrame(active: Bool) {
+    guard active, !videoVisible, let item = player.currentItem,
+      item.status == .readyToPlay
+    else {
+      videoFrameWaitStarted = nil
+      return
+    }
+    let now = Date()
+    let started = videoFrameWaitStarted ?? now
+    videoFrameWaitStarted = started
+    guard now.timeIntervalSince(started) >= 35 else { return }
+    if aetherEngine == nil, let resolvedSource, let request {
+      videoFrameWaitStarted = now
+      Task { [weak self] in
+        do {
+          try await self?.startAetherEngine(source: resolvedSource, headers: self?.headers ?? [:], event: request.event)
+        } catch {
+          await MainActor.run {
+            guard let self else { return }
+            self.loading = false
+            self.wantsPlayback = false
+            PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
+            self.error = "This source couldn’t be rendered by either player. Try another source."
+            RallyDiagnostics.shared.record("Playback", code: "AetherEngine fallback failed: \(error.localizedDescription)")
+          }
+        }
+      }
+      return
+    }
+    guard aetherEngine != nil else { return }
+    guard now.timeIntervalSince(started) >= 70 else { return }
+    player.pause()
+    wantsPlayback = false
+    PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
+    playing = false
+    loading = false
+    error = "This source isn’t displaying video. Try another source."
+    RallyDiagnostics.shared.record("Playback", code: "No video frame after AetherEngine fallback")
+  }
+  private func startAetherEngine(source: URL, headers: [String: String], event: SportEvent?) async throws {
+    player.pause()
+    player.replaceCurrentItem(with: nil)
+    let engine = try AetherEngine()
+    aetherEngine?.stop()
+    aetherEngine = engine
+    let eventIsLive = event?.status.isLive ?? false
+    aetherStateObservation = engine.$state.sink { [weak self] state in
+      Task { @MainActor in
+        guard let self, self.aetherEngine === engine else { return }
+        switch state {
+        case .idle: break
+        case .loading: self.loading = true
+        case .playing:
+          self.loading = false
+          self.playing = true
+          self.videoVisible = true
+          self.videoFrameWaitStarted = nil
+          self.firstFrame = true
+          PlaybackScreenAwakeRegistry.setActive(self.wantsPlayback, for: self.playbackActivityID)
+        case .paused:
+          self.loading = false
+          self.playing = false
+          PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
+        case .seeking: self.loading = true
+        case .ended:
+          self.loading = false
+          self.playing = false
+          self.wantsPlayback = false
+          PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
+        case .error(let message):
+          self.loading = false
+          self.playing = false
+          self.wantsPlayback = false
+          self.error = message
+          PlaybackScreenAwakeRegistry.setActive(false, for: self.playbackActivityID)
+        }
+      }
+    }
+    aetherClockObservation = engine.clock.$currentTime.sink { [weak self] time in
+      Task { @MainActor in
+        guard let self, self.aetherEngine === engine else { return }
+        self.elapsed = time
+        self.duration = engine.duration
+      }
+    }
+    let options = LoadOptions(
+      httpHeaders: headers,
+      matchContentEnabled: true,
+      panelIsInHDRMode: UIScreen.main.currentEDRHeadroom > 1,
+      isLive: eventIsLive,
+      autoplay: true
+    )
+    if let probe = try await engine.load(url: source, options: options) {
+      aetherAudioTracks = probe.audioTracks
+      aetherCaptionTracks = probe.subtitleTracks
+      resolution = probe.videoWidth > 0 && probe.videoHeight > 0
+        ? "\(probe.videoWidth) × \(probe.videoHeight)" : ""
+      fps = probe.videoFrameRate.map { String(format: "%.2f fps", $0) } ?? ""
+      let format: String
+      switch probe.videoFormat {
+      case .sdr: format = "SDR"
+      case .hdr10: format = "HDR10"
+      case .hdr10Plus: format = "HDR10+"
+      case .dolbyVision: format = "Dolby Vision"
+      case .hlg: format = "HLG"
+      }
+      codecs = [probe.videoCodecName, format].compactMap { $0 }.joined(separator: " · ")
+      selectedAudio = probe.audioTracks.first(where: { $0.id == engine.activeAudioTrackIndex })?.name
+      selectedCaption = probe.subtitleTracks.first(where: { $0.id == engine.activeSubtitleTrackIndex })?.name
+    }
+    videoVisible = true
+    videoFrameWaitStarted = nil
+    if wantsPlayback { engine.play() }
   }
   private func reconnect(_ message: String) {
     guard reconnectTask == nil, let request else { return }
@@ -313,6 +501,7 @@ import SwiftUI
       playing = false
       player.pause()
       error = message
+      PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
       return
     }
     reconnectAttempts += 1
@@ -329,18 +518,27 @@ import SwiftUI
   }
   func pause() {
     wantsPlayback = false
+    PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     player.pause()
+    aetherEngine?.pause()
     playing = false
   }
   func resume() {
     wantsPlayback = true
-    if !sceneSuspended && !audioInterrupted { player.play() }
-    playing = player.rate > 0
+    PlaybackScreenAwakeRegistry.setActive(true, for: playbackActivityID)
+    if !sceneSuspended && !audioInterrupted {
+      player.play()
+      aetherEngine?.play()
+      if !videoVisible { videoFrameWaitStarted = Date() }
+    }
+    playing = aetherEngine?.state == .playing || player.rate > 0
   }
   func suspendForScene() {
     guard !sceneSuspended else { return }
-    scenePosition = !isLive && player.currentTime().seconds.isFinite ? player.currentTime().seconds : nil
+    scenePosition = !isLive && (aetherEngine?.currentTime ?? player.currentTime().seconds).isFinite
+      ? (aetherEngine?.currentTime ?? player.currentTime().seconds) : nil
     sceneSuspended = true
+    PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     generation += 1
     reconnectTask?.cancel()
     reconnectTask = nil
@@ -348,12 +546,14 @@ import SwiftUI
     foregroundTask = nil
     observation = nil
     player.pause()
+    aetherEngine?.pause()
     player.replaceCurrentItem(with: nil)
     proxy?.stop()
     proxy = nil
     playlistPermission = nil
     playing = false
     videoVisible = false
+    videoFrameWaitStarted = nil
   }
   func restoreForScene() {
     guard sceneSuspended else { return }
@@ -366,17 +566,25 @@ import SwiftUI
   }
   func toggle() { wantsPlayback ? pause() : resume() }
   func restart() {
+    if let aetherEngine { Task { await aetherEngine.seek(to: 0); aetherEngine.play() }; return }
     guard let range = player.currentItem?.seekableTimeRanges.first?.timeRangeValue else { return }
     player.seek(to: range.start, toleranceBefore: .zero, toleranceAfter: .zero)
     resume()
   }
   func liveEdge() {
+    if let aetherEngine, let edge = aetherEngine.seekableLiveRange?.upperBound {
+      Task { await aetherEngine.seek(to: edge - 1); aetherEngine.play() }; return
+    }
     guard let range = player.currentItem?.seekableTimeRanges.last?.timeRangeValue else { return }
     player.seek(
       to: CMTimeSubtract(CMTimeRangeGetEnd(range), CMTime(seconds: 1, preferredTimescale: 600)))
     resume()
   }
   func seek(_ seconds: Double) {
+    if let aetherEngine {
+      Task { await aetherEngine.seek(to: max(0, aetherEngine.currentTime + seconds)) }
+      return
+    }
     guard seconds.isFinite, let item = player.currentItem else { return }
     // A restored VOD item can be ready before its HLS seekable ranges arrive.
     // Its finite duration still permits normal seeking; live streams require
@@ -394,6 +602,8 @@ import SwiftUI
   }
   func setQuality(_ label: String) {
     quality = label
+    guard aetherEngine == nil else { return }
+    videoFrameWaitStarted = videoVisible ? nil : Date()
     guard let item = player.currentItem else { return }
     let heights = ["Auto": 0, "2160p": 2160, "1080p": 1080, "720p": 720, "480p": 480]
     let height = heights[label] ?? 0
@@ -402,16 +612,32 @@ import SwiftUI
     item.preferredPeakBitRate = height == 480 ? 1_200_000 : height == 720 ? 2_500_000 : 0
   }
   func selectAudio(_ option: AVMediaSelectionOption?) {
+    guard aetherEngine == nil else { return }
     if let group = audioGroup {
       player.currentItem?.select(option, in: group)
       selectedAudio = option?.displayName
     }
   }
   func selectCaption(_ option: AVMediaSelectionOption?) {
+    guard aetherEngine == nil else { return }
     if let group = captionGroup {
       player.currentItem?.select(option, in: group)
       selectedCaption = option?.displayName
     }
+  }
+  func selectAetherAudio(_ index: Int) {
+    guard let engine = aetherEngine else { return }
+    engine.selectAudioTrack(index: index)
+    selectedAudio = aetherAudioTracks.first(where: { $0.id == index })?.name
+  }
+  func selectAetherCaption(_ index: Int) {
+    guard let engine = aetherEngine else { return }
+    engine.selectSubtitleTrack(index: index)
+    selectedCaption = aetherCaptionTracks.first(where: { $0.id == index })?.name
+  }
+  func clearCaption() {
+    if let aetherEngine { aetherEngine.clearSubtitle(); selectedCaption = nil; return }
+    selectCaption(nil)
   }
   func setMultiViewCaps(count: Int) {
     multiViewCount = count
@@ -428,7 +654,12 @@ import SwiftUI
     foregroundTask = nil
     request = nil
     wantsPlayback = false
+    PlaybackScreenAwakeRegistry.setActive(false, for: playbackActivityID)
     player.pause()
+    aetherEngine?.stop()
+    aetherEngine = nil
+    aetherStateObservation = nil
+    aetherClockObservation = nil
     player.replaceCurrentItem(with: nil)
     observation = nil
     proxy?.stop()
@@ -530,6 +761,18 @@ struct RallyVideoSurface: UIViewRepresentable {
     coordinator.observation = nil
     coordinator.onReady = nil
     view.videoLayer.player = nil
+  }
+}
+
+struct RallyPlaybackSurface: View {
+  let session: PlaybackSession
+
+  var body: some View {
+    if let engine = session.aetherEngine {
+      AetherPlayerSurface(engine: engine).background(.black)
+    } else {
+      RallyVideoSurface(player: session.player) { session.videoVisible = $0 }
+    }
   }
 }
 
